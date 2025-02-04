@@ -5,7 +5,7 @@ import (
 )
 
 func main() {
-    deck, err := importDeckfile("fireball.deck")
+    deck, err := importDeckfile("../fireball.deck")
     if err != nil {
         fmt.Println("Error importing deck:", err)
         return
@@ -34,7 +34,7 @@ func main() {
         // Play a land if available
         landPlayed := false
         for i, card := range hand {
-            if card.CardFaces[0].TypeLine == "Land" {
+            if card.TypeLine == "Land" {
                 fmt.Printf("Playing land: ")
                 card.Display()
                 hand = append(hand[:i], hand[i+1:]...)

@@ -14,9 +14,13 @@ type CardDB struct {
 }
 
 func NewCardDB(cards []Card) *CardDB {
+	if len(cards) == 0 {
+		return nil
+	}
+	
 	cardMap := make(map[string]Card)
 	for _, card := range cards {
-		cardMap[card.CardFaces[0].Name] = card
+		cardMap[card.Name] = card
 	}
 	return &CardDB{cards: cardMap}
 }
@@ -48,6 +52,8 @@ func downloadAndParseJSON(url string) ([]Card, error) {
 }
 
 func init() {
+	var cards []Card
+
 	if _, err := ioutil.ReadFile("cardDB.json"); err == nil {
 		file, err := ioutil.ReadFile("cardDB.json")
 		if err != nil {
@@ -55,42 +61,35 @@ func init() {
 			return
 		}
 
-		var cards []Card
 		err = json.Unmarshal(file, &cards)
 		if err != nil {
 			fmt.Printf("Error parsing cardDB.json: %v\n", err)
 			return
 		}
+	} else {
+		url := "https://data.scryfall.io/oracle-cards/oracle-cards-20250204100217.json"
+		cards, err := downloadAndParseJSON(url)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
 
-		cardDB = NewCardDB(cards)
-		return
-	}
-
-	url := "https://data.scryfall.io/oracle-cards/oracle-cards-20250204100217.json"
-	cards, err := downloadAndParseJSON(url)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-	cardDB = NewCardDB(cards)
-
-	file, err := json.MarshalIndent(cards, "", "  ")
-	if err != nil {
-		fmt.Printf("Error marshalling JSON: %v\n", err)
-		return
+		content, err := json.MarshalIndent(cards, "", "  ")
+		if err != nil {
+			fmt.Printf("Error marshalling JSON: %v\n", err)
+			return
+		}
+		
+		err = ioutil.WriteFile("cardDB.json", content, 0644)
+		if err != nil {
+			fmt.Printf("Error writing to file: %v\n", err)
+			return
+		}
 	}
 	
-	err = ioutil.WriteFile("cardDB.json", file, 0644)
-	if err != nil {
-		fmt.Printf("Error writing to file: %v\n", err)
+	cardDB = NewCardDB(cards)
+	if cardDB == nil {
+		fmt.Println("Error creating cardDB")
 		return
-	}
-
-	// Print the names of the cards as a test
-	for i, card := range cards {
-		fmt.Println(card.CardFaces[0].Name)
-		if i > 10 {
-			break
-		}
 	}
 }
