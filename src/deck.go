@@ -39,7 +39,7 @@ func (d *Deck) DrawCard() Card {
     return card
 }
 
-func (d *Deck) importDeckfile(filename string) (Deck, error) {
+func importDeckfile(filename string) (Deck, error) {
     file, err := os.Open(filename)
 	if err != nil {
 		return Deck{}, err

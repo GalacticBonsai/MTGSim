@@ -177,16 +177,16 @@ func (c *Card) Display() {
 }
 
 // DisplayCard prints the details of a Card instance
-func (c *Card) DisplayCard() {
-    fmt.Printf("Name: %s\n", c.CardFaces[0].Name)
-    fmt.Printf("Mana Value: %f\n", c.CMC)
-    fmt.Printf("Type: %s\n", c.CardFaces[0].TypeLine)
-    // fmt.Printf("Set: %s\n", c.SetName)
-    // fmt.Printf("Scryfall URI: %s\n", c.ScryfallURI)
+func DisplayCard(card Card) {
+    fmt.Printf("Name: %s\n", card.CardFaces[0].Name)
+    fmt.Printf("Mana Value: %f\n", card.CMC)
+    fmt.Printf("Type: %s\n", card.CardFaces[0].TypeLine)
+    // fmt.Printf("Set: %s\n", card.SetName)
+    // fmt.Printf("Scryfall URI: %s\n", card.ScryfallURI)
 }
 
-func (c *Card) DisplayCards(cards []Card) {
+func DisplayCards(cards []Card) {
 	for _, card := range cards {
-		card.DisplayCard()
+		DisplayCard(card)
 	}
 }

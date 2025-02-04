@@ -5,8 +5,7 @@ import (
 )
 
 func main() {
-    deck := Deck{}
-    deck, err := deck.importDeckfile("fireball.deck")
+    deck, err := importDeckfile("fireball.deck")
     if err != nil {
         fmt.Println("Error importing deck:", err)
         return
@@ -21,7 +20,7 @@ func main() {
     // Draw initial hand of 7 cards
     hand := deck.DrawCards(7)
     fmt.Println("Initial hand drawn:")
-    hand[0].DisplayCards(hand)
+    DisplayCards(hand)
 
     // Simulate turns
     for turn := 1; turn <= 10; turn++ {
