@@ -7,6 +7,9 @@ import (
 	"net/http"
 )
 
+const cardDBfile = "../cardDB.json"
+const carddburl = "https://data.scryfall.io/oracle-cards/oracle-cards-20250204100217.json"
+
 var cardDB *CardDB
 
 type CardDB struct {
@@ -17,7 +20,7 @@ func NewCardDB(cards []Card) *CardDB {
 	if len(cards) == 0 {
 		return nil
 	}
-	
+
 	cardMap := make(map[string]Card)
 	for _, card := range cards {
 		cardMap[card.Name] = card
@@ -32,7 +35,7 @@ func (db *CardDB) GetCardByName(name string) (Card, bool) {
 
 func downloadAndParseJSON(url string) ([]Card, error) {
 	resp, err := http.Get(url)
-	if (err != nil) {
+	if err != nil {
 		return nil, fmt.Errorf("failed to download JSON: %v", err)
 	}
 	defer resp.Body.Close()
@@ -54,8 +57,8 @@ func downloadAndParseJSON(url string) ([]Card, error) {
 func init() {
 	var cards []Card
 
-	if _, err := ioutil.ReadFile("cardDB.json"); err == nil {
-		file, err := ioutil.ReadFile("cardDB.json")
+	if _, err := ioutil.ReadFile(cardDBfile); err == nil {
+		file, err := ioutil.ReadFile(cardDBfile)
 		if err != nil {
 			fmt.Printf("Error reading cardDB.json: %v\n", err)
 			return
@@ -67,7 +70,7 @@ func init() {
 			return
 		}
 	} else {
-		url := "https://data.scryfall.io/oracle-cards/oracle-cards-20250204100217.json"
+		url := carddburl
 		cards, err := downloadAndParseJSON(url)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
@@ -79,14 +82,14 @@ func init() {
 			fmt.Printf("Error marshalling JSON: %v\n", err)
 			return
 		}
-		
-		err = ioutil.WriteFile("cardDB.json", content, 0644)
+
+		err = ioutil.WriteFile(cardDBfile, content, 0644)
 		if err != nil {
 			fmt.Printf("Error writing to file: %v\n", err)
 			return
 		}
 	}
-	
+
 	cardDB = NewCardDB(cards)
 	if cardDB == nil {
 		fmt.Println("Error creating cardDB")
