@@ -49,18 +49,17 @@ func importDeckfile(filename string) (Deck, error) {
     var cards []Card
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
-        line := strings.TrimSpace(scanner.Text())
-        name := strings.Split(line, "x")[0]
-        count := 1
-        if strings.Contains(line, "x") {
-            count, err = strconv.Atoi(strings.Split(line, "x")[1])
-            if err != nil {
-                count = 1
-            }
+        parts := strings.Split(strings.TrimSpace(scanner.Text()), " ")
+        count, err := strconv.Atoi(parts[0])
+        if err != nil {
+            continue
         }
+        name := strings.Join(parts[1:len(parts)-2], " ")
+        // set_code := strings.Trim(parts[len(parts)-2], "()")
+        // set_number := parts[len(parts)-1]
         card, exists := cardDB.GetCardByName(name)
         if !exists {
-            fmt.Println(fmt.Errorf("card not found: %s", line))
+            fmt.Println(fmt.Errorf("card not found: %s", parts))
         }
         for i := 0; i < count; i++ {
             cards = append(cards, card)

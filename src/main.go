@@ -5,7 +5,7 @@ import (
 )
 
 func main() {
-    deck, err := importDeckfile("../fireball.deck")
+    deck, err := importDeckfile("../decklists/lightningbolt.deck")
     if err != nil {
         fmt.Println("Error importing deck:", err)
         return
