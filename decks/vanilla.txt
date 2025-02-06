@@ -1,0 +1,37 @@
+1 Alaborn Trooper
+1 Alpine Grizzly
+1 Bronze Sable
+1 Centaur Courser
+1 Elite Vanguard
+1 Glory Seeker
+1 Grizzly Bears
+1 Isamaru, Hound of Konda
+1 Loxodon Convert
+1 Loxodon Wayfarer
+1 Nessian Courser
+1 Nettle Swine
+1 Pheres-Band Centaurs
+1 Regal Unicorn
+1 Rumbling Baloth
+1 Runeclaw Bear
+1 Sanctuary Cat
+1 Silvercoat Lion
+1 Traveling Philosopher
+1 Vorstclaw
+1 Watchwolf
+1 Advent of the Wurm
+1 Akroma's Vengeance
+1 Brushland
+2 Feat of Resistance
+9 Forest
+2 Giant Growth
+1 Great Hart
+1 Grove of the Guardian
+1 Might of Oaks
+10 Plains
+4 Predator's Strike
+2 Selesnya Charm
+1 Silence
+2 Sundering Growth
+1 Thraben Purebloods
+

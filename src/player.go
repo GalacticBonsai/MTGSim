@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type manaPool struct {
 	w int
@@ -12,6 +15,7 @@ type manaPool struct {
 }
 
 type Player struct {
+	Name      string
 	LifeTotal int
 	Deck      Deck
 	Hand      []Card
@@ -29,6 +33,7 @@ func NewPlayer(decklist string) *Player {
 		panic(err)
 	}
 	return &Player{
+		Name:      decklist,
 		LifeTotal: 20,
 		Deck:      deck,
 		Hand:      []Card{},
@@ -40,6 +45,7 @@ func NewPlayer(decklist string) *Player {
 }
 
 func (p *Player) PlayTurn() {
+	// p.Display()
 	t := newTurn()
 	for _, phase := range t.phases {
 		for _, s := range phase.steps {
@@ -68,31 +74,33 @@ func (p *Player) PlayStep(s step, t *turn) {
 	case "End of Combat Step":
 	case "End Step":
 	case "Cleanup Step":
-		if len(p.Hand) > 7 {
-			// discard down to 7
-			p.Hand = p.Hand[:7]
+		// discard down to 7
+		var c Card
+		for len(p.Hand) > 7 {
+			c, p.Hand = sliceGet(p.Hand, 0)
+			fmt.Printf("Discarding: %s\n", c.Name)
+			p.Graveyard = append(p.Graveyard, c)
 		}
 	}
 }
 
 func (p *Player) PlayLand(t *turn) {
-	if t.landPerTurn <= 0 {
-		return
-	}
-
-	if len(p.Hand) <= 0 {
-		return
-	}
+	// if len(p.Hand) <= 0 {
+	// 	return
+	// }
 
 	for i, c := range p.Hand {
-		if c.TypeLine == "Land" {
-			land := p.Hand[i]
+		if t.landPerTurn <= 0 {
+			return
+		}
+		if strings.Contains(c.TypeLine, "Land") {
+			_, p.Hand = sliceGet(p.Hand, i)
 			fmt.Println("Playing land: ")
-			land.Display()
+			c.Display()
 
 			// adds land to board
 			p.Board = append(p.Board, Permanant{
-				source:            land,
+				source:            c,
 				owner:             p,
 				tokenType:         Land,
 				manaProducer:      true,
@@ -101,7 +109,6 @@ func (p *Player) PlayLand(t *turn) {
 			})
 
 			// pops card from hand
-			p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
 			t.landPerTurn--
 		}
 	}
@@ -125,21 +132,21 @@ func (p *Player) PlaySpell() {
 
 	for i, c := range p.Hand {
 		// check if spell can be cast
-		if c.TypeLine == "Land" {
+		if strings.Contains(c.TypeLine, "Land") {
 			continue
 		}
-		
+
 		// check if mana available
 		err := p.tapForMana(int(c.CMC))
 		if err != nil {
-			return
+			continue
 		}
+
 		fmt.Println("Casting spell: ")
 		c.Display()
 		// pops card from hand
-		p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
-
-		c.Cast(nil, p.Opponents[0])
+		_, p.Hand = sliceGet(p.Hand, i)
+		c.Cast(nil, p)
 
 	}
 }
@@ -155,6 +162,17 @@ func (p *Player) tapForMana(manaCost int) error {
 			p.Board[i].tap()
 			manaCost--
 		}
+		if manaCost == 0 {
+			break
+		}
 	}
 	return nil
+}
+func (p *Player) Display() {
+	fmt.Printf("Player: %s\n", p.Name)
+	fmt.Printf("Life: %d\n", p.LifeTotal)
+	fmt.Printf("Hand: \n")
+	DisplayCards(p.Hand)
+	fmt.Printf("Board: \n")
+	DisplayPermanants(p.Board)
 }

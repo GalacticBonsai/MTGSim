@@ -2,77 +2,47 @@ package main
 
 import (
 	"fmt"
+	"strings"
 )
 
 type Card struct {
-	ID              string
-	OracleID        string
-	MultiverseIDs   []int
-	Lang            string
-	ReleasedAt      string
-	URI             string
-	ScryfallURI     string
-	Layout          string
-	CMC             float32
-	ColorIdentity   []string
-	Keywords        []string
-	CardFaces       []CardFace
-	Legalities      map[string]string
-	Games           []string
-	Reserved        bool
-	Foil            bool
-	NonFoil         bool
-	Finishes        []string
-	Oversized       bool
-	Promo           bool
-	Reprint         bool
-	Variation       bool
-	SetID           string
-	Set             string
-	SetName         string
-	SetType         string
-	SetURI          string
-	SetSearchURI    string
-	ScryfallSetURI  string
-	RulingsURI      string
-	PrintsSearchURI string
-	Name            string
-	ManaCost        string
-	TypeLine        string
-	OracleText      string
-	Colors          []string
-	CollectorNumber string
-	Digital         bool
-	Rarity          string
-	Artist          string
-	ArtistIDs       []string
-	BorderColor     string
-	Frame           string
-	FullArt         bool
-	Textless        bool
-	Booster         bool
-	StorySpotlight  bool
-	PromoTypes      []string
-	Prices          map[string]string
-	RelatedURIs     map[string]string
-	PurchaseURIs    map[string]string
-}
-
-type CardFace struct {
-	ArtistID       string
-	IllustrationID string
-	ImageURIs      map[string]string
+	Name            string            `json:"name,omitempty"`
+	CMC             float32           `json:"cmc,omitempty"`
+	ManaCost        string            `json:"mana_cost,omitempty"`
+	TypeLine        string            `json:"type_line,omitempty"`
+	Power           string            `json:"power,omitempty"`
+	Toughness       string            `json:"toughness,omitempty"`
+	Keywords        []string          `json:"keywords,omitempty"`
+	OracleText      string            `json:"oracle_text,omitempty"`
+	ID              string            `json:"id,omitempty"`
+	OracleID        string            `json:"oracle_id,omitempty"`
+	MultiverseIDs   []int             `json:"multiverse_i_ds,omitempty"`
+	Lang            string            `json:"lang,omitempty"`
+	ReleasedAt      string            `json:"released_at,omitempty"`
+	URI             string            `json:"uri,omitempty"`
+	ScryfallURI     string            `json:"scryfall_uri,omitempty"`
+	Layout          string            `json:"layout,omitempty"`
+	ColorIdentity   []string          `json:"color_identity,omitempty"`
+	Colors          []string          `json:"colors,omitempty"`
+	Legalities      map[string]string `json:"legalities,omitempty"`
+	Variation       bool              `json:"variation,omitempty"`
+	Set             string            `json:"set,omitempty"`
+	SetName         string            `json:"set_name,omitempty"`
+	SetType         string            `json:"set_type,omitempty"`
+	CollectorNumber string            `json:"collector_number,omitempty"`
+	Rarity          string            `json:"rarity,omitempty"`
+	Artist          string            `json:"artist,omitempty"`
 }
 
 // DisplayCardSingleLine prints the details of a Card instance in a single line
 func (c *Card) Display() {
-	fmt.Printf("Name: %s, Mana Value: %f, Type: %s\n", c.Name, c.CMC, c.TypeLine)
+	fmt.Printf("Name: %s, Mana Value: %.0f, Type: %s\n", c.Name, c.CMC, c.TypeLine)
 }
 
 // DisplayCard prints the details of a Card instance
 func DisplayCard(card Card) {
 	fmt.Printf("Name: %s\n", card.Name)
-	fmt.Printf("Mana Value: %f\n", card.CMC)
+	fmt.Printf("Mana Value: %.0f\n", card.CMC)
 	fmt.Printf("Type: %s\n", card.TypeLine)
 	// fmt.Printf("Set: %s\n", card.SetName)
 	// fmt.Printf("Scryfall URI: %s\n", card.ScryfallURI)
@@ -80,14 +50,22 @@ func DisplayCard(card Card) {
 
 func DisplayCards(cards []Card) {
 	for _, card := range cards {
-		DisplayCard(card)
+		card.Display()
 	}
 }
 
 func (c *Card) Cast(target *Permanant, p *Player) {
-	// fmt.Printf("Casting %s\n", c.Name)
-	// Hardcoding bolt to face
-	if p != nil {
-		p.LifeTotal -= 3
+	if strings.Contains(c.TypeLine, "Creature") {
+		p.Board = append(p.Board, Permanant{
+			source:    *c,
+			owner:     p,
+			tokenType: Creature,
+		})
+		return
 	}
+
+	// Hardcoding bolt to face
+	p.Opponents[0].LifeTotal -= 3
+	p.Graveyard = append(p.Graveyard, *c)
+
 }

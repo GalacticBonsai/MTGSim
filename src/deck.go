@@ -55,9 +55,16 @@ func importDeckfile(filename string) (Deck, error) {
 		if err != nil {
 			continue
 		}
-		name := strings.Join(parts[1:len(parts)-2], " ")
-		// set_code := strings.Trim(parts[len(parts)-2], "()")
-		// set_number := parts[len(parts)-1]
+		
+		name := ""
+		if strings.Contains(scanner.Text(), "("){
+			name = strings.Join(parts[1:len(parts)-2], " ")
+			// set_code := strings.Trim(parts[len(parts)-2], "()")
+			// set_number := parts[len(parts)-1]
+		} else {
+			name = strings.Join(parts[1:], " ")
+		}
+		
 		card, exists := cardDB.GetCardByName(name)
 		if !exists {
 			fmt.Println(fmt.Errorf("card not found: %s", parts))

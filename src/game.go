@@ -10,7 +10,7 @@ type Game struct {
 
 func newGame() *Game {
 	return &Game{
-		turnNumber: 0,
+		turnNumber: 1,
 	}
 }
 
@@ -24,17 +24,20 @@ func (g *Game) Start() {
 	currentPlayer := 0
 	for i, p := range g.Players {
 		p.Deck.Shuffle()
-		p.Opponents = append(g.Players[:i], g.Players[i+1:]...)
+		p.Opponents = append([]*Player{}, g.Players[:i]...)
+		p.Opponents = append(p.Opponents, g.Players[i+1:]...)
 		p.Hand = append(p.Hand, p.Deck.DrawCards(7)...)
 	}
 	// add shuffle players to pick start
 
 	//play game
+	fmt.Printf("turn %d\n", g.turnNumber)
 	for !g.won {
 		g.Players[currentPlayer].PlayTurn()
 
 		if g.Players[currentPlayer].Opponents[0].LifeTotal <= 0 {
 			g.won = true
+			break
 		}
 
 		fmt.Printf("player A life total:%d\nplayer B life total:%d\n", g.Players[0].LifeTotal, g.Players[1].LifeTotal)
@@ -44,7 +47,11 @@ func (g *Game) Start() {
 		} else {
 			currentPlayer = 0
 			g.turnNumber++
+			fmt.Printf("turn %d\n", g.turnNumber)
 		}
 	}
-
+	fmt.Printf("Game Over\nPlayer %d wins\n", currentPlayer)
+	fmt.Printf("Game lasted %d turns\n", g.turnNumber)
+	g.Players[0].Display()
+	g.Players[1].Display()
 }

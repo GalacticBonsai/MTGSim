@@ -24,3 +24,15 @@ func (p *Permanant) tap() {
 		p.tapped = true
 	}
 }
+
+func (p *Permanant) untap() {
+	if !p.summoningSickness && p.tapped {
+		p.tapped = false
+	}
+}
+
+func DisplayPermanants(permanants []Permanant) {
+	for _, permanant := range permanants {
+		DisplayCard(permanant.source)
+	}
+}
