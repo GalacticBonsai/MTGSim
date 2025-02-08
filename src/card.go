@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -36,7 +37,13 @@ type Card struct {
 
 // DisplayCardSingleLine prints the details of a Card instance in a single line
 func (c *Card) Display() {
-	fmt.Printf("Name: %s, Mana Value: %.0f, Type: %s\n", c.Name, c.CMC, c.TypeLine)
+	if strings.Contains(c.TypeLine, "Land") {
+		fmt.Printf("Name: %s\n", c.Name)
+	} else if strings.Contains(c.TypeLine, "Creature") {
+		fmt.Printf("Name: %s, Mana Value: %.0f, Power: %s, Toughness: %s\n", c.Name, c.CMC, c.Power, c.Toughness)
+	} else {
+		fmt.Printf("Name: %s, Mana Value: %.0f, Type: %s\n", c.Name, c.CMC, c.TypeLine)
+	}
 }
 
 // DisplayCard prints the details of a Card instance
@@ -56,10 +63,15 @@ func DisplayCards(cards []Card) {
 
 func (c *Card) Cast(target *Permanant, p *Player) {
 	if strings.Contains(c.TypeLine, "Creature") {
-		p.Board = append(p.Board, Permanant{
-			source:    *c,
-			owner:     p,
-			tokenType: Creature,
+		power, _ := strconv.Atoi(c.Power)
+		toughness, _ := strconv.Atoi(c.Toughness)
+		p.Creatures = append(p.Creatures, Permanant{
+			source:            *c,
+			owner:             p,
+			tokenType:         Creature,
+			summoningSickness: true,
+			power:             power,
+			toughness:         toughness,
 		})
 		return
 	}

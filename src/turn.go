@@ -10,16 +10,16 @@ type phase struct {
 }
 
 type turn struct {
-	phases      []phase
+	phases       []phase
 	currentPhase int
-	landPerTurn int
+	landPerTurn  int
 }
 
 func newTurn() *turn {
 	return &turn{
-		phases:      turnOrder,
+		phases:       turnOrder,
 		currentPhase: 0,
-		landPerTurn: 1,
+		landPerTurn:  1,
 	}
 }
 
@@ -63,22 +63,4 @@ var turnOrder = []phase{
 			{name: "Cleanup Step"},
 		},
 	},
-}
-
-func (s *step) next(p *phase) *step {
-	for i, st := range p.steps {
-		if st.name == s.name && i < len(p.steps)-1 {
-			return &p.steps[i+1]
-		}
-	}
-	return nil
-}
-
-func (p *phase) next() *phase {
-	for i, ph := range turnOrder {
-		if ph.name == p.name && i < len(turnOrder)-1 {
-			return &turnOrder[i+1]
-		}
-	}
-	return nil
 }

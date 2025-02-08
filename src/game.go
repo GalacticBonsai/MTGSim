@@ -40,7 +40,7 @@ func (g *Game) Start() {
 			break
 		}
 
-		fmt.Printf("player A life total:%d\nplayer B life total:%d\n", g.Players[0].LifeTotal, g.Players[1].LifeTotal)
+		// fmt.Printf("player A life total:%d\nplayer B life total:%d\n", g.Players[0].LifeTotal, g.Players[1].LifeTotal)
 
 		if currentPlayer == 0 {
 			currentPlayer = 1

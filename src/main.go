@@ -20,8 +20,7 @@ func sliceGet[T any](slice []T, index int) (T, []T) {
 
 func main() {
 	g := newGame()
-	g.AddPlayer("../decks/lightningbolt.deck")
-	g.AddPlayer("../decks/lightningbolt.deck")
-	// g.AddPlayer("../decks/vanilla.txt")
+	g.AddPlayer("../decks/blue_vanilla_creatures.txt")
+	g.AddPlayer("../decks/white_vanilla_creatures.txt")
 	g.Start()
 }
