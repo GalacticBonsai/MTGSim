@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+)
 
 type PermanantType int
 
@@ -30,6 +34,7 @@ func (pt PermanantType) String() string {
 }
 
 type Permanant struct {
+	id                uuid.UUID
 	source            Card
 	owner             *Player
 	tokenType         PermanantType
@@ -41,6 +46,7 @@ type Permanant struct {
 	blocked           bool
 	power             int
 	toughness         int
+	damage_counters   int
 }
 
 func (p Permanant) Display() {
@@ -58,6 +64,9 @@ func (p *Permanant) untap() {
 }
 
 func DisplayPermanants(permanants []Permanant) {
+	if len(permanants) == 0 {
+		fmt.Printf("[]\n")
+	}
 	for _, permanant := range permanants {
 		DisplayCard(permanant.source)
 	}
@@ -65,58 +74,57 @@ func DisplayPermanants(permanants []Permanant) {
 
 func (p *Permanant) damages(target *Permanant) {
 	fmt.Printf("%s deals %d damage to %s\n", p.source.Name, p.power, target.source.Name)
-	target.toughness -= p.power
+	target.damage_counters += p.power
+}
 
-	fmt.Printf("%s deals %d damage to %s\n", target.source.Name, p.power, p.source.Name)
-	p.toughness -= target.power
-	if target.toughness <= 0 {
-		destroyPermanant(target)
-	}
-	if p.toughness <= 0 {
+func (p *Permanant) checkLife() {
+	if p.toughness <= p.damage_counters {
 		destroyPermanant(p)
 	}
 }
 
 func destroyPermanant(p *Permanant) {
 	// remove permanant from owner's board
+	var card Permanant
 	switch p.tokenType {
 	case Creature:
 		for i, c := range p.owner.Creatures {
-			if &c == p {
-				_, p.owner.Creatures = sliceGet(p.owner.Creatures, i)
+			if c.id == p.id {
+				card, p.owner.Creatures = sliceGet(p.owner.Creatures, i)
 				break
 			}
 		}
 	case Land:
 		for i, c := range p.owner.Lands {
-			if &c == p {
-				_, p.owner.Lands = sliceGet(p.owner.Lands, i)
+			if c.id == p.id {
+				card, p.owner.Lands = sliceGet(p.owner.Lands, i)
 				break
 			}
 		}
 	case Artifact:
 		for i, c := range p.owner.Artifacts {
-			if &c == p {
-				_, p.owner.Artifacts = sliceGet(p.owner.Artifacts, i)
+			if c.id == p.id {
+				card, p.owner.Artifacts = sliceGet(p.owner.Artifacts, i)
 				break
 			}
 		}
 	case Enchantment:
 		for i, c := range p.owner.Enchantments {
-			if &c == p {
-				_, p.owner.Enchantments = sliceGet(p.owner.Enchantments, i)
+			if c.id == p.id {
+				card, p.owner.Enchantments = sliceGet(p.owner.Enchantments, i)
 				break
 			}
 		}
 	case Planeswalker:
 		for i, c := range p.owner.Planeswalkers {
-			if &c == p {
-				_, p.owner.Planeswalkers = sliceGet(p.owner.Planeswalkers, i)
+			if c.id == p.id {
+				card, p.owner.Planeswalkers = sliceGet(p.owner.Planeswalkers, i)
 				break
 			}
 		}
 
 	}
 	// add permanant to owner's graveyard
-	p.owner.Graveyard = append(p.owner.Graveyard, p.source)
+	fmt.Printf("%s sent to player %v's graveyard\n", card.source.Name, p.owner.Name)
+	p.owner.Graveyard = append(p.owner.Graveyard, card.source)
 }

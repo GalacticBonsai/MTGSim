@@ -40,17 +40,15 @@ func (g *Game) Start() {
 			break
 		}
 
-		// fmt.Printf("player A life total:%d\nplayer B life total:%d\n", g.Players[0].LifeTotal, g.Players[1].LifeTotal)
-
 		if currentPlayer == 0 {
 			currentPlayer = 1
 		} else {
 			currentPlayer = 0
 			g.turnNumber++
-			fmt.Printf("turn %d\n", g.turnNumber)
+			fmt.Printf("turn %d\n%d to %d\n", g.turnNumber, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
 		}
 	}
-	fmt.Printf("Game Over\nPlayer %d wins\n", currentPlayer)
+	fmt.Printf("Game Over\nPlayer %s wins\n", g.Players[currentPlayer].Name)
 	fmt.Printf("Game lasted %d turns\n", g.turnNumber)
 	g.Players[0].Display()
 	g.Players[1].Display()

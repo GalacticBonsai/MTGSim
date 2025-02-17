@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type Card struct {
@@ -38,7 +40,7 @@ type Card struct {
 // DisplayCardSingleLine prints the details of a Card instance in a single line
 func (c *Card) Display() {
 	if strings.Contains(c.TypeLine, "Land") {
-		fmt.Printf("Name: %s\n", c.Name)
+		fmt.Printf("%s\n", c.Name)
 	} else if strings.Contains(c.TypeLine, "Creature") {
 		fmt.Printf("Name: %s, Mana Value: %.0f, Power: %s, Toughness: %s\n", c.Name, c.CMC, c.Power, c.Toughness)
 	} else {
@@ -48,11 +50,11 @@ func (c *Card) Display() {
 
 // DisplayCard prints the details of a Card instance
 func DisplayCard(card Card) {
-	fmt.Printf("Name: %s\n", card.Name)
-	fmt.Printf("Mana Value: %.0f\n", card.CMC)
-	fmt.Printf("Type: %s\n", card.TypeLine)
-	// fmt.Printf("Set: %s\n", card.SetName)
-	// fmt.Printf("Scryfall URI: %s\n", card.ScryfallURI)
+	card.Display()
+}
+
+func fmtCard(card Card) string {
+	return fmt.Sprintf("name: %s", card.Name)
 }
 
 func DisplayCards(cards []Card) {
@@ -66,6 +68,7 @@ func (c *Card) Cast(target *Permanant, p *Player) {
 		power, _ := strconv.Atoi(c.Power)
 		toughness, _ := strconv.Atoi(c.Toughness)
 		p.Creatures = append(p.Creatures, Permanant{
+			id:                uuid.New(),
 			source:            *c,
 			owner:             p,
 			tokenType:         Creature,

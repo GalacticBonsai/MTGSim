@@ -86,6 +86,7 @@ func (p *Player) PlayStep(s step, t *turn) {
 		p.DealDamage()
 	case "End of Combat Step":
 		p.CleanupCombat()
+		p.Opponents[0].CleanupCombat()
 	case "End Step":
 	case "Cleanup Step":
 		// discard down to 7
@@ -111,6 +112,8 @@ func (p *Player) DealDamage() {
 		if creature.blocking != nil {
 			creature.damages(creature.blocking)
 			creature.blocking.damages(&creature)
+			creature.checkLife()
+			creature.blocking.checkLife()
 		}
 	}
 	for _, creature := range p.Creatures {
@@ -120,6 +123,7 @@ func (p *Player) DealDamage() {
 		}
 
 		creature.attacking.LifeTotal -= creature.power
+		fmt.Printf("%s deals %d damge to %s\n", creature.source.Name, creature.power, creature.attacking.Name)
 	}
 }
 
@@ -132,21 +136,27 @@ func (p *Player) DeclareBlockers() {
 			if attacker.attacking == p {
 				p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
 				p.Opponents[0].Creatures[j].blocked = true
+				fmt.Printf("%s blocked by %s\n", attacker.source.Name, creature.source.Name)
+				break // exit out to not block all attackers
 			}
 		}
 	}
 }
 
 func (p *Player) DeclareAttackers() {
+	fmt.Println("Declare attacker: ")
+	attacking := false
 	for i, creature := range p.Creatures {
 		if creature.tapped || creature.summoningSickness {
 			continue
 		}
 
-		fmt.Println("Declare attacker: ")
 		creature.Display()
 		p.Creatures[i].attacking = p.Opponents[0]
-
+		attacking = true
+	}
+	if !attacking {
+		fmt.Println("None")
 	}
 }
 
