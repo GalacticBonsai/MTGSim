@@ -51,7 +51,7 @@ func getRandom[T any](slice []T) T {
 }
 
 func main() {
-	decks, err := getDecks("../decks")
+	decks, err := getDecks("../decks/Generated")
 	if err != nil || len(decks) == 0 {
 		return
 	}

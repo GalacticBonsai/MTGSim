@@ -49,6 +49,7 @@ func SortWinners() {
 func PrintTopWinners() {
 	SortWinners()
 	for _, player := range results {
-		fmt.Printf("%s won %d/%d games\n", player.Name, player.Wins, player.Wins+player.Losses)
+		winPercent := float64(player.Wins) / float64(player.Wins+player.Losses) * 100
+		fmt.Printf("%s won %d/%d games(%.2fPercent)\n", player.Name, player.Wins, player.Wins+player.Losses, winPercent)
 	}
 }
