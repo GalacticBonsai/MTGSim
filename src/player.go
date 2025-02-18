@@ -88,6 +88,8 @@ func (p *Player) PlayStep(s step, t *turn) {
 		p.CleanupCombat()
 		p.Opponents[0].CleanupCombat()
 	case "End Step":
+		p.EndStep()
+		p.Opponents[0].EndStep()
 	case "Cleanup Step":
 		// discard down to 7
 		var c Card
@@ -133,7 +135,7 @@ func (p *Player) DeclareBlockers() {
 			continue
 		}
 		for j, attacker := range p.Opponents[0].Creatures {
-			if attacker.attacking == p {
+			if attacker.attacking == p && !attacker.blocked {
 				p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
 				p.Opponents[0].Creatures[j].blocked = true
 				fmt.Printf("%s blocked by %s\n", attacker.source.Name, creature.source.Name)
@@ -281,4 +283,10 @@ func (p *Player) Display() {
 	fmt.Printf("Board: \n")
 	DisplayPermanants(p.Creatures)
 	DisplayPermanants(p.Lands)
+}
+
+func (p *Player) EndStep() {
+	for i := range p.Creatures {
+		p.Creatures[i].damage_counters = 0
+	}
 }

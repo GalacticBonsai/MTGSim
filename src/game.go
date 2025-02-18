@@ -5,7 +5,8 @@ import "fmt"
 type Game struct {
 	Players    []*Player
 	turnNumber int
-	won        bool
+	winner     *Player
+	loser      *Player
 }
 
 func newGame() *Game {
@@ -20,7 +21,6 @@ func (g *Game) AddPlayer(decklist string) {
 }
 
 func (g *Game) Start() {
-	g.won = false
 	currentPlayer := 0
 	for i, p := range g.Players {
 		p.Deck.Shuffle()
@@ -32,11 +32,12 @@ func (g *Game) Start() {
 
 	//play game
 	fmt.Printf("turn %d\n", g.turnNumber)
-	for !g.won {
+	for g.winner == nil {
 		g.Players[currentPlayer].PlayTurn()
 
 		if g.Players[currentPlayer].Opponents[0].LifeTotal <= 0 {
-			g.won = true
+			g.winner = g.Players[currentPlayer]
+			g.loser = g.winner.Opponents[0]
 			break
 		}
 
@@ -48,7 +49,8 @@ func (g *Game) Start() {
 			fmt.Printf("turn %d\n%d to %d\n", g.turnNumber, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
 		}
 	}
-	fmt.Printf("Game Over\nPlayer %s wins\n", g.Players[currentPlayer].Name)
+	fmt.Printf("Game Over\nPlayer %s wins\n", g.winner.Name)
+
 	fmt.Printf("Game lasted %d turns\n", g.turnNumber)
 	g.Players[0].Display()
 	g.Players[1].Display()

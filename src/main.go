@@ -1,5 +1,11 @@
 package main
 
+import (
+	"io/ioutil"
+	"math/rand"
+	"time"
+)
+
 func sliceGet[T any](slice []T, index int) (T, []T) {
 	var out T
 	if index < 0 || index >= len(slice) {
@@ -18,9 +24,46 @@ func sliceGet[T any](slice []T, index int) (T, []T) {
 	return out, slice
 }
 
+func getDecks(dir string) ([]string, error) {
+	var fileList []string
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			subDirFiles, err := getDecks(dir + "/" + file.Name())
+			if err != nil {
+				return nil, err
+			}
+			fileList = append(fileList, subDirFiles...)
+		} else {
+			fileList = append(fileList, dir+"/"+file.Name())
+		}
+	}
+	return fileList, nil
+}
+
+func getRandom[T any](slice []T) T {
+	rand.Seed(time.Now().UnixNano())
+	return slice[rand.Intn(len(slice))]
+}
+
 func main() {
-	g := newGame()
-	g.AddPlayer("../decks/blue_vanilla_creatures.txt")
-	g.AddPlayer("../decks/white_vanilla_creatures.txt")
-	g.Start()
+	decks, err := getDecks("../decks")
+	if err != nil || len(decks) == 0 {
+		return
+	}
+
+	for i := 0; i < 10000; i++ {
+		g := newGame()
+		g.AddPlayer(getRandom(decks))
+		g.AddPlayer(getRandom(decks))
+		g.Start()
+		AddWin(g.winner.Name)
+		AddLoss(g.loser.Name)
+	}
+
+	PrintTopWinners()
 }

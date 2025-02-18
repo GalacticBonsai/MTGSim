@@ -34,9 +34,9 @@ func (pt PermanantType) String() string {
 }
 
 type Permanant struct {
-	id                uuid.UUID
 	source            Card
 	owner             *Player
+	id                uuid.UUID
 	tokenType         PermanantType
 	tapped            bool
 	summoningSickness bool
