@@ -5,15 +5,6 @@ import (
 	"strings"
 )
 
-type manaPool struct {
-	w int
-	u int
-	b int
-	r int
-	g int
-	c int
-}
-
 type Player struct {
 	Name          string
 	LifeTotal     int
@@ -26,7 +17,7 @@ type Player struct {
 	Artifacts     []Permanant
 	Planeswalkers []Permanant
 	Lands         []Permanant
-	mana          manaPool
+	mana          mana
 	Opponents     []*Player
 }
 
@@ -40,10 +31,6 @@ func NewPlayer(decklist string) *Player {
 		Name:      decklist,
 		LifeTotal: 20,
 		Deck:      deck,
-		Hand:      []Card{},
-		Graveyard: []Card{},
-		Exile:     []Card{},
-		mana:      manaPool{},
 	}
 }
 
