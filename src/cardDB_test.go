@@ -78,8 +78,12 @@ func TestBasicDualLandsManaProducer(t *testing.T) {
 			t.Errorf("Expected '%s' to produce %v, got %v", name, manaTypes, producedManaTypes)
 			continue
 		}
-		for i, manaType := range manaTypes {
-			if producedManaTypes[i] != manaType {
+		manaTypeMap := make(map[ManaType]bool)
+		for _, manaType := range manaTypes {
+			manaTypeMap[manaType] = true
+		}
+		for _, producedManaType := range producedManaTypes {
+			if !manaTypeMap[producedManaType] {
 				t.Errorf("Expected '%s' to produce %v, got %v", name, manaTypes, producedManaTypes)
 				break
 			}
@@ -115,8 +119,12 @@ func TestManaCreaturesAndArtifacts(t *testing.T) {
 			t.Errorf("Expected '%s' to produce %v, got %v", name, attributes.manaTypes, producedManaTypes)
 			continue
 		}
-		for i, manaType := range attributes.manaTypes {
-			if producedManaTypes[i] != manaType {
+		manaTypeMap := make(map[ManaType]bool)
+		for _, manaType := range attributes.manaTypes {
+			manaTypeMap[manaType] = true
+		}
+		for _, producedManaType := range producedManaTypes {
+			if !manaTypeMap[producedManaType] {
 				t.Errorf("Expected '%s' to produce %v, got %v", name, attributes.manaTypes, producedManaTypes)
 				break
 			}

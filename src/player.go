@@ -82,7 +82,7 @@ func (p *Player) PlayStep(s step, t *turn) {
 		var c Card
 		for len(p.Hand) > 7 {
 			c, p.Hand = sliceGet(p.Hand, 0)
-			fmt.Printf("Discarding: %s\n", c.Name)
+			Debug("Discarding:", c.Name)
 			p.Graveyard = append(p.Graveyard, c)
 		}
 	}
@@ -112,7 +112,7 @@ func (p *Player) DealDamage() {
 		}
 
 		creature.attacking.LifeTotal -= creature.power
-		fmt.Printf("%s deals %d damge to %s\n", creature.source.Name, creature.power, creature.attacking.Name)
+		Debug(creature.source.Name, "deals", creature.power, "damage to", creature.attacking.Name)
 	}
 }
 
@@ -125,7 +125,7 @@ func (p *Player) DeclareBlockers() {
 			if attacker.attacking == p && !attacker.blocked {
 				p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
 				p.Opponents[0].Creatures[j].blocked = true
-				fmt.Printf("%s blocked by %s\n", attacker.source.Name, creature.source.Name)
+				Debug(attacker.source.Name, " blocked by ", creature.source.Name)
 				break // exit out to not block all attackers
 			}
 		}
@@ -133,7 +133,7 @@ func (p *Player) DeclareBlockers() {
 }
 
 func (p *Player) DeclareAttackers() {
-	fmt.Println("Declare attacker: ")
+	Debug("Declare attacker:")
 	attacking := false
 	for i, creature := range p.Creatures {
 		if creature.tapped || creature.summoningSickness {
@@ -145,129 +145,150 @@ func (p *Player) DeclareAttackers() {
 		attacking = true
 	}
 	if !attacking {
-		fmt.Println("None")
+		Debug("None")
 	}
 }
 
 func (p *Player) PlayLand(t *turn) {
-	for i, c := range p.Hand {
+	for i := 0; i < len(p.Hand); i++ {
+		c := p.Hand[i]
 		if t.landPerTurn <= 0 {
 			return
 		}
 		if strings.Contains(c.TypeLine, "Land") {
-			_, p.Hand = sliceGet(p.Hand, i)
-			fmt.Println("Playing land: ")
+			p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
+			Debug("Playing land:")
 			c.Display()
 
 			// adds land to board
-			p.Lands = append(p.Lands, Permanant{
+			land := Permanant{
 				source:            c,
 				owner:             p,
 				tokenType:         Land,
-				manaProducer:      true,
 				tapped:            false,
 				summoningSickness: false,
-			})
+			}
+			land.checkManaProducer()
+			p.Lands = append(p.Lands, land)
 
 			// pops card from hand
 			t.landPerTurn--
+			i-- // Adjust index after removing an element
 		}
 	}
 }
 
 // fix for colors
-func (p *Player) ManaAvailable() int {
-	totalMana := 0
+func (p *Player) ManaAvailable() mana {
+	totalMana := newMana()
 	for _, c := range p.Lands {
 		if !c.tapped {
-			totalMana++
+			for _, manaType := range c.manaTypes {
+				totalMana.pool[manaType]++
+			}
 		}
 	}
 	for _, c := range p.Creatures {
 		if !c.tapped && c.manaProducer && !c.summoningSickness {
-			totalMana++
+			for _, manaType := range c.manaTypes {
+				totalMana.pool[manaType]++
+			}
 		}
 	}
 	for _, c := range p.Artifacts {
 		if !c.tapped && c.manaProducer {
-			totalMana++
+			for _, manaType := range c.manaTypes {
+				totalMana.pool[manaType]++
+			}
 		}
 	}
 	return totalMana
 }
 
 func (p *Player) PlaySpell() {
-	for i, c := range p.Hand {
+	for i := 0; i < len(p.Hand); i++ {
+		c := p.Hand[i]
 		// check if spell can be cast
 		if strings.Contains(c.TypeLine, "Land") {
 			continue
 		}
 
 		// check if mana available
-		err := p.tapForMana(int(c.CMC))
+		cost := ParseManaCost(c.ManaCost)
+		err := p.tapForMana(cost)
 		if err != nil {
 			continue
 		}
 
-		fmt.Println("Casting spell: ")
+		Debug("Casting spell:")
 		c.Display()
 		// pops card from hand
-		_, p.Hand = sliceGet(p.Hand, i)
+		p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
 		c.Cast(nil, p)
-
+		i-- // Adjust index after removing an element
 	}
 }
 
-func (p *Player) tapForMana(manaCost int) error {
-	// tap lands for mana
-	if int(manaCost) > p.ManaAvailable() {
+func (p *Player) tapForMana(cost mana) error {
+	availableMana := p.ManaAvailable()
+	if availableMana.total() < cost.total() {
 		return fmt.Errorf("not enough mana available")
 	}
 
+	// tap lands for mana
 	for i := range p.Lands {
 		if !p.Lands[i].tapped {
-			p.Lands[i].tap()
-			manaCost--
+			for _, manaType := range p.Lands[i].manaTypes {
+				if cost.pool[manaType] > 0 {
+					p.Lands[i].tap()
+					cost.pool[manaType]--
+				}
+			}
 		}
-		if manaCost == 0 {
+		if cost.total() == 0 {
 			return nil
 		}
-		if manaCost < 0 {
-			return fmt.Errorf("mana cost is now negative")
-		}
 	}
+
+	// tap creatures for mana
 	for i, c := range p.Creatures {
 		if !c.tapped && !c.summoningSickness && c.manaProducer {
-			p.Creatures[i].tap()
-			manaCost--
+			for _, manaType := range c.manaTypes {
+				if cost.pool[manaType] > 0 {
+					p.Creatures[i].tap()
+					cost.pool[manaType]--
+				}
+			}
 		}
-		if manaCost == 0 {
+		if cost.total() == 0 {
 			return nil
 		}
-		if manaCost < 0 {
-			return fmt.Errorf("mana cost is now negative")
-		}
 	}
+
+	// tap artifacts for mana
 	for i, a := range p.Artifacts {
 		if !a.tapped {
-			p.Artifacts[i].tap()
-			manaCost--
+			for _, manaType := range a.manaTypes {
+				if cost.pool[manaType] > 0 {
+					p.Artifacts[i].tap()
+					cost.pool[manaType]--
+				}
+			}
 		}
-		if manaCost == 0 {
+		if cost.total() == 0 {
 			return nil
 		}
-		if manaCost < 0 {
-			return fmt.Errorf("mana cost is now negative")
-		}
 	}
+
 	return nil
 }
+
 func (p *Player) Display() {
-	fmt.Printf("Player: %s\n", p.Name)
-	fmt.Printf("Life: %d\n", p.LifeTotal)
-	fmt.Printf("Hand: \n")
+	Debug("Player:", p.Name)
+	Debug("Life:", p.LifeTotal)
+	Debug("Hand:")
 	DisplayCards(p.Hand)
-	fmt.Printf("Board: \n")
+	Debug("Board:")
 	DisplayPermanants(p.Creatures)
 	DisplayPermanants(p.Lands)
 }

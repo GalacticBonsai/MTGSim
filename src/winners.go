@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sort"
 )
 
@@ -50,6 +49,6 @@ func PrintTopWinners() {
 	SortWinners()
 	for _, player := range results {
 		winPercent := float64(player.Wins) / float64(player.Wins+player.Losses) * 100
-		fmt.Printf("%s won %d/%d games(%.2fPercent)\n", player.Name, player.Wins, player.Wins+player.Losses, winPercent)
+		Info("Deck: ", player.Name, " Wins: ", player.Wins, " percent: ", winPercent)
 	}
 }
