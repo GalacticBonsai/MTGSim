@@ -18,6 +18,7 @@ const (
 	Any       ManaType = "A"
 	Phyrexian ManaType = "P"
 	Snow      ManaType = "S"
+	X         ManaType = "X"
 )
 
 func (mt ManaType) String() string {
@@ -106,7 +107,24 @@ func CheckManaProducer(oracleText string) (bool, ManaType) {
 	manaRegex := regexp.MustCompile(`\{T\}: Add (\{[WUBRGC]\}|one mana of any color)`)
 	matches := manaRegex.FindStringSubmatch(oracleText)
 	if len(matches) > 1 {
-		return true, ManaType(matches[1])
+		switch matches[1] {
+		case "{W}":
+			return true, White
+		case "{U}":
+			return true, Blue
+		case "{B}":
+			return true, Black
+		case "{R}":
+			return true, Red
+		case "{G}":
+			return true, Green
+		case "{C}":
+			return true, Colorless
+		case "one mana of any color":
+			return true, Any
+		default:
+			return true, Any
+		}
 	}
 	return false, Any
 }
