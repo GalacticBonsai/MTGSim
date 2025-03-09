@@ -36,3 +36,24 @@ func TestParseManaCost(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckManaProducer(t *testing.T) {
+	tests := []struct {
+		oracleText string
+		expected   bool
+		manaType   ManaType
+	}{
+		{"{T}, Sacrifice this artifact: Add one mana of any color", true, Any},
+		{"Sacrifice a creature: Add {C}{C}.", false, Any},
+		{"({T}: Add {R}.)", true, Red},
+		{"({T}: Add {U} or {R}.)", true, Any},
+		{"{T}: Add one mana of any color in your commander’s color identity.", true, Any},
+	}
+
+	for _, test := range tests {
+		isProducer, manaType := CheckManaProducer(test.oracleText)
+		if isProducer != test.expected || manaType != test.manaType {
+			t.Errorf("CheckManaProducer(%s) = (%v, %v); expected (%v, %v)", test.oracleText, isProducer, manaType, test.expected, test.manaType)
+		}
+	}
+}
