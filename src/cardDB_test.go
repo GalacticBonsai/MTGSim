@@ -86,3 +86,49 @@ func TestBasicDualLandsManaProducer(t *testing.T) {
 		}
 	}
 }
+
+func TestManaCreaturesAndArtifacts(t *testing.T) {
+	SetLogLevel(WARN)
+
+	manaProducers := map[string]struct {
+		manaTypes []ManaType
+		power     string
+		toughness string
+	}{
+		"Llanowar Elves":    {manaTypes: []ManaType{Green}, power: "1", toughness: "1"},
+		"Birds of Paradise": {manaTypes: []ManaType{Any}, power: "0", toughness: "1"},
+		"Sol Ring":          {manaTypes: []ManaType{Colorless, Colorless}},
+		"Ashnod's Altar":    {manaTypes: []ManaType{Colorless, Colorless}},
+	}
+
+	for name, attributes := range manaProducers {
+		card, exists := cardDB.GetCardByName(name)
+		if !exists {
+			t.Fatalf("Card '%s' not found in the database", name)
+		}
+
+		isProducer, producedManaTypes := CheckManaProducer(card.OracleText)
+		if !isProducer {
+			t.Errorf("Expected '%s' to be a mana producer", name)
+		}
+		if len(producedManaTypes) != len(attributes.manaTypes) {
+			t.Errorf("Expected '%s' to produce %v, got %v", name, attributes.manaTypes, producedManaTypes)
+			continue
+		}
+		for i, manaType := range attributes.manaTypes {
+			if producedManaTypes[i] != manaType {
+				t.Errorf("Expected '%s' to produce %v, got %v", name, attributes.manaTypes, producedManaTypes)
+				break
+			}
+		}
+
+		if card.TypeLine == "Creature" {
+			if card.Power != attributes.power {
+				t.Errorf("Expected '%s' to have power %s, got %s", name, attributes.power, card.Power)
+			}
+			if card.Toughness != attributes.toughness {
+				t.Errorf("Expected '%s' to have toughness %s, got %s", name, attributes.toughness, card.Toughness)
+			}
+		}
+	}
+}
