@@ -26,4 +26,7 @@ func TestSingleGame(t *testing.T) {
 	if g.loser == nil {
 		t.Errorf("Expected a loser, but got nil")
 	}
+	if g.turnNumber >= 15 {
+		t.Errorf("Expected game to last less than 15 turns, but got %d", g.turnNumber)
+	}
 }
