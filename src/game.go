@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 type Game struct {
 	Players    []*Player
 	turnNumber int
@@ -31,7 +29,7 @@ func (g *Game) Start() {
 	// add shuffle players to pick start
 
 	//play game
-	fmt.Printf("turn %d\n", g.turnNumber)
+	Debug("turn", g.turnNumber)
 	for g.winner == nil {
 		g.Players[currentPlayer].PlayTurn()
 
@@ -46,12 +44,12 @@ func (g *Game) Start() {
 		} else {
 			currentPlayer = 0
 			g.turnNumber++
-			fmt.Printf("turn %d\n%d to %d\n", g.turnNumber, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
+			Debug("turn", g.turnNumber, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
 		}
 	}
-	fmt.Printf("Game Over\nPlayer %s wins\n", g.winner.Name)
+	Debug("Game Over Player", g.winner.Name, "wins")
 
-	fmt.Printf("Game lasted %d turns\n", g.turnNumber)
+	Debug("Game lasted", g.turnNumber, "turns")
 	g.Players[0].Display()
 	g.Players[1].Display()
 }
