@@ -4,8 +4,13 @@ import (
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	SetLogLevel(WARN)
+	m.Run()
+}
+
 func TestSingleGame(t *testing.T) {
-	decks, err := getDecks("../decks/Generated")
+	decks, err := getDecks("../decks/welcome")
 	if err != nil || len(decks) == 0 {
 		t.Fatalf("Failed to get decks: %v", err)
 	}

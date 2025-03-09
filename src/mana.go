@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 type ManaType string
@@ -103,28 +104,28 @@ func (m *mana) pay(cost mana) error {
 	return nil
 }
 
-func CheckManaProducer(oracleText string) (bool, ManaType) {
-	manaRegex := regexp.MustCompile(`\{T\}: Add (\{[WUBRGC]\}|one mana of any color)`)
-	matches := manaRegex.FindStringSubmatch(oracleText)
-	if len(matches) > 1 {
-		switch matches[1] {
-		case "{W}":
-			return true, White
-		case "{U}":
-			return true, Blue
-		case "{B}":
-			return true, Black
-		case "{R}":
-			return true, Red
-		case "{G}":
-			return true, Green
-		case "{C}":
-			return true, Colorless
-		case "one mana of any color":
-			return true, Any
-		default:
-			return true, Any
+func CheckManaProducer(oracleText string) (bool, []ManaType) {
+	parts := strings.Split(oracleText, ":")
+	if len(parts) < 2 {
+		return false, []ManaType{}
+	}
+
+	effect := parts[1]
+	manaRegex := regexp.MustCompile(`\{([WUBRGC])\}|any color`)
+	matches := manaRegex.FindAllStringSubmatch(effect, -1)
+
+	if len(matches) == 0 {
+		return false, []ManaType{}
+	}
+
+	var manaTypes []ManaType
+	for _, match := range matches {
+		if match[1] == "" {
+			manaTypes = append(manaTypes, Any)
+		} else {
+			manaTypes = append(manaTypes, ManaType(match[1]))
 		}
 	}
-	return false, Any
+
+	return true, manaTypes
 }

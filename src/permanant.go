@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 )
 
@@ -41,7 +39,7 @@ type Permanant struct {
 	tapped            bool
 	summoningSickness bool
 	manaProducer      bool
-	manaType          ManaType
+	manaTypes         []ManaType
 	attacking         *Player
 	blocking          *Permanant
 	blocked           bool
@@ -51,13 +49,17 @@ type Permanant struct {
 }
 
 func (p *Permanant) checkManaProducer() {
-	p.manaProducer, p.manaType = CheckManaProducer(p.source.OracleText)
+	p.manaProducer, p.manaTypes = CheckManaProducer(p.source.OracleText)
 }
 
 func (p Permanant) Display() {
-	fmt.Printf("Name: %s, Type: %s\n", p.source.Name, p.tokenType.String())
+	Info("Name: ", p.source.Name, " Type: ", p.tokenType.String())
 	if p.manaProducer {
-		fmt.Printf("This permanent is a mana producer and produces %s mana.\n", p.manaType.String())
+		Info("This permanent is a mana producer and produces")
+		for _, manaType := range p.manaTypes {
+			Info(manaType.String())
+		}
+		Info("mana.")
 	}
 }
 
@@ -73,7 +75,7 @@ func (p *Permanant) untap() {
 
 func DisplayPermanants(permanants []Permanant) {
 	if len(permanants) == 0 {
-		fmt.Printf("[]\n")
+		Info("[]")
 	}
 	for _, permanant := range permanants {
 		DisplayCard(permanant.source)
@@ -81,7 +83,7 @@ func DisplayPermanants(permanants []Permanant) {
 }
 
 func (p *Permanant) damages(target *Permanant) {
-	fmt.Printf("%s deals %d damage to %s\n", p.source.Name, p.power, target.source.Name)
+	Info(p.source.Name, " deals ", p.power, " damage to ", target.source.Name)
 	target.damage_counters += p.power
 }
 
@@ -133,6 +135,6 @@ func destroyPermanant(p *Permanant) {
 
 	}
 	// add permanant to owner's graveyard
-	fmt.Printf("%s sent to player %v's graveyard\n", card.source.Name, p.owner.Name)
+	Info(card.source.Name, " sent to player ", p.owner.Name, "'s graveyard")
 	p.owner.Graveyard = append(p.owner.Graveyard, card.source)
 }

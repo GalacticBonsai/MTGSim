@@ -40,11 +40,11 @@ type Card struct {
 // DisplayCardSingleLine prints the details of a Card instance in a single line
 func (c *Card) Display() {
 	if strings.Contains(c.TypeLine, "Land") {
-		fmt.Printf("%s\n", c.Name)
+		Info(c.Name)
 	} else if strings.Contains(c.TypeLine, "Creature") {
-		fmt.Printf("Name: %s, Mana Value: %.0f, Power: %s, Toughness: %s\n", c.Name, c.CMC, c.Power, c.Toughness)
+		Info("Name:", c.Name, "Mana Value:", c.CMC, "Power:", c.Power, "Toughness:", c.Toughness)
 	} else {
-		fmt.Printf("Name: %s, Mana Value: %.0f, Type: %s\n", c.Name, c.CMC, c.TypeLine)
+		Info("Name:", c.Name, "Mana Value:", c.CMC, "Type:", c.TypeLine)
 	}
 }
 

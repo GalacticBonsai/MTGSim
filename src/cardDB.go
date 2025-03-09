@@ -60,39 +60,39 @@ func init() {
 	if _, err := ioutil.ReadFile(cardDBfile); err == nil {
 		file, err := ioutil.ReadFile(cardDBfile)
 		if err != nil {
-			fmt.Printf("Error reading cardDB.json: %v\n", err)
+			Error("Error reading cardDB.json:", err)
 			return
 		}
 
 		err = json.Unmarshal(file, &cards)
 		if err != nil {
-			fmt.Printf("Error parsing cardDB.json: %v\n", err)
+			Error("Error parsing cardDB.json:", err)
 			return
 		}
 	} else {
 		url := carddburl
 		cards, err := downloadAndParseJSON(url)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			Error("Error:", err)
 			return
 		}
 
 		content, err := json.MarshalIndent(cards, "", "  ")
 		if err != nil {
-			fmt.Printf("Error marshalling JSON: %v\n", err)
+			Error("Error marshalling JSON:", err)
 			return
 		}
 
 		err = ioutil.WriteFile(cardDBfile, content, 0644)
 		if err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
+			Error("Error writing to file:", err)
 			return
 		}
 	}
 
 	cardDB = NewCardDB(cards)
 	if cardDB == nil {
-		fmt.Println("Error creating cardDB")
+		Error("Error creating cardDB")
 		return
 	}
 }

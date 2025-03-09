@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -67,7 +66,7 @@ func importDeckfile(filename string) (Deck, error) {
 
 		card, exists := cardDB.GetCardByName(name)
 		if !exists {
-			fmt.Println(fmt.Errorf("card not found: %s", parts))
+			Warn("card not found:", parts)
 		}
 		for i := 0; i < count; i++ {
 			cards = append(cards, card)
