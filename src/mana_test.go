@@ -19,7 +19,7 @@ func TestParseManaCost(t *testing.T) {
 		{"{2/W}{2/U}{2/B}{2/R}{2/G}", mana{pool: map[ManaType]int{}}},                                                     // Reaper King
 		{"{U/P}", mana{pool: map[ManaType]int{}}},                                                                         // Gitaxian probe
 		{"{2}{G}{G/U/P}{U}", mana{pool: map[ManaType]int{Any: 2, Green: 1, Blue: 1}}},                                     // Tamiyo, Compleated Sage
-		{"{X}{X}{W}{W}{W}", mana{pool: map[ManaType]int{White: 3, X: 2}}},                                               // Entreat the Angels
+		{"{X}{X}{W}{W}{W}", mana{pool: map[ManaType]int{White: 3, X: 2}}},                                                 // Entreat the Angels
 	}
 
 	for _, test := range tests {
@@ -44,7 +44,7 @@ func TestCheckManaProducer(t *testing.T) {
 		manaTypes  []ManaType
 	}{
 		{"{T}, Sacrifice this artifact: Add one mana of any color", true, []ManaType{Any}},
-		{"Sacrifice a creature: Add {C}{C}.", true, []ManaType{Colorless,Colorless}},
+		{"Sacrifice a creature: Add {C}{C}.", true, []ManaType{Colorless, Colorless}},
 		{"({T}: Add {R}.)", true, []ManaType{Red}},
 		{"({T}: Add {U} or {R}.)", true, []ManaType{Blue, Red}},
 		{"{T}: Add one mana of any color in your commander’s color identity.", true, []ManaType{Any}},
