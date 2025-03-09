@@ -4,10 +4,43 @@ import (
 	"testing"
 )
 
+var testCardDB *CardDB
+
+func init() {
+	// Hardcoded card data for testing purposes
+	cards := []Card{
+		{Name: "Mountain", OracleText: "{T}: Add {R}.", TypeLine: "Basic Land — Mountain"},
+		{Name: "Plains", OracleText: "{T}: Add {W}.", TypeLine: "Basic Land — Plains"},
+		{Name: "Island", OracleText: "{T}: Add {U}.", TypeLine: "Basic Land — Island"},
+		{Name: "Swamp", OracleText: "{T}: Add {B}.", TypeLine: "Basic Land — Swamp"},
+		{Name: "Forest", OracleText: "{T}: Add {G}.", TypeLine: "Basic Land — Forest"},
+		{Name: "Badlands", OracleText: "{T}: Add {B} or {R}.", TypeLine: "Land — Swamp Mountain"},
+		{Name: "Bayou", OracleText: "{T}: Add {B} or {G}.", TypeLine: "Land — Swamp Forest"},
+		{Name: "Plateau", OracleText: "{T}: Add {W} or {R}.", TypeLine: "Land — Mountain Plains"},
+		{Name: "Scrubland", OracleText: "{T}: Add {W} or {B}.", TypeLine: "Land — Plains Swamp"},
+		{Name: "Taiga", OracleText: "{T}: Add {R} or {G}.", TypeLine: "Land — Mountain Forest"},
+		{Name: "Tropical Island", OracleText: "{T}: Add {U} or {G}.", TypeLine: "Land — Forest Island"},
+		{Name: "Tundra", OracleText: "{T}: Add {W} or {U}.", TypeLine: "Land — Plains Island"},
+		{Name: "Underground Sea", OracleText: "{T}: Add {U} or {B}.", TypeLine: "Land — Island Swamp"},
+		{Name: "Volcanic Island", OracleText: "{T}: Add {U} or {R}.", TypeLine: "Land — Island Mountain"},
+		{Name: "Savannah", OracleText: "{T}: Add {W} or {G}.", TypeLine: "Land — Forest Plains"},
+		{Name: "Llanowar Elves", OracleText: "{T}: Add {G}.", TypeLine: "Creature — Elf Druid", Power: "1", Toughness: "1"},
+		{Name: "Birds of Paradise", OracleText: "{T}: Add one mana of any color.", TypeLine: "Creature — Bird", Power: "0", Toughness: "1"},
+		{Name: "Sol Ring", OracleText: "{T}: Add {C}{C}.", TypeLine: "Artifact"},
+		{Name: "Ashnod's Altar", OracleText: "Sacrifice a creature: Add {C}{C}.", TypeLine: "Artifact"},
+	}
+
+	cardMap := make(map[string]Card)
+	for _, card := range cards {
+		cardMap[card.Name] = card
+	}
+	testCardDB = &CardDB{cards: cardMap}
+}
+
 func TestMountainManaProducer(t *testing.T) {
 	SetLogLevel(WARN)
 
-	card, exists := cardDB.GetCardByName("Mountain")
+	card, exists := testCardDB.GetCardByName("Mountain")
 	if !exists {
 		t.Fatalf("Card 'Mountain' not found in the database")
 	}
@@ -33,7 +66,7 @@ func TestBasicLandsManaProducer(t *testing.T) {
 	}
 
 	for name, manaType := range basicLands {
-		card, exists := cardDB.GetCardByName(name)
+		card, exists := testCardDB.GetCardByName(name)
 		if !exists {
 			t.Fatalf("Card '%s' not found in the database", name)
 		}
@@ -65,7 +98,7 @@ func TestBasicDualLandsManaProducer(t *testing.T) {
 	}
 
 	for name, manaTypes := range dualLands {
-		card, exists := cardDB.GetCardByName(name)
+		card, exists := testCardDB.GetCardByName(name)
 		if !exists {
 			t.Fatalf("Card '%s' not found in the database", name)
 		}
@@ -106,7 +139,7 @@ func TestManaCreaturesAndArtifacts(t *testing.T) {
 	}
 
 	for name, attributes := range manaProducers {
-		card, exists := cardDB.GetCardByName(name)
+		card, exists := testCardDB.GetCardByName(name)
 		if !exists {
 			t.Fatalf("Card '%s' not found in the database", name)
 		}
