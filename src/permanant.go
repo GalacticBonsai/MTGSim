@@ -41,6 +41,7 @@ type Permanant struct {
 	tapped            bool
 	summoningSickness bool
 	manaProducer      bool
+	manaType          ManaType
 	attacking         *Player
 	blocking          *Permanant
 	blocked           bool
@@ -49,8 +50,15 @@ type Permanant struct {
 	damage_counters   int
 }
 
+func (p *Permanant) checkManaProducer() {
+	p.manaProducer, p.manaType = CheckManaProducer(p.source.OracleText)
+}
+
 func (p Permanant) Display() {
 	fmt.Printf("Name: %s, Type: %s\n", p.source.Name, p.tokenType.String())
+	if p.manaProducer {
+		fmt.Printf("This permanent is a mana producer and produces %s mana.\n", p.manaType.String())
+	}
 }
 
 func (p *Permanant) tap() {
