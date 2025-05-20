@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -58,51 +57,51 @@ func ParseManaCost(cost string) mana {
 	return pool
 }
 
-func (m *mana) adjust(cost mana, add bool) {
-	for mt, count := range cost.pool {
-		if add {
-			m.pool[mt] += count
-		} else {
-			m.pool[mt] -= count
-		}
-	}
-}
+// func (m *mana) adjust(cost mana, add bool) {
+// 	for mt, count := range cost.pool {
+// 		if add {
+// 			m.pool[mt] += count
+// 		} else {
+// 			m.pool[mt] -= count
+// 		}
+// 	}
+// }
 
-func (m *mana) pay(cost mana) error {
-	if m.total() < cost.total() {
-		return fmt.Errorf("not enough Mana")
-	}
+// func (m *mana) pay(cost mana) error {
+// 	if m.total() < cost.total() {
+// 		return fmt.Errorf("not enough Mana")
+// 	}
 
-	m.adjust(cost, false)
+// 	m.adjust(cost, false)
 
-	// if no any color, early return
-	if cost.pool[Any] == 0 {
-		return nil
-	}
+// 	// if no any color, early return
+// 	if cost.pool[Any] == 0 {
+// 		return nil
+// 	}
 
-	// Try to pay it from same manapool
-	for mt, count := range m.pool {
-		if count >= cost.pool[Any] {
-			m.pool[mt] -= cost.pool[Any]
-			return nil
-		}
-	}
+// 	// Try to pay it from same manapool
+// 	for mt, count := range m.pool {
+// 		if count >= cost.pool[Any] {
+// 			m.pool[mt] -= cost.pool[Any]
+// 			return nil
+// 		}
+// 	}
 
-	// pay from residual mana
-	for cost.pool[Any] > 0 {
-		for mt, count := range m.pool {
-			if count > 0 {
-				m.pool[mt]--
-				cost.pool[Any]--
-				break
-			}
-		}
-		if cost.pool[Any] > 0 {
-			return fmt.Errorf("not enough Mana")
-		}
-	}
-	return nil
-}
+// 	// pay from residual mana
+// 	for cost.pool[Any] > 0 {
+// 		for mt, count := range m.pool {
+// 			if count > 0 {
+// 				m.pool[mt]--
+// 				cost.pool[Any]--
+// 				break
+// 			}
+// 		}
+// 		if cost.pool[Any] > 0 {
+// 			return fmt.Errorf("not enough Mana")
+// 		}
+// 	}
+// 	return nil
+// }
 
 func CheckManaProducer(oracleText string) (bool, []ManaType) {
 	parts := strings.Split(oracleText, ":")

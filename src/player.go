@@ -17,8 +17,8 @@ type Player struct {
 	Artifacts     []Permanant
 	Planeswalkers []Permanant
 	Lands         []Permanant
-	mana          mana
-	Opponents     []*Player
+	// mana          mana
+	Opponents []*Player
 }
 
 func NewPlayer(decklist string) *Player {
