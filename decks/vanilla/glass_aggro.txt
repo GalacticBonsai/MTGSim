@@ -1,0 +1,37 @@
+About
+Name Multicolored Glass Aggro
+
+
+Deck
+1x Bedevil (DSC) 84
+3x Blood Crypt (RNA) 245
+2x Clifftop Retreat (TDC) 351
+3x Dragonskull Summit (TDC) 357
+2x Elenda, the Dusk Rose (LCC) 268
+4x Fireblade Artist (RNA) 172
+4x Footlight Fiend (RNA) 216
+4x Glass of the Guildpact (RNA) 233
+4x Godless Shrine (RNA) 248
+4x Hero of Precinct One (DMC) 101
+4x Heroic Reinforcements (FDN) 241
+4x Isolated Chapel (TDC) 373
+3x Judith, the Scourge Diva (CMM) 341
+3x Mortify (FDN) 662
+1x Mountain (TDM) 275
+3x Pitiless Pontiff (RNA) 194
+2x Plains (TDM) 272
+2x Sacred Foundry (GRN) 254
+2x Seraph of the Scales (RNA) 205
+2x Swamp (TDM) 274
+3x Teysa Karlov (CMM) 359
+
+Sideboard
+1x Bedevil (DSC) 84
+3x Deafening Clarion (GRN) 165
+1x Impassioned Orator (M20) 306
+1x Lyra Dawnbringer (FDN) 707
+2x Seraph of the Scales (RNA) 205
+2x Settle the Wreckage (XLN) 34
+1x The Eldest Reborn (DSC) 139
+4x Tocatli Honor Guard (XLN) 42
+

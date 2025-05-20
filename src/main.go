@@ -51,12 +51,12 @@ func getRandom[T any](slice []T) T {
 }
 
 func main() {
-	decks, err := getDecks("../decks/Generated")
+	decks, err := getDecks("../decks/vanilla")
 	if err != nil || len(decks) == 0 {
 		return
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 10; i++ {
 		g := newGame()
 		g.AddPlayer(getRandom(decks))
 		g.AddPlayer(getRandom(decks))
