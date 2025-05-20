@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -51,10 +50,6 @@ func (c *Card) Display() {
 // DisplayCard prints the details of a Card instance
 func DisplayCard(card Card) {
 	card.Display()
-}
-
-func fmtCard(card Card) string {
-	return fmt.Sprintf("name: %s", card.Name)
 }
 
 func DisplayCards(cards []Card) {

@@ -3,8 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"os"
 )
 
 const cardDBfile = "../cardDB.json"
@@ -38,9 +39,13 @@ func downloadAndParseJSON(url string) ([]Card, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to download JSON: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Printf("Error closing response body: %v\n", err)
+		}
+	}()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
@@ -56,14 +61,7 @@ func downloadAndParseJSON(url string) ([]Card, error) {
 
 func init() {
 	var cards []Card
-
-	if _, err := ioutil.ReadFile(cardDBfile); err == nil {
-		file, err := ioutil.ReadFile(cardDBfile)
-		if err != nil {
-			Error("Error reading cardDB.json:", err)
-			return
-		}
-
+	if file, err := os.ReadFile(cardDBfile); err == nil {
 		err = json.Unmarshal(file, &cards)
 		if err != nil {
 			Error("Error parsing cardDB.json:", err)
@@ -83,7 +81,7 @@ func init() {
 			return
 		}
 
-		err = ioutil.WriteFile(cardDBfile, content, 0644)
+		err = os.WriteFile(cardDBfile, content, 0644)
 		if err != nil {
 			Error("Error writing to file:", err)
 			return

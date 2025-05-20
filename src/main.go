@@ -1,8 +1,8 @@
 package main
 
 import (
-	"io/ioutil"
 	"math/rand"
+	"os"
 	"time"
 )
 
@@ -26,7 +26,7 @@ func sliceGet[T any](slice []T, index int) (T, []T) {
 
 func getDecks(dir string) ([]string, error) {
 	var fileList []string
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
