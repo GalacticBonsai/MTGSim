@@ -53,6 +53,11 @@ func DisplayPermanants(permanants []Permanant) {
 
 func (p *Permanant) damages(target *Permanant) {
 	LogCard("%s deals %d damage to %s", p.source.Name, p.power, target.source.Name)
+	// Handle Lifelink
+	if CardHasEvergreenAbility(p.source, "Lifelink") {
+		p.owner.LifeTotal += p.power
+		LogPlayer("%s deals damage with Lifelink, gaining %d life.", p.source.Name, p.power)
+	}
 	target.damage_counters += p.power
 }
 
