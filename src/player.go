@@ -177,31 +177,34 @@ func (p *Player) PlayLand(t *turn) {
 	}
 }
 
-// fix for colors
-func (p *Player) ManaAvailable() mana {
-	totalMana := newMana()
-	for _, c := range p.Lands {
-		if !c.tapped {
-			for _, manaType := range c.manaTypes {
-				totalMana.pool[manaType]++
+func (p *Player) ManaAvailable() *ManaPool {
+	manaPool := NewManaPool()
+
+	for _, land := range p.Lands {
+		if !land.tapped && land.manaProducer {
+			for _, manaType := range land.manaTypes {
+				manaPool.Add(manaType, 1)
 			}
 		}
 	}
-	for _, c := range p.Creatures {
-		if !c.tapped && c.manaProducer && !c.summoningSickness {
-			for _, manaType := range c.manaTypes {
-				totalMana.pool[manaType]++
+
+	for _, creature := range p.Creatures {
+		if !creature.tapped && creature.manaProducer && !creature.summoningSickness {
+			for _, manaType := range creature.manaTypes {
+				manaPool.Add(manaType, 1)
 			}
 		}
 	}
-	for _, c := range p.Artifacts {
-		if !c.tapped && c.manaProducer {
-			for _, manaType := range c.manaTypes {
-				totalMana.pool[manaType]++
+
+	for _, artifact := range p.Artifacts {
+		if !artifact.tapped && artifact.manaProducer {
+			for _, manaType := range artifact.manaTypes {
+				manaPool.Add(manaType, 1)
 			}
 		}
 	}
-	return totalMana
+
+	return manaPool
 }
 
 func (p *Player) PlaySpell() {
@@ -228,54 +231,51 @@ func (p *Player) PlaySpell() {
 }
 
 func (p *Player) tapForMana(cost mana) error {
-	availableMana := p.ManaAvailable()
-	if availableMana.total() < cost.total() {
-		return fmt.Errorf("not enough mana available")
+	manaPool := p.ManaAvailable()
+
+	if !manaPool.CanPay(cost) {
+		return fmt.Errorf("not enough mana available to pay the cost")
 	}
 
-	// tap lands for mana
-	for i := range p.Lands {
-		if !p.Lands[i].tapped {
-			for _, manaType := range p.Lands[i].manaTypes {
-				if cost.pool[manaType] > 0 {
-					p.Lands[i].tap()
-					cost.pool[manaType]--
+	// Create a copy of the cost to avoid modifying the original during iteration
+	remainingCost := newMana()
+	for manaType, amount := range cost.pool {
+		remainingCost.pool[manaType] = amount
+	}
+
+	// Helper function to tap permanents for specific mana
+	tapForSpecificMana := func(permanents []Permanant, manaType ManaType) {
+		for i := range permanents {
+			if !permanents[i].tapped && permanents[i].manaProducer {
+				for _, producedMana := range permanents[i].manaTypes {
+					if producedMana == manaType && remainingCost.pool[manaType] > 0 {
+						permanents[i].tap()
+						remainingCost.pool[manaType]--
+						break
+					}
 				}
 			}
 		}
-		if cost.total() == 0 {
-			return nil
-		}
 	}
 
-	// tap creatures for mana
-	for i, c := range p.Creatures {
-		if !c.tapped && !c.summoningSickness && c.manaProducer {
-			for _, manaType := range c.manaTypes {
-				if cost.pool[manaType] > 0 {
-					p.Creatures[i].tap()
-					cost.pool[manaType]--
-				}
-			}
-		}
-		if cost.total() == 0 {
-			return nil
-		}
+	// Tap lands for specific mana
+	for manaType := range remainingCost.pool {
+		tapForSpecificMana(p.Lands, manaType)
 	}
 
-	// tap artifacts for mana
-	for i, a := range p.Artifacts {
-		if !a.tapped {
-			for _, manaType := range a.manaTypes {
-				if cost.pool[manaType] > 0 {
-					p.Artifacts[i].tap()
-					cost.pool[manaType]--
-				}
-			}
-		}
-		if cost.total() == 0 {
-			return nil
-		}
+	// Tap creatures for specific mana
+	for manaType := range remainingCost.pool {
+		tapForSpecificMana(p.Creatures, manaType)
+	}
+
+	// Tap artifacts for specific mana
+	for manaType := range remainingCost.pool {
+		tapForSpecificMana(p.Artifacts, manaType)
+	}
+
+	// Ensure all costs are paid
+	if remainingCost.total() > 0 {
+		return fmt.Errorf("not enough mana available to pay the cost")
 	}
 
 	return nil

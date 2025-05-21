@@ -64,3 +64,104 @@ func TestCheckManaProducer(t *testing.T) {
 		}
 	}
 }
+
+func TestCanCastCard(t *testing.T) {
+	player := &Player{
+		Name: "Test Player",
+		Lands: []Permanant{
+			{manaProducer: true, manaTypes: []ManaType{Red}},
+			{manaProducer: true, manaTypes: []ManaType{Green}},
+			{manaProducer: true, manaTypes: []ManaType{White}},
+		},
+		Creatures: []Permanant{
+			{manaProducer: true, manaTypes: []ManaType{Blue}, summoningSickness: false},
+		},
+		Artifacts: []Permanant{
+			{manaProducer: true, manaTypes: []ManaType{Colorless}},
+		},
+	}
+
+	tests := []struct {
+		cardManaCost string
+		expected     bool
+	}{
+		{"{R}{G}{W}", true},  // Can cast with available mana
+		{"{U}{U}", false},    // Not enough blue mana
+		{"{C}", true},     // Can cast with artifact mana
+		{"{R}{R}{G}", false}, // Not enough red mana
+	}
+
+	for _, test := range tests {
+		cost := ParseManaCost(test.cardManaCost)
+		err := player.tapForMana(cost)
+		if (err == nil) != test.expected {
+			t.Errorf("For mana cost %s, expected %v but got %v", test.cardManaCost, test.expected, err == nil)
+		}
+	}
+}
+
+func TestSimulateBoardState(t *testing.T) {
+	player := &Player{
+		Name: "Test Player",
+		Lands: []Permanant{
+			{manaProducer: true, manaTypes: []ManaType{Red}},
+			{manaProducer: true, manaTypes: []ManaType{Green}},
+			{manaProducer: true, manaTypes: []ManaType{White}},
+		},
+		Creatures: []Permanant{
+			{manaProducer: true, manaTypes: []ManaType{Blue}, summoningSickness: false},
+		},
+		Artifacts: []Permanant{
+			{manaProducer: true, manaTypes: []ManaType{Colorless}},
+		},
+	}
+
+	card := Card{
+		Name:     "Test Card",
+		ManaCost: "{R}{G}{W}",
+	}
+
+	cost := ParseManaCost(card.ManaCost)
+	err := player.tapForMana(cost)
+
+	if err != nil {
+		t.Errorf("Expected to cast card %s, but got error: %v", card.Name, err)
+	}
+
+	// Verify that lands and permanents were tapped correctly
+	for _, land := range player.Lands {
+		if land.manaProducer && !land.tapped {
+			t.Errorf("Expected land to be tapped, but it was not")
+		}
+	}
+	for _, creature := range player.Creatures {
+		if creature.tapped {
+			t.Errorf("Expected creature to Not be tapped, but it was")
+		}
+	}
+}
+
+func TestManaPool(t *testing.T) {
+	manaPool := NewManaPool()
+	manaPool.Add(Red, 2)
+	manaPool.Add(Green, 1)
+
+	cost := ParseManaCost("{R}{G}")
+	if !manaPool.CanPay(cost) {
+		t.Errorf("Expected to be able to pay {R}{G}, but cannot")
+	}
+
+	err := manaPool.Pay(cost)
+	if err != nil {
+		t.Errorf("Expected to pay {R}{G}, but got error: %v", err)
+	}
+
+	if manaPool.pool[Red] != 1 || manaPool.pool[Green] != 0 {
+		t.Errorf("Mana pool not updated correctly after payment")
+	}
+
+	cost = ParseManaCost("{R}{R}")
+	if manaPool.CanPay(cost) {
+		t.Errorf("Expected not to be able to pay {R}{R}, but can")
+	}
+}

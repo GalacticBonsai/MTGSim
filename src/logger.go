@@ -5,20 +5,10 @@ import (
 	"os"
 )
 
-type LogLevel int
-
-const (
-	META LogLevel = iota
-	GAME
-	PLAYER
-	CARD
-)
-
 var currentLogLevel = GAME
 
 var logger = &Logger{
-	// logger: log.New(os.Stdout, "", log.Ldate|log.Ltime), // Keep for long running tests
-	logger: log.New(os.Stdout, "", log.Ltime), // Short file name and time
+	logger: log.New(os.Stdout, "", log.Ltime),
 }
 
 type Logger struct {

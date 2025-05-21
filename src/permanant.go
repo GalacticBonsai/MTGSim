@@ -4,33 +4,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type PermanantType int
-
-const (
-	Creature PermanantType = iota
-	Artifact
-	Enchantment
-	Land
-	Planeswalker
-)
-
-func (pt PermanantType) String() string {
-	switch pt {
-	case Creature:
-		return "Creature"
-	case Artifact:
-		return "Artifact"
-	case Enchantment:
-		return "Enchantment"
-	case Land:
-		return "Land"
-	case Planeswalker:
-		return "Planeswalker"
-	default:
-		return "Unknown"
-	}
-}
-
 type Permanant struct {
 	source            Card
 	owner             *Player
@@ -53,17 +26,17 @@ func (p *Permanant) checkManaProducer() {
 }
 
 func (p Permanant) Display() {
-	LogCard("Name: %s, Type: %s", p.source.Name, p.tokenType.String())
+	LogCard("Name: %s, Type: %s", p.source.Name, p.tokenType)
 	if p.manaProducer {
 		LogCard("This permanent is a mana producer and produces:")
 		for _, manaType := range p.manaTypes {
-			LogCard("%s mana", manaType.String())
+			LogCard("%s mana", manaType)
 		}
 	}
 }
 
 func (p *Permanant) tap() {
-	if !p.summoningSickness && !p.tapped {
+	if !p.tapped {
 		p.tapped = true
 	}
 }
@@ -73,11 +46,6 @@ func (p *Permanant) untap() {
 }
 
 func DisplayPermanants(permanants []Permanant) {
-	if len(permanants) == 0 {
-		// Assuming a logger is available in the context
-		// Replace `Info` with the appropriate logger call
-		// logger.LogCard("[]")
-	}
 	for _, permanant := range permanants {
 		DisplayCard(permanant.source)
 	}
