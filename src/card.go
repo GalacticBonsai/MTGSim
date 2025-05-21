@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -40,21 +39,17 @@ type Card struct {
 // DisplayCardSingleLine prints the details of a Card instance in a single line
 func (c *Card) Display() {
 	if strings.Contains(c.TypeLine, "Land") {
-		Info(c.Name)
+		LogCard("%s", c.Name)
 	} else if strings.Contains(c.TypeLine, "Creature") {
-		Info("Name:", c.Name, "Mana Value:", c.CMC, "Power:", c.Power, "Toughness:", c.Toughness)
+		LogCard("Name: %s, Mana Value: %.2f, Power: %s, Toughness: %s", c.Name, c.CMC, c.Power, c.Toughness)
 	} else {
-		Info("Name:", c.Name, "Mana Value:", c.CMC, "Type:", c.TypeLine)
+		LogCard("Name: %s, Mana Value: %.2f, Type: %s", c.Name, c.CMC, c.TypeLine)
 	}
 }
 
 // DisplayCard prints the details of a Card instance
 func DisplayCard(card Card) {
 	card.Display()
-}
-
-func fmtCard(card Card) string {
-	return fmt.Sprintf("name: %s", card.Name)
 }
 
 func DisplayCards(cards []Card) {

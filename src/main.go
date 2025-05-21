@@ -1,8 +1,10 @@
 package main
 
 import (
-	"io/ioutil"
+	"flag"
+	"fmt"
 	"math/rand"
+	"os"
 	"time"
 )
 
@@ -26,7 +28,7 @@ func sliceGet[T any](slice []T, index int) (T, []T) {
 
 func getDecks(dir string) ([]string, error) {
 	var fileList []string
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -50,13 +52,43 @@ func getRandom[T any](slice []T) T {
 	return slice[rand.Intn(len(slice))]
 }
 
+func parseLogLevel(level string) LogLevel {
+	switch level {
+	case "META":
+		return META
+	case "GAME":
+		return GAME
+	case "PLAYER":
+		return PLAYER
+	case "CARD":
+		return CARD
+	default:
+		fmt.Printf("Unknown log level '%s', defaulting to CARD\n", level)
+		return CARD
+	}
+}
+
 func main() {
-	decks, err := getDecks("../decks/Generated")
+	// Define command-line flags
+	numGames := flag.Int("games", 1, "Number of games to simulate")
+	deckDir := flag.String("decks", "../decks/1v1", "Directory containing deck files")
+	logLevel := flag.String("log", "CARD", "Log level (META, GAME, PLAYER, CARD)")
+
+	// Parse the flags
+	flag.Parse()
+
+	// Set the log level
+	SetLogLevel(parseLogLevel(*logLevel))
+
+	// Get the decks
+	decks, err := getDecks(*deckDir)
 	if err != nil || len(decks) == 0 {
+		fmt.Println("Error: No decks found in the specified directory.")
 		return
 	}
 
-	for i := 0; i < 10000; i++ {
+	// Simulate games
+	for i := 0; i < *numGames; i++ {
 		g := newGame()
 		g.AddPlayer(getRandom(decks))
 		g.AddPlayer(getRandom(decks))
@@ -65,5 +97,7 @@ func main() {
 		AddLoss(g.loser.Name)
 	}
 
+	// Print results
 	PrintTopWinners()
+	LogMeta("Simulation completed.")
 }

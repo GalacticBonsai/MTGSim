@@ -22,14 +22,17 @@ func (g *Game) Start() {
 	currentPlayer := 0
 	for i, p := range g.Players {
 		p.Deck.Shuffle()
+		p.Name = p.Deck.Name
 		p.Opponents = append([]*Player{}, g.Players[:i]...)
 		p.Opponents = append(p.Opponents, g.Players[i+1:]...)
 		p.Hand = append(p.Hand, p.Deck.DrawCards(7)...)
 	}
 	// add shuffle players to pick start
 
+	LogGame("Starting game")
+
 	//play game
-	Debug("turn", g.turnNumber)
+	LogGame("Turn %d", g.turnNumber)
 	for g.winner == nil {
 		g.Players[currentPlayer].PlayTurn()
 
@@ -44,12 +47,12 @@ func (g *Game) Start() {
 		} else {
 			currentPlayer = 0
 			g.turnNumber++
-			Debug("turn", g.turnNumber, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
+			LogPlayer("Turn %d: Player %s LifeTotal: %d, Opponent LifeTotal: %d",
+				g.turnNumber, g.Players[currentPlayer].Name, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
 		}
 	}
-	Debug("Game Over Player", g.winner.Name, "wins")
+	LogMeta("Game Over: Player %s wins in %d turns", g.winner.Name, g.turnNumber)
 
-	Debug("Game lasted", g.turnNumber, "turns")
 	g.Players[0].Display()
 	g.Players[1].Display()
 }

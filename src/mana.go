@@ -7,25 +7,6 @@ import (
 	"strings"
 )
 
-type ManaType string
-
-const (
-	White     ManaType = "W"
-	Blue      ManaType = "U"
-	Black     ManaType = "B"
-	Red       ManaType = "R"
-	Green     ManaType = "G"
-	Colorless ManaType = "C"
-	Any       ManaType = "A"
-	Phyrexian ManaType = "P"
-	Snow      ManaType = "S"
-	X         ManaType = "X"
-)
-
-func (mt ManaType) String() string {
-	return string(mt)
-}
-
 type mana struct {
 	pool map[ManaType]int
 }
@@ -58,49 +39,43 @@ func ParseManaCost(cost string) mana {
 	return pool
 }
 
-func (m *mana) adjust(cost mana, add bool) {
-	for mt, count := range cost.pool {
-		if add {
-			m.pool[mt] += count
-		} else {
-			m.pool[mt] -= count
-		}
-	}
+type ManaPool struct {
+	pool map[ManaType]int
 }
 
-func (m *mana) pay(cost mana) error {
-	if m.total() < cost.total() {
-		return fmt.Errorf("not enough Mana")
+func NewManaPool() *ManaPool {
+	return &ManaPool{pool: make(map[ManaType]int)}
+}
+
+func (mp *ManaPool) Add(manaType ManaType, amount int) {
+	mp.pool[manaType] += amount
+}
+
+func (mp *ManaPool) CanPay(cost mana) bool {
+	tempPool := make(map[ManaType]int)
+	for k, v := range mp.pool {
+		tempPool[k] = v
 	}
 
-	m.adjust(cost, false)
-
-	// if no any color, early return
-	if cost.pool[Any] == 0 {
-		return nil
-	}
-
-	// Try to pay it from same manapool
-	for mt, count := range m.pool {
-		if count >= cost.pool[Any] {
-			m.pool[mt] -= cost.pool[Any]
-			return nil
+	for manaType, amount := range cost.pool {
+		if tempPool[manaType] < amount {
+			return false
 		}
+		tempPool[manaType] -= amount
 	}
 
-	// pay from residual mana
-	for cost.pool[Any] > 0 {
-		for mt, count := range m.pool {
-			if count > 0 {
-				m.pool[mt]--
-				cost.pool[Any]--
-				break
-			}
-		}
-		if cost.pool[Any] > 0 {
-			return fmt.Errorf("not enough Mana")
-		}
+	return true
+}
+
+func (mp *ManaPool) Pay(cost mana) error {
+	if !mp.CanPay(cost) {
+		return fmt.Errorf("not enough mana to pay the cost")
 	}
+
+	for manaType, amount := range cost.pool {
+		mp.pool[manaType] -= amount
+	}
+
 	return nil
 }
 
