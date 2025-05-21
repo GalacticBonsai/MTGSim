@@ -82,7 +82,7 @@ func (p *Player) PlayStep(s step, t *turn) {
 		var c Card
 		for len(p.Hand) > 7 {
 			c, p.Hand = sliceGet(p.Hand, 0)
-			Debug("Discarding:", c.Name)
+			LogPlayer("Discarding: %s", c.Name)
 			p.Graveyard = append(p.Graveyard, c)
 		}
 	}
@@ -112,7 +112,7 @@ func (p *Player) DealDamage() {
 		}
 
 		creature.attacking.LifeTotal -= creature.power
-		Debug(creature.source.Name, "deals", creature.power, "damage to", creature.attacking.Name)
+		LogPlayer("%s deals %d damage to %s", creature.source.Name, creature.power, creature.attacking.Name)
 	}
 }
 
@@ -125,7 +125,7 @@ func (p *Player) DeclareBlockers() {
 			if attacker.attacking == p && !attacker.blocked {
 				p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
 				p.Opponents[0].Creatures[j].blocked = true
-				Debug(attacker.source.Name, " blocked by ", creature.source.Name)
+				LogPlayer("%s blocked by %s", attacker.source.Name, creature.source.Name)
 				break // exit out to not block all attackers
 			}
 		}
@@ -133,7 +133,7 @@ func (p *Player) DeclareBlockers() {
 }
 
 func (p *Player) DeclareAttackers() {
-	Debug("Declare attacker:")
+	LogPlayer("Declare attacker:")
 	attacking := false
 	for i, creature := range p.Creatures {
 		if creature.tapped || creature.summoningSickness {
@@ -145,7 +145,7 @@ func (p *Player) DeclareAttackers() {
 		attacking = true
 	}
 	if !attacking {
-		Debug("None")
+		LogPlayer("None")
 	}
 }
 
@@ -157,8 +157,7 @@ func (p *Player) PlayLand(t *turn) {
 		}
 		if strings.Contains(c.TypeLine, "Land") {
 			p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
-			Debug("Playing land:")
-			c.Display()
+			LogCard("Playing land: %s", c.Name)
 
 			// adds land to board
 			land := Permanant{
@@ -220,8 +219,7 @@ func (p *Player) PlaySpell() {
 			continue
 		}
 
-		Debug("Casting spell:")
-		c.Display()
+		LogCard("Casting spell: %s", c.Name)
 		// pops card from hand
 		p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
 		c.Cast(nil, p)
@@ -284,11 +282,11 @@ func (p *Player) tapForMana(cost mana) error {
 }
 
 func (p *Player) Display() {
-	Debug("Player:", p.Name)
-	Debug("Life:", p.LifeTotal)
-	Debug("Hand:")
+	LogPlayer("Player: %s", p.Name)
+	LogPlayer("Life: %d", p.LifeTotal)
+	LogPlayer("Hand:")
 	DisplayCards(p.Hand)
-	Debug("Board:")
+	LogPlayer("Board:")
 	DisplayPermanants(p.Creatures)
 	DisplayPermanants(p.Lands)
 }

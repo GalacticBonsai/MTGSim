@@ -51,6 +51,8 @@ func getRandom[T any](slice []T) T {
 }
 
 func main() {
+	SetLogLevel(META) // Only print logs at the META level
+
 	decks, err := getDecks("../decks/vanilla")
 	if err != nil || len(decks) == 0 {
 		return
@@ -66,4 +68,5 @@ func main() {
 	}
 
 	PrintTopWinners()
+	LogMETA("Simulation completed.")
 }

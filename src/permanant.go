@@ -53,13 +53,12 @@ func (p *Permanant) checkManaProducer() {
 }
 
 func (p Permanant) Display() {
-	Info("Name: ", p.source.Name, " Type: ", p.tokenType.String())
+	LogCard("Name: %s, Type: %s", p.source.Name, p.tokenType.String())
 	if p.manaProducer {
-		Info("This permanent is a mana producer and produces")
+		LogCard("This permanent is a mana producer and produces:")
 		for _, manaType := range p.manaTypes {
-			Info(manaType.String())
+			LogCard("%s mana", manaType.String())
 		}
-		Info("mana.")
 	}
 }
 
@@ -75,7 +74,9 @@ func (p *Permanant) untap() {
 
 func DisplayPermanants(permanants []Permanant) {
 	if len(permanants) == 0 {
-		Info("[]")
+		// Assuming a logger is available in the context
+		// Replace `Info` with the appropriate logger call
+		// logger.LogCard("[]")
 	}
 	for _, permanant := range permanants {
 		DisplayCard(permanant.source)
@@ -83,7 +84,7 @@ func DisplayPermanants(permanants []Permanant) {
 }
 
 func (p *Permanant) damages(target *Permanant) {
-	Info(p.source.Name, " deals ", p.power, " damage to ", target.source.Name)
+	LogCard("%s deals %d damage to %s", p.source.Name, p.power, target.source.Name)
 	target.damage_counters += p.power
 }
 
@@ -135,6 +136,6 @@ func destroyPermanant(p *Permanant) {
 
 	}
 	// add permanant to owner's graveyard
-	Info(card.source.Name, " sent to player ", p.owner.Name, "'s graveyard")
+	LogCard("%s sent to player %s's graveyard", card.source.Name, p.owner.Name)
 	p.owner.Graveyard = append(p.owner.Graveyard, card.source)
 }

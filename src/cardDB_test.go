@@ -38,8 +38,6 @@ func init() {
 }
 
 func TestMountainManaProducer(t *testing.T) {
-	SetLogLevel(WARN)
-
 	card, exists := testCardDB.GetCardByName("Mountain")
 	if !exists {
 		t.Fatalf("Card 'Mountain' not found in the database")
@@ -55,8 +53,6 @@ func TestMountainManaProducer(t *testing.T) {
 }
 
 func TestBasicLandsManaProducer(t *testing.T) {
-	SetLogLevel(WARN)
-
 	basicLands := map[string]ManaType{
 		"Plains":   White,
 		"Island":   Blue,
@@ -82,8 +78,6 @@ func TestBasicLandsManaProducer(t *testing.T) {
 }
 
 func TestBasicDualLandsManaProducer(t *testing.T) {
-	SetLogLevel(WARN)
-
 	dualLands := map[string][]ManaType{
 		"Badlands":        {Black, Red},
 		"Bayou":           {Black, Green},
@@ -125,8 +119,6 @@ func TestBasicDualLandsManaProducer(t *testing.T) {
 }
 
 func TestManaCreaturesAndArtifacts(t *testing.T) {
-	SetLogLevel(WARN)
-
 	manaProducers := map[string]struct {
 		manaTypes []ManaType
 		power     string

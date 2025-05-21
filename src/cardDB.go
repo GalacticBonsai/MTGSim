@@ -14,7 +14,7 @@ const carddburl = "https://data.scryfall.io/oracle-cards/oracle-cards-2025020410
 var cardDB *CardDB
 
 type CardDB struct {
-	cards map[string]Card
+	cards  map[string]Card
 }
 
 func NewCardDB(cards []Card) *CardDB {
@@ -64,33 +64,33 @@ func init() {
 	if file, err := os.ReadFile(cardDBfile); err == nil {
 		err = json.Unmarshal(file, &cards)
 		if err != nil {
-			Error("Error parsing cardDB.json:", err)
+			LogGame("Error parsing cardDB.json: %v", err)
 			return
 		}
 	} else {
 		url := carddburl
 		cards, err := downloadAndParseJSON(url)
 		if err != nil {
-			Error("Error:", err)
+			LogGame("Error: %v", err)
 			return
 		}
 
 		content, err := json.MarshalIndent(cards, "", "  ")
 		if err != nil {
-			Error("Error marshalling JSON:", err)
+			LogGame("Error marshalling JSON: %v", err)
 			return
 		}
 
 		err = os.WriteFile(cardDBfile, content, 0644)
 		if err != nil {
-			Error("Error writing to file:", err)
+			LogGame("Error writing to file: %v", err)
 			return
 		}
 	}
 
 	cardDB = NewCardDB(cards)
 	if cardDB == nil {
-		Error("Error creating cardDB")
+		LogGame("Error creating cardDB")
 		return
 	}
 }

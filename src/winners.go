@@ -49,6 +49,6 @@ func PrintTopWinners() {
 	SortWinners()
 	for _, player := range results {
 		winPercent := float64(player.Wins) / float64(player.Wins+player.Losses) * 100
-		Info("Deck: ", player.Name, " Wins: ", player.Wins, " percent: ", winPercent)
+		LogMeta("Deck: %s Wins: %d, percent: %.2f", player.Name, player.Wins, winPercent)
 	}
 }

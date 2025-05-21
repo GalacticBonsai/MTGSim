@@ -66,7 +66,7 @@ func importDeckfile(filename string) (Deck, error) {
 
 		card, exists := cardDB.GetCardByName(name)
 		if !exists {
-			Warn("card not found:", parts)
+			LogDeck("card not found:", parts)
 		}
 		for i := 0; i < count; i++ {
 			cards = append(cards, card)
