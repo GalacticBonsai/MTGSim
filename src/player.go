@@ -22,13 +22,13 @@ type Player struct {
 }
 
 func NewPlayer(decklist string) *Player {
-	deck, err := importDeckfile(decklist)
+	deck, _, err := importDeckfile(decklist)
 	if err != nil {
 		// handle the error appropriately, e.g., log it or return it
 		panic(err)
 	}
 	return &Player{
-		Name:      decklist,
+		Name:      deck.Name,
 		LifeTotal: 20,
 		Deck:      deck,
 	}

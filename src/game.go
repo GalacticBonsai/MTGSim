@@ -22,6 +22,7 @@ func (g *Game) Start() {
 	currentPlayer := 0
 	for i, p := range g.Players {
 		p.Deck.Shuffle()
+		p.Name = p.Deck.Name
 		p.Opponents = append([]*Player{}, g.Players[:i]...)
 		p.Opponents = append(p.Opponents, g.Players[i+1:]...)
 		p.Hand = append(p.Hand, p.Deck.DrawCards(7)...)
@@ -50,9 +51,8 @@ func (g *Game) Start() {
 				g.turnNumber, g.Players[currentPlayer].Name, g.Players[currentPlayer].LifeTotal, g.Players[currentPlayer].Opponents[0].LifeTotal)
 		}
 	}
-	LogMeta("Game Over: Player %s wins", g.winner.Name)
+	LogMeta("Game Over: Player %s wins in %d turns", g.winner.Name, g.turnNumber)
 
-	LogMeta("Game lasted %d turns", g.turnNumber)
 	g.Players[0].Display()
 	g.Players[1].Display()
 }

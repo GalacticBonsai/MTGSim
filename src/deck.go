@@ -39,45 +39,120 @@ func (d *Deck) DrawCard() Card {
 	return card
 }
 
-func importDeckfile(filename string) (Deck, error) {
+func importDeckfile(filename string) (Deck, Deck, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return Deck{}, err
+		return Deck{}, Deck{}, err
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			LogDeck("Error closing file: %v", err)
+		}
+	}()
 
 	var cards []Card
+	var sideboardCards []Card
+	var deckName = filename
+	inSideboard := false
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		parts := strings.Split(strings.TrimSpace(scanner.Text()), " ")
-		count, err := strconv.Atoi(parts[0])
-		if err != nil {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "//") {
 			continue
 		}
 
-		name := ""
-		if strings.Contains(scanner.Text(), "(") {
-			name = strings.Join(parts[1:len(parts)-2], " ")
-			// set_code := strings.Trim(parts[len(parts)-2], "()")
-			// set_number := parts[len(parts)-1]
-		} else {
-			name = strings.Join(parts[1:], " ")
+		// Handle "About" section for deck name
+		if strings.HasPrefix(line, "About") {
+			scanner.Scan()
+			nameLine := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(nameLine, "Name ") {
+				deckName = strings.TrimPrefix(nameLine, "Name ")
+			}
+			continue
 		}
 
+		// Detect the start of the sideboard section
+		if strings.EqualFold(line, "Sideboard") {
+			inSideboard = true
+			continue
+		}
+
+		// Handle both formats: "4x Elvish Mystic (CMM) 284" and "4 Elvish Mystic"
+		var count int
+		var name string
+
+		if strings.Contains(line, "x ") {
+			// Format: "4x Elvish Mystic (CMM) 284"
+			parts := strings.SplitN(line, "x ", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			count, err = strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil {
+				continue
+			}
+			name = strings.TrimSpace(parts[1])
+			// Remove set and collector number if present
+			if idx := strings.Index(name, " ("); idx != -1 {
+				name = name[:idx]
+			}
+		} else {
+			// Format: "4 Elvish Mystic"
+			parts := strings.SplitN(line, " ", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			count, err = strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil {
+				continue
+			}
+			name = strings.TrimSpace(parts[1])
+		}
+
+		// Lookup the card in the card database
 		card, exists := cardDB.GetCardByName(name)
 		if !exists {
-			LogDeck("card not found:", parts)
+			LogDeck("Card not found: %s", name)
+			continue
 		}
+
+		// Add the card to the appropriate section
 		for i := 0; i < count; i++ {
-			cards = append(cards, card)
+			if inSideboard {
+				sideboardCards = append(sideboardCards, card)
+			} else {
+				cards = append(cards, card)
+			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return Deck{}, err
+		return Deck{}, Deck{}, err
 	}
 
-	return Deck{Cards: cards}, nil
+	return Deck{Cards: cards, Name: deckName}, Deck{Cards: sideboardCards}, nil
+}
+
+/* trunk-ignore(golangci-lint2/unused) */
+func swapCards(deck *Deck, sideboard *Deck, numSwaps int) {
+	rand.Seed(time.Now().UnixNano())
+
+	for i := 0; i < numSwaps; i++ {
+		if len(deck.Cards) == 0 || len(sideboard.Cards) == 0 {
+			break
+		}
+
+		// Randomly select a card from the deck and sideboard
+		deckIndex := rand.Intn(len(deck.Cards))
+		sideboardIndex := rand.Intn(len(sideboard.Cards))
+
+		// Swap the cards
+		deck.Cards[deckIndex], sideboard.Cards[sideboardIndex] = sideboard.Cards[sideboardIndex], deck.Cards[deckIndex]
+	}
 }
 
 func (d *Deck) Display() {
