@@ -68,5 +68,5 @@ func main() {
 	}
 
 	PrintTopWinners()
-	LogMETA("Simulation completed.")
+	LogMeta("Simulation completed.")
 }
