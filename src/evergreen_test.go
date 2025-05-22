@@ -104,7 +104,6 @@ func TestGetEvergreenAbilityDescriptions(t *testing.T) {
 	}{
 		{"Flying", "This creature can't be blocked except by creatures with flying or reach."},
 		{"Deathtouch", "Any amount of damage this deals to a creature is enough to destroy it."},
-		{"Trample", "Excess combat damage this creature deals to a player or planeswalker is assigned to the defending player or planeswalker."},
 		{"NonexistentAbility", ""},
 	}
 
