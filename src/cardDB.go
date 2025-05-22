@@ -35,6 +35,8 @@ func (db *CardDB) GetCardByName(name string) (Card, bool) {
 }
 
 func downloadAndParseJSON(url string) ([]Card, error) {
+	LogMeta("Downloading JSON from %s", url)
+
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download JSON: %v", err)
@@ -69,7 +71,7 @@ func init() {
 		}
 	} else {
 		url := carddburl
-		cards, err := downloadAndParseJSON(url)
+		cards, err = downloadAndParseJSON(url)
 		if err != nil {
 			LogGame("Error: %v", err)
 			return
