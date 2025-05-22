@@ -108,3 +108,40 @@ func TestCanBlock(t *testing.T) {
 		}
 	})
 }
+
+func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
+	attacker := Permanant{
+		source: Card{
+			Name:     "Fencing Ace",
+			Keywords: []string{"Double Strike"},
+		},
+		power:     2,
+		toughness: 2,
+	}
+	defender := Permanant{
+		source: Card{
+			Name:     "Grizzly Bears",
+			Keywords: []string{},
+		},
+		power:     2,
+		toughness: 4,
+	}
+	player := &Player{Creatures: []Permanant{attacker}}
+	opp := &Player{Creatures: []Permanant{defender}}
+	player.Opponents = []*Player{opp}
+	opp.Opponents = []*Player{player}
+
+	// Simulate combat: attacker attacks, defender blocks
+	attacker.attacking = opp
+	defender.blocking = &attacker
+	attacker.blocked = true
+
+	// Use the full combat damage function
+	player.DealDamage()
+
+	totalDamage := defender.damage_counters
+	expected := attacker.power * 2
+	if totalDamage != expected {
+		t.Errorf("Double Strike attacker should deal %d total damage, got %d", expected, totalDamage)
+	}
+}

@@ -4,7 +4,6 @@ import "strings"
 
 // CanBlock determines if blocker can block attacker, considering abilities like Flying, Reach, Intimidate, Shadow, Fear, etc.
 func CanBlock(attacker, blocker Permanant) bool {
-	// ...existing code from player.go's CanBlock...
 	// Flying: can only be blocked by creatures with flying or reach
 	if CardHasEvergreenAbility(attacker.source, "Flying") {
 		if CardHasEvergreenAbility(blocker.source, "Flying") || CardHasEvergreenAbility(blocker.source, "Reach") {
@@ -64,8 +63,26 @@ func CanBlock(attacker, blocker Permanant) bool {
 	return true
 }
 
+// AssignBlockers handles Menace: creatures with Menace must be blocked by two or more creatures if blocked at all.
+func AssignBlockers(attacker *Permanant, blockers []*Permanant) bool {
+	if CardHasEvergreenAbility(attacker.source, "Menace") {
+		if len(blockers) < 2 {
+			LogPlayer("%s has Menace and can't be blocked by fewer than two creatures.", attacker.source.Name)
+			return false
+		}
+	}
+	if len(blockers) > 0 {
+		attacker.blocked = true
+		for _, blocker := range blockers {
+			blocker.blocking = attacker
+		}
+	} else {
+		attacker.blocked = false
+	}
+	return true
+}
+
 func (p *Player) DealDamage() {
-	// ...existing code from player.go's DealDamage...
 	LogPlayer("First Strike Damage Step")
 	for _, creature := range p.Creatures {
 		if creature.attacking != nil && (CardHasEvergreenAbility(creature.source, "First Strike") || CardHasEvergreenAbility(creature.source, "Double Strike")) {
@@ -95,7 +112,6 @@ func (p *Player) DealDamage() {
 }
 
 func (p *Player) resolveCombatDamage(creature *Permanant) {
-	// ...existing code from player.go's resolveCombatDamage...
 	if creature.blocking != nil {
 		if CardHasEvergreenAbility(creature.source, "Deathtouch") {
 			LogPlayer("%s deals damage with Deathtouch to %s.", creature.source.Name, creature.blocking.source.Name)
@@ -122,8 +138,11 @@ func (p *Player) resolveCombatDamage(creature *Permanant) {
 }
 
 func (p *Player) cleanupDeadCreatures() {
-	// ...existing code from player.go's cleanupDeadCreatures...
 	for i := 0; i < len(p.Creatures); i++ {
+		// Indestructible: can't be destroyed
+		if CardHasEvergreenAbility(p.Creatures[i].source, "Indestructible") {
+			continue
+		}
 		if p.Creatures[i].toughness <= p.Creatures[i].damage_counters {
 			LogPlayer("%s dies due to 0 toughness.", p.Creatures[i].source.Name)
 			destroyPermanant(&p.Creatures[i])
