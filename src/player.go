@@ -106,17 +106,28 @@ func (p *Player) CleanupCombat() {
 }
 
 func (p *Player) DeclareBlockers() {
-	for i, creature := range p.Creatures {
-		if creature.tapped {
+	blockedAttackers := make(map[int]bool) // attacker index -> blocked
+	blockedBy := make(map[int]bool)        // blocker index -> has blocked
+	for i := range p.Creatures {
+		if p.Creatures[i].tapped {
 			continue
 		}
-		for j, attacker := range p.Opponents[0].Creatures {
+		if blockedBy[i] {
+			continue // This blocker has already blocked an attacker
+		}
+		for j := range p.Opponents[0].Creatures {
+			if blockedAttackers[j] {
+				continue // This attacker already has a blocker (or multiple, but we only allow one block per blocker)
+			}
+			attacker := &p.Opponents[0].Creatures[j]
 			if attacker.attacking == p && !attacker.blocked {
-				if CanBlock(attacker, creature) {
-					p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
-					p.Opponents[0].Creatures[j].blocked = true
-					LogPlayer("%s blocked by %s", attacker.source.Name, creature.source.Name)
-					break // exit out to not block all attackers
+				if CanBlock(*attacker, p.Creatures[i]) {
+					p.Creatures[i].blocking = attacker
+					attacker.blocked = true
+					blockedAttackers[j] = true
+					blockedBy[i] = true
+					LogPlayer("%s blocked by %s", attacker.source.Name, p.Creatures[i].source.Name)
+					break // This blocker can't block any more attackers
 				}
 			}
 		}
