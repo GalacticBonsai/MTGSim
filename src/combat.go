@@ -84,27 +84,27 @@ func AssignBlockers(attacker *Permanant, blockers []*Permanant) bool {
 
 func (p *Player) DealDamage() {
 	LogPlayer("First Strike Damage Step")
-	for _, creature := range p.Creatures {
-		if creature.attacking != nil && (CardHasEvergreenAbility(creature.source, "First Strike") || CardHasEvergreenAbility(creature.source, "Double Strike")) {
-			p.resolveCombatDamage(&creature)
+	for i := range p.Creatures {
+		if p.Creatures[i].attacking != nil && (CardHasEvergreenAbility(p.Creatures[i].source, "First Strike") || CardHasEvergreenAbility(p.Creatures[i].source, "Double Strike")) {
+			p.resolveCombatDamage(&p.Creatures[i])
 		}
 	}
-	for _, creature := range p.Opponents[0].Creatures {
-		if creature.blocking != nil && (CardHasEvergreenAbility(creature.source, "First Strike") || CardHasEvergreenAbility(creature.source, "Double Strike")) {
-			p.Opponents[0].resolveCombatDamage(&creature)
+	for i := range p.Opponents[0].Creatures {
+		if p.Opponents[0].Creatures[i].blocking != nil && (CardHasEvergreenAbility(p.Opponents[0].Creatures[i].source, "First Strike") || CardHasEvergreenAbility(p.Opponents[0].Creatures[i].source, "Double Strike")) {
+			p.Opponents[0].resolveCombatDamage(&p.Opponents[0].Creatures[i])
 		}
 	}
 	p.cleanupDeadCreatures()
 	p.Opponents[0].cleanupDeadCreatures()
 	LogPlayer("Regular Damage Step")
-	for _, creature := range p.Creatures {
-		if creature.attacking != nil && (!CardHasEvergreenAbility(creature.source, "First Strike")) {
-			p.resolveCombatDamage(&creature)
+	for i := range p.Creatures {
+		if p.Creatures[i].attacking != nil && (!CardHasEvergreenAbility(p.Creatures[i].source, "First Strike")) {
+			p.resolveCombatDamage(&p.Creatures[i])
 		}
 	}
-	for _, creature := range p.Opponents[0].Creatures {
-		if creature.blocking != nil && !CardHasEvergreenAbility(creature.source, "First Strike") {
-			p.Opponents[0].resolveCombatDamage(&creature)
+	for i := range p.Opponents[0].Creatures {
+		if p.Opponents[0].Creatures[i].blocking != nil && !CardHasEvergreenAbility(p.Opponents[0].Creatures[i].source, "First Strike") {
+			p.Opponents[0].resolveCombatDamage(&p.Opponents[0].Creatures[i])
 		}
 	}
 	p.cleanupDeadCreatures()

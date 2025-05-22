@@ -75,7 +75,7 @@ func (c *Card) Cast(target *Permanant, p *Player) {
 	}
 
 	// Hardcoding bolt to face
-	p.Opponents[0].LifeTotal -= 3
+	// p.Opponents[0].LifeTotal -= 3
 	p.Graveyard = append(p.Graveyard, *c)
 
 }

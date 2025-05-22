@@ -224,7 +224,7 @@ func (p *Player) CastSpell(card *Card, target *Permanant) {
 	// Handle Ward
 	if target != nil && CardHasEvergreenAbility(target.source, "Ward") {
 		LogPlayer("%s has Ward. The spell is countered unless the opponent pays the Ward cost.", target.source.Name)
-		 // For now, assume the opponent cannot pay the cost
+		// For now, assume the opponent cannot pay the cost
 		LogPlayer("The opponent cannot pay the Ward cost. The spell is countered.")
 		p.Graveyard = append(p.Graveyard, *card)
 		return
@@ -250,9 +250,8 @@ func (p *Player) CastSpell(card *Card, target *Permanant) {
 
 	// Handle Enchant
 	if strings.Contains(card.TypeLine, "Aura") && CardHasEvergreenAbility(*card, "Enchant") {
-		LogPlayer("Enchanting %s with %s.", target.source.Name, card.Name)
 		if target != nil {
-			LogPlayer("%s is now enchanted with %s.", target.source.Name, card.Name)
+			LogPlayer("Enchanting %s with %s.", target.source.Name, card.Name)
 			// Attach Aura: add card to target's aura list (if you have one)
 		} else {
 			LogPlayer("No valid target for Enchant. The spell fails.")
