@@ -44,6 +44,16 @@ func (p *Player) PlayTurn() {
 	}
 }
 
+// DrawCard draws a card for the player, or causes them to lose if their deck is empty.
+func (p *Player) DrawCard() {
+	if len(p.Deck.Cards) == 0 {
+		LogPlayer("%s attempts to draw from an empty deck and loses the game!", p.Name)
+		p.LifeTotal = 0 // or trigger a loss state if you have one
+		return
+	}
+	p.Hand = append(p.Hand, p.Deck.DrawCard())
+}
+
 func (p *Player) PlayStep(s step, t *turn) {
 	switch s.name {
 	case "Untap Step":
@@ -52,16 +62,14 @@ func (p *Player) PlayStep(s step, t *turn) {
 		}
 		for i := range p.Creatures {
 			p.Creatures[i].untap()
-			if !CardHasEvergreenAbility(p.Creatures[i].source, "Haste") {
-				p.Creatures[i].summoningSickness = false
-			}
+			p.Creatures[i].summoningSickness = false
 		}
 		for i := range p.Artifacts {
 			p.Artifacts[i].untap()
 		}
 	case "Upkeep Step":
 	case "Draw Step":
-		p.Hand = append(p.Hand, p.Deck.DrawCard())
+		p.DrawCard()
 	case "Play Land":
 		p.PlayLand(t)
 	case "Cast Spells":
