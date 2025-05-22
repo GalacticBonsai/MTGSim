@@ -175,6 +175,75 @@ func (p *Player) cleanupDeadCreatures() {
 	}
 }
 
+// CanBlock determines if blocker can block attacker, considering abilities like Flying, Reach, Intimidate, Shadow, Fear, etc.
+// TODO: Implement Menace (must be blocked by two or more creatures), Protection, and other complex abilities in the combat assignment logic.
+func CanBlock(attacker, blocker Permanant) bool {
+	// Flying: can only be blocked by creatures with flying or reach
+	if CardHasEvergreenAbility(attacker.source, "Flying") {
+		if CardHasEvergreenAbility(blocker.source, "Flying") || CardHasEvergreenAbility(blocker.source, "Reach") {
+			return true
+		}
+		return false
+	}
+	// Intimidate: can only be blocked by artifact creatures and/or creatures that share a color
+	if CardHasEvergreenAbility(attacker.source, "Intimidate") {
+		if strings.Contains(blocker.source.TypeLine, "Artifact") {
+			return true
+		}
+		for _, color := range attacker.source.Colors {
+			for _, bcolor := range blocker.source.Colors {
+				if color == bcolor {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// Menace: must be blocked by two or more creatures (handled in block assignment logic)
+	// Shadow: can only be blocked by creatures with shadow
+	if CardHasEvergreenAbility(attacker.source, "Shadow") {
+		if CardHasEvergreenAbility(blocker.source, "Shadow") {
+			return true
+		}
+		return false
+	}
+	// Fear: can only be blocked by artifact creatures and/or black creatures
+	if CardHasEvergreenAbility(attacker.source, "Fear") {
+		if strings.Contains(blocker.source.TypeLine, "Artifact") {
+			return true
+		}
+		for _, bcolor := range blocker.source.Colors {
+			if bcolor == "B" {
+				return true
+			}
+		}
+		return false
+	}
+	// Protection: can't be blocked by creatures with the protected quality
+	if CardHasEvergreenAbility(attacker.source, "Protection") {
+		// Check for color protection
+		for _, kw := range attacker.source.Keywords {
+			if strings.HasPrefix(kw, "Protection from ") {
+				prot := strings.TrimPrefix(kw, "Protection from ")
+				// Check if blocker matches the protection
+				if prot == "Artifacts" && strings.Contains(blocker.source.TypeLine, "Artifact") {
+					return false
+				}
+				if prot == "Black" || prot == "White" || prot == "Blue" || prot == "Red" || prot == "Green" {
+					for _, bcolor := range blocker.source.Colors {
+						if strings.EqualFold(bcolor, string(prot[0])) { // e.g. "B" for Black
+							return false
+						}
+					}
+				}
+				// TODO: Add more protection types as needed
+			}
+		}
+	}
+	// Default: can be blocked
+	return true
+}
+
 func (p *Player) DeclareBlockers() {
 	for i, creature := range p.Creatures {
 		if creature.tapped {
@@ -182,10 +251,12 @@ func (p *Player) DeclareBlockers() {
 		}
 		for j, attacker := range p.Opponents[0].Creatures {
 			if attacker.attacking == p && !attacker.blocked {
-				p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
-				p.Opponents[0].Creatures[j].blocked = true
-				LogPlayer("%s blocked by %s", attacker.source.Name, creature.source.Name)
-				break // exit out to not block all attackers
+				if CanBlock(attacker, creature) {
+					p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
+					p.Opponents[0].Creatures[j].blocked = true
+					LogPlayer("%s blocked by %s", attacker.source.Name, creature.source.Name)
+					break // exit out to not block all attackers
+				}
 			}
 		}
 	}
