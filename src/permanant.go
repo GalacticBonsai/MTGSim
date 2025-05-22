@@ -19,6 +19,7 @@ type Permanant struct {
 	power             int
 	toughness         int
 	damage_counters   int
+	goaded            bool
 }
 
 func (p *Permanant) checkManaProducer() {
