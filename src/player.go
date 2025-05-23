@@ -80,6 +80,7 @@ func (p *Player) PlayStep(s step, t *turn) {
 	case "Declare Blockers Step":
 		p.Opponents[0].DeclareBlockers()
 	case "Combat Damage Step":
+		p.DealDamage()
 	case "End of Combat Step":
 		p.CleanupCombat()
 		p.Opponents[0].CleanupCombat()
