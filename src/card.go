@@ -62,7 +62,7 @@ func (c *Card) Cast(target *Permanant, p *Player) {
 	if strings.Contains(c.TypeLine, "Creature") {
 		power, _ := strconv.Atoi(c.Power)
 		toughness, _ := strconv.Atoi(c.Toughness)
-		p.Creatures = append(p.Creatures, Permanant{
+		p.Creatures = append(p.Creatures, &Permanant{
 			id:                uuid.New(),
 			source:            *c,
 			owner:             p,

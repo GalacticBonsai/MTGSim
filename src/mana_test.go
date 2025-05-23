@@ -66,17 +66,17 @@ func TestCheckManaProducer(t *testing.T) {
 }
 
 func TestCanCastCard(t *testing.T) {
-	player := &Player{
+	player := Player{
 		Name: "Test Player",
-		Lands: []Permanant{
+		Lands: []*Permanant{
 			{manaProducer: true, manaTypes: []ManaType{Red}},
 			{manaProducer: true, manaTypes: []ManaType{Green}},
 			{manaProducer: true, manaTypes: []ManaType{White}},
 		},
-		Creatures: []Permanant{
+		Creatures: []*Permanant{
 			{manaProducer: true, manaTypes: []ManaType{Blue}, summoningSickness: false},
 		},
-		Artifacts: []Permanant{
+		Artifacts: []*Permanant{
 			{manaProducer: true, manaTypes: []ManaType{Colorless}},
 		},
 	}
@@ -87,7 +87,7 @@ func TestCanCastCard(t *testing.T) {
 	}{
 		{"{R}{G}{W}", true},  // Can cast with available mana
 		{"{U}{U}", false},    // Not enough blue mana
-		{"{C}", true},     // Can cast with artifact mana
+		{"{C}", true},        // Can cast with artifact mana
 		{"{R}{R}{G}", false}, // Not enough red mana
 	}
 
@@ -101,17 +101,17 @@ func TestCanCastCard(t *testing.T) {
 }
 
 func TestSimulateBoardState(t *testing.T) {
-	player := &Player{
+	player := Player{
 		Name: "Test Player",
-		Lands: []Permanant{
+		Lands: []*Permanant{
 			{manaProducer: true, manaTypes: []ManaType{Red}},
 			{manaProducer: true, manaTypes: []ManaType{Green}},
 			{manaProducer: true, manaTypes: []ManaType{White}},
 		},
-		Creatures: []Permanant{
+		Creatures: []*Permanant{
 			{manaProducer: true, manaTypes: []ManaType{Blue}, summoningSickness: false},
 		},
-		Artifacts: []Permanant{
+		Artifacts: []*Permanant{
 			{manaProducer: true, manaTypes: []ManaType{Colorless}},
 		},
 	}

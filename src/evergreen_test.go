@@ -118,3 +118,82 @@ func TestGetEvergreenAbilityDescriptions(t *testing.T) {
 		}
 	}
 }
+
+func TestPermanantHasEvergreenAbility(t *testing.T) {
+	permanant := Permanant{
+		source: Card{
+			Name:     "Serra Angel",
+			Keywords: []string{"Flying", "Vigilance"},
+		},
+	}
+
+	tests := []struct {
+		abilityName string
+		expected    bool
+	}{
+		{"Flying", true},
+		{"Vigilance", true},
+		{"Deathtouch", false},
+		{"First Strike", false},
+	}
+
+	for _, test := range tests {
+		hasAbility := CardHasEvergreenAbility(permanant.source, test.abilityName)
+		if hasAbility != test.expected {
+			t.Errorf("PermanantHasEvergreenAbility(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
+		}
+	}
+}
+
+func TestPermanantWithMultipleAbilities(t *testing.T) {
+	permanant := Permanant{
+		source: Card{
+			Name:     "Akroma, Angel of Wrath",
+			Keywords: []string{"Flying", "First Strike", "Trample", "Haste", "Vigilance"},
+		},
+	}
+
+	tests := []struct {
+		abilityName string
+		expected    bool
+	}{
+		{"Flying", true},
+		{"First Strike", true},
+		{"Trample", true},
+		{"Haste", true},
+		{"Vigilance", true},
+		{"Deathtouch", false},
+	}
+
+	for _, test := range tests {
+		hasAbility := CardHasEvergreenAbility(permanant.source, test.abilityName)
+		if hasAbility != test.expected {
+			t.Errorf("PermanantWithMultipleAbilities(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
+		}
+	}
+}
+
+func TestPermanantWithoutAbilities(t *testing.T) {
+	permanant := Permanant{
+		source: Card{
+			Name:     "Grizzly Bears",
+			Keywords: []string{},
+		},
+	}
+
+	tests := []struct {
+		abilityName string
+		expected    bool
+	}{
+		{"Flying", false},
+		{"Vigilance", false},
+		{"Deathtouch", false},
+	}
+
+	for _, test := range tests {
+		hasAbility := CardHasEvergreenAbility(permanant.source, test.abilityName)
+		if hasAbility != test.expected {
+			t.Errorf("PermanantWithoutAbilities(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
+		}
+	}
+}

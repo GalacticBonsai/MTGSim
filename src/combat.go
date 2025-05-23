@@ -3,7 +3,7 @@ package main
 import "strings"
 
 // CanBlock determines if blocker can block attacker, considering abilities like Flying, Reach, Intimidate, Shadow, Fear, etc.
-func CanBlock(attacker, blocker Permanant) bool {
+func CanBlock(attacker, blocker *Permanant) bool {
 	// Flying: can only be blocked by creatures with flying or reach
 	if CardHasEvergreenAbility(attacker.source, "Flying") {
 		if CardHasEvergreenAbility(blocker.source, "Flying") || CardHasEvergreenAbility(blocker.source, "Reach") {
@@ -71,82 +71,73 @@ func AssignBlockers(attacker *Permanant, blockers []*Permanant) bool {
 			return false
 		}
 	}
-	if len(blockers) > 0 {
-		attacker.blocked = true
-		for _, blocker := range blockers {
-			blocker.blocking = attacker
-		}
-	} else {
-		attacker.blocked = false
+	for _, blocker := range blockers {
+		blocker.blocking = attacker
 	}
+	attacker.blockedBy = append(attacker.blockedBy, blockers...)
 	return true
 }
 
 func (p *Player) DealDamage() {
 	LogPlayer("First Strike Damage Step")
-	for i := range p.Creatures {
-		if p.Creatures[i].attacking != nil && (CardHasEvergreenAbility(p.Creatures[i].source, "First Strike") || CardHasEvergreenAbility(p.Creatures[i].source, "Double Strike")) {
-			p.resolveCombatDamage(&p.Creatures[i])
+	for _, creature := range append(p.Creatures, p.Opponents[0].Creatures...) {
+		if (creature.attacking != nil || creature.blocking != nil) && (CardHasEvergreenAbility(creature.source, "First Strike") || CardHasEvergreenAbility(creature.source, "Double Strike")) {
+			creature.resolveCombatDamage()
 		}
 	}
-	for i := range p.Opponents[0].Creatures {
-		if p.Opponents[0].Creatures[i].blocking != nil && (CardHasEvergreenAbility(p.Opponents[0].Creatures[i].source, "First Strike") || CardHasEvergreenAbility(p.Opponents[0].Creatures[i].source, "Double Strike")) {
-			p.Opponents[0].resolveCombatDamage(&p.Opponents[0].Creatures[i])
-		}
-	}
+
 	p.cleanupDeadCreatures()
 	p.Opponents[0].cleanupDeadCreatures()
+
 	LogPlayer("Regular Damage Step")
-	for i := range p.Creatures {
-		if p.Creatures[i].attacking != nil && (!CardHasEvergreenAbility(p.Creatures[i].source, "First Strike")) {
-			p.resolveCombatDamage(&p.Creatures[i])
+	for _, creature := range append(p.Creatures, p.Opponents[0].Creatures...) {
+		if (creature.attacking != nil || creature.blocking != nil) && (!CardHasEvergreenAbility(creature.source, "First Strike")) {
+			creature.resolveCombatDamage()
 		}
 	}
-	for i := range p.Opponents[0].Creatures {
-		if p.Opponents[0].Creatures[i].blocking != nil && !CardHasEvergreenAbility(p.Opponents[0].Creatures[i].source, "First Strike") {
-			p.Opponents[0].resolveCombatDamage(&p.Opponents[0].Creatures[i])
-		}
-	}
+
 	p.cleanupDeadCreatures()
 	p.Opponents[0].cleanupDeadCreatures()
 }
 
-func (p *Player) resolveCombatDamage(creature *Permanant) {
-	if creature.blocking != nil {
-		if CardHasEvergreenAbility(creature.source, "Deathtouch") {
-			LogPlayer("%s deals damage with Deathtouch to %s.", creature.source.Name, creature.blocking.source.Name)
-			creature.blocking.damage_counters = creature.blocking.toughness
-		} else {
-			creature.damages(creature.blocking)
+func (p *Permanant) resolveCombatDamage() {
+	if p.attacking != nil {
+		var original_power = p.power
+		for _, blocker := range p.blockedBy {
+			p.power = p.damages(blocker)
 		}
-		creature.blocking.damages(creature)
-		creature.checkLife()
-		creature.blocking.checkLife()
-	} else if creature.attacking != nil {
-		damage := creature.power
-		if CardHasEvergreenAbility(creature.source, "Trample") && creature.blocking != nil {
-			excessDamage := damage - creature.blocking.toughness
-			if excessDamage > 0 {
-				creature.attacking.LifeTotal -= excessDamage
-				LogPlayer("%s deals %d excess damage to %s with Trample.", creature.source.Name, excessDamage, creature.attacking.Name)
-			}
-		} else {
-			creature.attacking.LifeTotal -= damage
+		if p.power > 0 && (p.blockedBy == nil || CardHasEvergreenAbility(p.source, "Trample")) {
+			p.attacking.LifeTotal -= p.power
+			LogPlayer("%s deals %d damage to %s", p.source.Name, p.power, p.attacking.Name)
 		}
-		LogPlayer("%s deals %d damage to %s", creature.source.Name, damage, creature.attacking.Name)
+		p.power = original_power
+	}
+	if p.blocking != nil {
+		p.damages(p.blocking)
 	}
 }
 
 func (p *Player) cleanupDeadCreatures() {
-	for i := 0; i < len(p.Creatures); i++ {
+	for _, creature := range p.Creatures {
 		// Indestructible: can't be destroyed
-		if CardHasEvergreenAbility(p.Creatures[i].source, "Indestructible") {
+		if CardHasEvergreenAbility(creature.source, "Indestructible") {
 			continue
 		}
-		if p.Creatures[i].toughness <= p.Creatures[i].damage_counters {
-			LogPlayer("%s dies due to 0 toughness.", p.Creatures[i].source.Name)
-			destroyPermanant(&p.Creatures[i])
-			i--
+
+		damageSources := creature.blockedBy
+		if creature.blocking != nil {
+			damageSources = append(damageSources, creature.blocking)
+		}
+
+		for _, c := range damageSources {
+			if CardHasEvergreenAbility(c.source, "Deathtouch") && c.power > 0 {
+				LogPlayer("%s deals damage with Deathtouch to %s.", c, creature)
+				destroyPermanant(creature)
+			}
+		}
+		if creature.toughness <= creature.damage_counters {
+			LogPlayer("%s dies due to %d damage and %d toughness.", creature.source.Name, creature.damage_counters, creature.toughness)
+			destroyPermanant(creature)
 		}
 	}
 }

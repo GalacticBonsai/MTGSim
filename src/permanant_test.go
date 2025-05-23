@@ -48,19 +48,19 @@ func TestPermanantDamages(t *testing.T) {
 }
 
 func TestPermanantCheckLife(t *testing.T) {
-	p := &Permanant{
+	p := Permanant{
 		id:              uuid.New(),
 		toughness:       4,
 		damage_counters: 4,
 		source:          Card{Name: "Test Creature"},
 		owner: &Player{
 			Name:      "Player 1",
-			Creatures: []Permanant{},
+			Creatures: []*Permanant{},
 			Graveyard: []Card{},
 		},
 	}
 
-	p.owner.Creatures = append(p.owner.Creatures, *p)
+	p.owner.Creatures = append(p.owner.Creatures, &p)
 	p.checkLife()
 	if len(p.owner.Creatures) != 0 {
 		t.Errorf("Expected creature to be destroyed")

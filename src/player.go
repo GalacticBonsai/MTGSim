@@ -98,37 +98,29 @@ func (p *Player) PlayStep(s step, t *turn) {
 }
 
 func (p *Player) CleanupCombat() {
-	for i := range p.Creatures {
-		p.Creatures[i].attacking = nil
-		p.Creatures[i].blocking = nil
-		p.Creatures[i].blocked = false
+	for _, creature := range p.Creatures {
+		creature.attacking = nil
+		creature.blocking = nil
 	}
 }
 
 func (p *Player) DeclareBlockers() {
-	blockedAttackers := make(map[int]bool) // attacker index -> blocked
-	blockedBy := make(map[int]bool)        // blocker index -> has blocked
-	for i := range p.Creatures {
-		if p.Creatures[i].tapped {
+	for _, potentialBlocker := range p.Creatures {
+		if potentialBlocker.tapped {
 			continue
 		}
-		if blockedBy[i] {
-			continue // This blocker has already blocked an attacker
-		}
-		for j := range p.Opponents[0].Creatures {
-			if blockedAttackers[j] {
-				continue // This attacker already has a blocker (or multiple, but we only allow one block per blocker)
+		for _, attacker := range p.Opponents[0].Creatures {
+			if attacker.attacking != p {
+				continue // This is not attacking p
 			}
-			attacker := &p.Opponents[0].Creatures[j]
-			if attacker.attacking == p && !attacker.blocked {
-				if CanBlock(*attacker, p.Creatures[i]) {
-					p.Creatures[i].blocking = attacker
-					attacker.blocked = true
-					blockedAttackers[j] = true
-					blockedBy[i] = true
-					LogPlayer("%s blocked by %s", attacker.source.Name, p.Creatures[i].source.Name)
-					break // This blocker can't block any more attackers
-				}
+			if len(attacker.blockedBy) > 0 {
+				continue // This attacker is already blocked
+			}
+
+			if CanBlock(attacker, potentialBlocker) {
+				AssignBlockers(attacker, []*Permanant{potentialBlocker})
+				LogPlayer("%s blocked by %s", attacker.source.Name, potentialBlocker.source.Name)
+				break // This blocker can't block any more attackers
 			}
 		}
 	}
@@ -137,13 +129,13 @@ func (p *Player) DeclareBlockers() {
 func (p *Player) DeclareAttackers() {
 	LogPlayer("Declare attacker:")
 	attacking := false
-	for i, creature := range p.Creatures {
+	for _, creature := range p.Creatures {
 		if creature.tapped || (creature.summoningSickness && !CardHasEvergreenAbility(creature.source, "Haste") || CardHasEvergreenAbility(creature.source, "Defender")) {
 			continue
 		}
 
 		creature.Display()
-		p.Creatures[i].attacking = p.Opponents[0]
+		creature.attacking = p.Opponents[0]
 		attacking = true
 
 		// Handle Vigilance: Attacking doesn't cause this creature to tap
@@ -355,7 +347,7 @@ func (p *Player) Fight(card *Card, target *Permanant) {
 	var source *Permanant
 	for i := range p.Creatures {
 		if p.Creatures[i].source.Name == card.Name {
-			source = &p.Creatures[i]
+			source = p.Creatures[i]
 			break
 		}
 	}

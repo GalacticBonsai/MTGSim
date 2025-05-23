@@ -4,8 +4,8 @@ import "testing"
 
 func TestCanBlock(t *testing.T) {
 	// Helper to make a minimal Card and Permanant
-	makePerm := func(name string, keywords []string, colors []string, typeline string) Permanant {
-		return Permanant{
+	makePerm := func(name string, keywords []string, colors []string, typeline string) *Permanant {
+		return &Permanant{
 			source: Card{
 				Name:     name,
 				Keywords: keywords,
@@ -115,33 +115,47 @@ func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
 			Name:     "Fencing Ace",
 			Keywords: []string{"Double Strike"},
 		},
-		power:     2,
-		toughness: 2,
+		power:     1,
+		toughness: 10,
 	}
 	defender := Permanant{
 		source: Card{
 			Name:     "Grizzly Bears",
 			Keywords: []string{},
 		},
-		power:     2,
+		power:     3,
 		toughness: 4,
 	}
-	player := Player{Creatures: []*Permanant{&attacker}}
-	opp := Player{Creatures: []*Permanant{&defender}}
+	player := Player{Creatures: []*Permanant{&attacker}, LifeTotal: 20}
+	opp := Player{Creatures: []*Permanant{&defender}, LifeTotal: 20}
+	attacker.owner = &player
+	defender.owner = &opp
+	attacker.attacking = &opp
 	player.Opponents = []*Player{&opp}
 	opp.Opponents = []*Player{&player}
 
 	// Simulate combat: attacker attacks, defender blocks
-	attacker.attacking = &opp
-	defender.blocking = &attacker
-	attacker.blocked = true
+	AssignBlockers(&attacker, []*Permanant{&defender})
 
 	// Use the full combat damage function
 	player.DealDamage()
 
-	totalDamage := defender.damage_counters
+	doubleStrikeDamage := defender.damage_counters
 	expected := attacker.power * 2
-	if totalDamage != expected {
-		t.Errorf("Double Strike attacker should deal %d total damage, got %d", expected, totalDamage)
+	if doubleStrikeDamage != expected {
+		t.Errorf("Double Strike attacker should deal %d total damage, got %d", expected, doubleStrikeDamage)
+	}
+
+	regularDamage := attacker.damage_counters
+	if regularDamage != defender.power {
+		t.Errorf("Regular damage should be dealt, got %d", regularDamage)
+	}
+
+	// No damage went through to the player
+	if player.LifeTotal != 20 {
+		t.Errorf("Player should start at 20 life, got %d", player.LifeTotal)
+	}
+	if opp.LifeTotal != 20 {
+		t.Errorf("Opponent should start at 20 life, got %d", opp.LifeTotal)
 	}
 }
