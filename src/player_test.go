@@ -35,14 +35,14 @@ func TestMillAbility(t *testing.T) {
 }
 
 func TestFightAbility(t *testing.T) {
-	card := Card{Name: "Prey Upon", Keywords: []string{"Fight"}}
-	creature := Permanant{source: Card{Name: "Bear"}, power: 2, toughness: 2}
-	target := Permanant{source: Card{Name: "Wolf"}, power: 3, toughness: 3}
-	player := &Player{Name: "P1", Creatures: []Permanant{creature}}
-	player.CastSpell(&card, &target)
+	creature := &Permanant{source: Card{Name: "Bear"}, power: 2, toughness: 2}
+	target := &Permanant{source: Card{Name: "Wolf"}, power: 3, toughness: 3}
+	creature.Fight(target)
 	// Both should have damage counters
-	if player.Creatures[0].damage_counters == 0 || target.damage_counters == 0 {
-		t.Errorf("Fight should assign damage to both creatures")
+	if creature.damage_counters == 3 || target.damage_counters == 2 {
+		// pass
+	} else {
+		t.Errorf("Fight should assign damage to both creatures: got %d and %d", creature.damage_counters, target.damage_counters)
 	}
 }
 

@@ -68,46 +68,19 @@ func (p *Permanant) checkLife() {
 	}
 }
 
+func (p *Permanant) Fight(other *Permanant) {
+	p.damages(other)
+	other.damages(p)
+}
+
 func destroyPermanant(p *Permanant) {
 	// remove permanant from owner's board
 	var card Permanant
-	switch p.tokenType {
-	case Creature:
-		for i, c := range p.owner.Creatures {
-			if c.id == p.id {
-				card, p.owner.Creatures = sliceGet(p.owner.Creatures, i)
-				break
-			}
+	for i, c := range p.owner.Permanants {
+		if c.id == p.id {
+			card, p.owner.Permanants = sliceGet(p.owner.Permanants, i)
+			break
 		}
-	case Land:
-		for i, c := range p.owner.Lands {
-			if c.id == p.id {
-				card, p.owner.Lands = sliceGet(p.owner.Lands, i)
-				break
-			}
-		}
-	case Artifact:
-		for i, c := range p.owner.Artifacts {
-			if c.id == p.id {
-				card, p.owner.Artifacts = sliceGet(p.owner.Artifacts, i)
-				break
-			}
-		}
-	case Enchantment:
-		for i, c := range p.owner.Enchantments {
-			if c.id == p.id {
-				card, p.owner.Enchantments = sliceGet(p.owner.Enchantments, i)
-				break
-			}
-		}
-	case Planeswalker:
-		for i, c := range p.owner.Planeswalkers {
-			if c.id == p.id {
-				card, p.owner.Planeswalkers = sliceGet(p.owner.Planeswalkers, i)
-				break
-			}
-		}
-
 	}
 	// add permanant to owner's graveyard
 	LogCard("%s sent to player %s's graveyard", card.source.Name, p.owner.Name)

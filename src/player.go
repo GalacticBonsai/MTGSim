@@ -12,11 +12,11 @@ type Player struct {
 	Hand          []Card
 	Graveyard     []Card
 	Exile         []Card
-	Creatures     []Permanant
-	Enchantments  []Permanant
-	Artifacts     []Permanant
-	Planeswalkers []Permanant
-	Lands         []Permanant
+	Creatures     []*Permanant
+	Enchantments  []*Permanant
+	Artifacts     []*Permanant
+	Planeswalkers []*Permanant
+	Lands         []*Permanant
 	// mana          mana
 	Opponents []*Player
 }
@@ -57,15 +57,15 @@ func (p *Player) DrawCard() {
 func (p *Player) PlayStep(s step, t *turn) {
 	switch s.name {
 	case "Untap Step":
-		for i := range p.Lands {
-			p.Lands[i].untap()
+		for _, land := range p.Lands {
+			land.untap()
 		}
-		for i := range p.Creatures {
-			p.Creatures[i].untap()
-			p.Creatures[i].summoningSickness = false
+		for _, creature := range p.Creatures {
+			creature.untap()
+			creature.summoningSickness = false
 		}
-		for i := range p.Artifacts {
-			p.Artifacts[i].untap()
+		for _, artifact := range p.Artifacts {
+			artifact.untap()
 		}
 	case "Upkeep Step":
 	case "Draw Step":
@@ -169,7 +169,7 @@ func (p *Player) PlayLand(t *turn) {
 			LogCard("Playing land: %s", c.Name)
 
 			// adds land to board
-			land := Permanant{
+			land := &Permanant{
 				source:            c,
 				owner:             p,
 				tokenType:         Land,
@@ -384,7 +384,7 @@ func (p *Player) tapForMana(cost mana) error {
 	}
 
 	// Helper function to tap permanents for specific mana
-	tapForSpecificMana := func(permanents []Permanant, manaType ManaType) {
+	tapForSpecificMana := func(permanents []*Permanant, manaType ManaType) {
 		for i := range permanents {
 			if !permanents[i].tapped && permanents[i].manaProducer {
 				for _, producedMana := range permanents[i].manaTypes {

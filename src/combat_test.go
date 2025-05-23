@@ -126,13 +126,13 @@ func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
 		power:     2,
 		toughness: 4,
 	}
-	player := &Player{Creatures: []Permanant{attacker}}
-	opp := &Player{Creatures: []Permanant{defender}}
-	player.Opponents = []*Player{opp}
-	opp.Opponents = []*Player{player}
+	player := Player{Creatures: []*Permanant{&attacker}}
+	opp := Player{Creatures: []*Permanant{&defender}}
+	player.Opponents = []*Player{&opp}
+	opp.Opponents = []*Player{&player}
 
 	// Simulate combat: attacker attacks, defender blocks
-	attacker.attacking = opp
+	attacker.attacking = &opp
 	defender.blocking = &attacker
 	attacker.blocked = true
 
