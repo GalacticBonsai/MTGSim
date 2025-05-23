@@ -87,6 +87,8 @@ func main() {
 		return
 	}
 
+	start := time.Now() // Start timing
+
 	// Simulate games
 	for i := 0; i < *numGames; i++ {
 		g := newGame()
@@ -97,7 +99,26 @@ func main() {
 		AddLoss(g.loser.Name)
 	}
 
+	elapsed := time.Since(start) // End timing
+
+	// Calculate average games per second (truncate to int)
+	gamesPerSecond := int(float64(*numGames) / elapsed.Seconds())
+
+	// Log to file
+	logFile, err := os.OpenFile("simulation.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing log file: %v\n", err)
+			}
+		}()
+		if _, err := fmt.Fprintf(logFile, "Simulated %d games in %.2fs: %d games/sec\n", *numGames, elapsed.Seconds(), gamesPerSecond); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing to log file: %v\n", err)
+		}
+	}
+
 	// Print results
 	PrintTopWinners()
+	fmt.Printf("Simulated %d games in %.2fs: %d games/sec\n", *numGames, elapsed.Seconds(), gamesPerSecond)
 	LogMeta("Simulation completed.")
 }

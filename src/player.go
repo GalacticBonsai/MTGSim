@@ -12,11 +12,11 @@ type Player struct {
 	Hand          []Card
 	Graveyard     []Card
 	Exile         []Card
-	Creatures     []Permanant
-	Enchantments  []Permanant
-	Artifacts     []Permanant
-	Planeswalkers []Permanant
-	Lands         []Permanant
+	Creatures     []*Permanant
+	Enchantments  []*Permanant
+	Artifacts     []*Permanant
+	Planeswalkers []*Permanant
+	Lands         []*Permanant
 	// mana          mana
 	Opponents []*Player
 }
@@ -44,22 +44,32 @@ func (p *Player) PlayTurn() {
 	}
 }
 
+// DrawCard draws a card for the player, or causes them to lose if their deck is empty.
+func (p *Player) DrawCard() {
+	if len(p.Deck.Cards) == 0 {
+		LogPlayer("%s attempts to draw from an empty deck and loses the game!", p.Name)
+		p.LifeTotal = 0 // or trigger a loss state if you have one
+		return
+	}
+	p.Hand = append(p.Hand, p.Deck.DrawCard())
+}
+
 func (p *Player) PlayStep(s step, t *turn) {
 	switch s.name {
 	case "Untap Step":
-		for i := range p.Lands {
-			p.Lands[i].untap()
+		for _, land := range p.Lands {
+			land.untap()
 		}
-		for i := range p.Creatures {
-			p.Creatures[i].untap()
-			p.Creatures[i].summoningSickness = false
+		for _, creature := range p.Creatures {
+			creature.untap()
+			creature.summoningSickness = false
 		}
-		for i := range p.Artifacts {
-			p.Artifacts[i].untap()
+		for _, artifact := range p.Artifacts {
+			artifact.untap()
 		}
 	case "Upkeep Step":
 	case "Draw Step":
-		p.Hand = append(p.Hand, p.Deck.DrawCard())
+		p.DrawCard()
 	case "Play Land":
 		p.PlayLand(t)
 	case "Cast Spells":
@@ -89,44 +99,29 @@ func (p *Player) PlayStep(s step, t *turn) {
 }
 
 func (p *Player) CleanupCombat() {
-	for i := range p.Creatures {
-		p.Creatures[i].attacking = nil
-		p.Creatures[i].blocking = nil
-		p.Creatures[i].blocked = false
-	}
-}
-
-func (p *Player) DealDamage() {
-	for _, creature := range p.Opponents[0].Creatures {
-		if creature.blocking != nil {
-			creature.damages(creature.blocking)
-			creature.blocking.damages(&creature)
-			creature.checkLife()
-			creature.blocking.checkLife()
-		}
-	}
 	for _, creature := range p.Creatures {
-
-		if creature.blocked || creature.attacking == nil {
-			continue
-		}
-
-		creature.attacking.LifeTotal -= creature.power
-		LogPlayer("%s deals %d damage to %s", creature.source.Name, creature.power, creature.attacking.Name)
+		creature.attacking = nil
+		creature.blocking = nil
 	}
 }
 
 func (p *Player) DeclareBlockers() {
-	for i, creature := range p.Creatures {
-		if creature.tapped {
+	for _, potentialBlocker := range p.Creatures {
+		if potentialBlocker.tapped {
 			continue
 		}
-		for j, attacker := range p.Opponents[0].Creatures {
-			if attacker.attacking == p && !attacker.blocked {
-				p.Creatures[i].blocking = &p.Opponents[0].Creatures[j]
-				p.Opponents[0].Creatures[j].blocked = true
-				LogPlayer("%s blocked by %s", attacker.source.Name, creature.source.Name)
-				break // exit out to not block all attackers
+		for _, attacker := range p.Opponents[0].Creatures {
+			if attacker.attacking != p {
+				continue // This is not attacking p
+			}
+			if len(attacker.blockedBy) > 0 {
+				continue // This attacker is already blocked
+			}
+
+			if CanBlock(attacker, potentialBlocker) {
+				AssignBlockers(attacker, []*Permanant{potentialBlocker})
+				LogPlayer("%s blocked by %s", attacker.source.Name, potentialBlocker.source.Name)
+				break // This blocker can't block any more attackers
 			}
 		}
 	}
@@ -135,17 +130,24 @@ func (p *Player) DeclareBlockers() {
 func (p *Player) DeclareAttackers() {
 	LogPlayer("Declare attacker:")
 	attacking := false
-	for i, creature := range p.Creatures {
-		if creature.tapped || creature.summoningSickness {
+	for _, creature := range p.Creatures {
+		if creature.tapped || (creature.summoningSickness && !CardHasEvergreenAbility(creature.source, "Haste") || CardHasEvergreenAbility(creature.source, "Defender")) {
 			continue
 		}
 
 		creature.Display()
-		p.Creatures[i].attacking = p.Opponents[0]
+		creature.attacking = p.Opponents[0]
 		attacking = true
+
+		// Handle Vigilance: Attacking doesn't cause this creature to tap
+		if !CardHasEvergreenAbility(creature.source, "Vigilance") {
+			creature.tap()
+		} else {
+			LogPlayer("%s attacks with Vigilance and does not tap.", creature.source.Name)
+		}
 	}
 	if !attacking {
-		LogPlayer("None")
+		LogPlayer("No Attackers declared.")
 	}
 }
 
@@ -160,7 +162,7 @@ func (p *Player) PlayLand(t *turn) {
 			LogCard("Playing land: %s", c.Name)
 
 			// adds land to board
-			land := Permanant{
+			land := &Permanant{
 				source:            c,
 				owner:             p,
 				tokenType:         Land,
@@ -230,6 +232,137 @@ func (p *Player) PlaySpell() {
 	}
 }
 
+func (p *Player) CastSpell(card *Card, target *Permanant) {
+	// Handle Ward
+	if target != nil && CardHasEvergreenAbility(target.source, "Ward") {
+		LogPlayer("%s has Ward. The spell is countered unless the opponent pays the Ward cost.", target.source.Name)
+		// For now, assume the opponent cannot pay the cost
+		LogPlayer("The opponent cannot pay the Ward cost. The spell is countered.")
+		p.Graveyard = append(p.Graveyard, *card)
+		return
+	}
+
+	// Handle Flash (allow casting as instant, not implemented here, but could be checked in game flow)
+	if CardHasEvergreenAbility(*card, "Flash") {
+		LogPlayer("%s has Flash and can be cast as an instant.", card.Name)
+		// Actual timing handled in game flow
+	}
+
+	// Handle Equip
+	if strings.Contains(card.TypeLine, "Equipment") && CardHasEvergreenAbility(*card, "Equip") {
+		LogPlayer("Equipping %s to a target creature.", card.Name)
+		if target != nil && target.tokenType == Creature {
+			LogPlayer("%s is now equipped to %s.", card.Name, target.source.Name)
+			// Attach Equipment: add card to target's equipment list (if you have one)
+		} else {
+			LogPlayer("No valid target for Equip. The spell fails.")
+		}
+		return
+	}
+
+	// Handle Enchant
+	if strings.Contains(card.TypeLine, "Aura") && CardHasEvergreenAbility(*card, "Enchant") {
+		if target != nil {
+			LogPlayer("Enchanting %s with %s.", target.source.Name, card.Name)
+			// Attach Aura: add card to target's aura list (if you have one)
+		} else {
+			LogPlayer("No valid target for Enchant. The spell fails.")
+		}
+		return
+	}
+
+	// Handle Scry
+	if CardHasEvergreenAbility(*card, "Scry") {
+		LogPlayer("Scrying with %s.", card.Name)
+		p.Scry(2) // Example: Scry 2
+		return
+	}
+
+	// Handle Mill
+	if CardHasEvergreenAbility(*card, "Mill") {
+		LogPlayer("Milling with %s.", card.Name)
+		p.Opponents[0].Mill(3) // Example: Mill 3
+		return
+	}
+
+	// Handle Fight
+	if CardHasEvergreenAbility(*card, "Fight") {
+		LogPlayer("Fighting with %s.", card.Name)
+		if target != nil && target.tokenType == Creature {
+			LogPlayer("%s fights %s.", card.Name, target.source.Name)
+			p.Fight(card, target)
+		} else {
+			LogPlayer("No valid target for Fight. The spell fails.")
+		}
+		return
+	}
+
+	// Handle Goad
+	if CardHasEvergreenAbility(*card, "Goad") {
+		LogPlayer("Goading with %s.", card.Name)
+		if target != nil && target.tokenType == Creature {
+			LogPlayer("%s is goaded and must attack next turn.", target.source.Name)
+			target.goaded = true // You may need to add this field to Permanant
+		} else {
+			LogPlayer("No valid target for Goad. The spell fails.")
+		}
+		return
+	}
+
+	// Default spell casting logic
+	card.Cast(target, p)
+}
+
+// Scry: Look at the top X cards of your library, reorder or put any on the bottom
+func (p *Player) Scry(n int) {
+	if n <= 0 || len(p.Deck.Cards) == 0 {
+		return
+	}
+	peek := n
+	if peek > len(p.Deck.Cards) {
+		peek = len(p.Deck.Cards)
+	}
+	top := p.Deck.Cards[:peek]
+	LogPlayer("Scry: Top %d cards: %v", peek, top)
+	// For now, just leave them in order (no reordering UI)
+}
+
+// Mill: Put the top X cards of your library into your graveyard
+func (p *Player) Mill(n int) {
+	if n <= 0 || len(p.Deck.Cards) == 0 {
+		return
+	}
+	mill := n
+	if mill > len(p.Deck.Cards) {
+		mill = len(p.Deck.Cards)
+	}
+	milled := p.Deck.Cards[:mill]
+	p.Deck.Cards = p.Deck.Cards[mill:]
+	p.Graveyard = append(p.Graveyard, milled...)
+	LogPlayer("Milled %d cards: %v", mill, milled)
+}
+
+// Fight: Two creatures deal damage equal to their power to each other
+func (p *Player) Fight(card *Card, target *Permanant) {
+	// Find the source creature (the one that cast the fight spell)
+	var source *Permanant
+	for i := range p.Creatures {
+		if p.Creatures[i].source.Name == card.Name {
+			source = p.Creatures[i]
+			break
+		}
+	}
+	if source == nil {
+		LogPlayer("Fight source creature not found on battlefield.")
+		return
+	}
+	LogPlayer("%s and %s fight!", source.source.Name, target.source.Name)
+	target.damage_counters += source.power
+	source.damage_counters += target.power
+	source.checkLife()
+	target.checkLife()
+}
+
 func (p *Player) tapForMana(cost mana) error {
 	manaPool := p.ManaAvailable()
 
@@ -244,7 +377,7 @@ func (p *Player) tapForMana(cost mana) error {
 	}
 
 	// Helper function to tap permanents for specific mana
-	tapForSpecificMana := func(permanents []Permanant, manaType ManaType) {
+	tapForSpecificMana := func(permanents []*Permanant, manaType ManaType) {
 		for i := range permanents {
 			if !permanents[i].tapped && permanents[i].manaProducer {
 				for _, producedMana := range permanents[i].manaTypes {

@@ -15,10 +15,11 @@ type Permanant struct {
 	manaTypes         []ManaType
 	attacking         *Player
 	blocking          *Permanant
-	blocked           bool
+	blockedBy         []*Permanant
 	power             int
 	toughness         int
 	damage_counters   int
+	goaded            bool
 }
 
 func (p *Permanant) checkManaProducer() {
@@ -45,15 +46,24 @@ func (p *Permanant) untap() {
 	p.tapped = false
 }
 
-func DisplayPermanants(permanants []Permanant) {
+func DisplayPermanants(permanants []*Permanant) {
 	for _, permanant := range permanants {
 		DisplayCard(permanant.source)
 	}
 }
 
-func (p *Permanant) damages(target *Permanant) {
+func (p *Permanant) damages(target *Permanant) int{
 	LogCard("%s deals %d damage to %s", p.source.Name, p.power, target.source.Name)
+	// Handle Lifelink
+	if CardHasEvergreenAbility(p.source, "Lifelink") {
+		p.owner.LifeTotal += p.power
+		LogPlayer("%s deals damage with Lifelink, gaining %d life.", p.source.Name, p.power)
+	}
 	target.damage_counters += p.power
+	if target.damage_counters > target.toughness {
+		return target.damage_counters - target.toughness // Overkill
+	}
+	return 0
 }
 
 func (p *Permanant) checkLife() {
@@ -62,48 +72,41 @@ func (p *Permanant) checkLife() {
 	}
 }
 
+func (p *Permanant) Fight(other *Permanant) {
+	p.damages(other)
+	other.damages(p)
+}
+
 func destroyPermanant(p *Permanant) {
-	// remove permanant from owner's board
-	var card Permanant
+	if CardHasEvergreenAbility(p.source, "Indestructible") {
+		LogCard("%s is indestructible and cannot be destroyed.", p.source.Name)
+		return
+	}
+
+	// remove permanent from owner's board
+	removePermanant := func(list []*Permanant, target *Permanant) []*Permanant {
+		for i, c := range list {
+			if c == target {
+				return append(list[:i], list[i+1:]...)
+			}
+		}
+		return list
+	}
+
 	switch p.tokenType {
 	case Creature:
-		for i, c := range p.owner.Creatures {
-			if c.id == p.id {
-				card, p.owner.Creatures = sliceGet(p.owner.Creatures, i)
-				break
-			}
-		}
+		p.owner.Creatures = removePermanant(p.owner.Creatures, p)
 	case Land:
-		for i, c := range p.owner.Lands {
-			if c.id == p.id {
-				card, p.owner.Lands = sliceGet(p.owner.Lands, i)
-				break
-			}
-		}
+		p.owner.Lands = removePermanant(p.owner.Lands, p)
 	case Artifact:
-		for i, c := range p.owner.Artifacts {
-			if c.id == p.id {
-				card, p.owner.Artifacts = sliceGet(p.owner.Artifacts, i)
-				break
-			}
-		}
+		p.owner.Artifacts = removePermanant(p.owner.Artifacts, p)
 	case Enchantment:
-		for i, c := range p.owner.Enchantments {
-			if c.id == p.id {
-				card, p.owner.Enchantments = sliceGet(p.owner.Enchantments, i)
-				break
-			}
-		}
+		p.owner.Enchantments = removePermanant(p.owner.Enchantments, p)
 	case Planeswalker:
-		for i, c := range p.owner.Planeswalkers {
-			if c.id == p.id {
-				card, p.owner.Planeswalkers = sliceGet(p.owner.Planeswalkers, i)
-				break
-			}
-		}
-
+		p.owner.Planeswalkers = removePermanant(p.owner.Planeswalkers, p)
 	}
-	// add permanant to owner's graveyard
-	LogCard("%s sent to player %s's graveyard", card.source.Name, p.owner.Name)
-	p.owner.Graveyard = append(p.owner.Graveyard, card.source)
+	
+	// add permanent to owner's graveyard
+	LogCard("%s sent to player %s's graveyard", p.source.Name, p.owner.Name)
+	p.owner.Graveyard = append(p.owner.Graveyard, p.source)
 }
