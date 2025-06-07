@@ -74,20 +74,21 @@ func TestParseTapEffect(t *testing.T) {
 	cases := []struct {
 		oracle   string
 		hasTap   bool
+		cost     string
 		effect   string
 	}{
-		{"{T}: Add {G}.", true, "Add {G}."},
-		{"{T}: Add {R} or {G}.", true, "Add {R} or {G}."},
-		{"Flying\n{T}: Draw a card.", true, "Draw a card."},
-		{"Whenever you gain life, draw a card.", false, ""},
-		{"{T}, Sacrifice this: Add {B}.", true, "Add {B}."},
-		{"{T}: Add one mana of any color.", true, "Add one mana of any color."},
-		{"No tap ability here.", false, ""},
+		{"{T}: Add {G}.", true, "", "Add {G}."},
+		{"{T}: Add {R} or {G}.", true, "", "Add {R} or {G}."},
+		{"Flying\n{T}: Draw a card.", true, "", "Draw a card."},
+		{"Whenever you gain life, draw a card.", false, "", ""},
+		{"{T}, Sacrifice this: Add {B}.", true, "Sacrifice this", "Add {B}."},
+		{"{T}: Add one mana of any color.", true, "", "Add one mana of any color."},
+		{"No tap ability here.", false, "", ""},
 	}
 	for _, c := range cases {
-		hasTap, effect := ParseTapEffect(c.oracle)
-		if hasTap != c.hasTap || effect != c.effect {
-			t.Errorf("ParseTapEffect(%q) = (%v, %q), want (%v, %q)", c.oracle, hasTap, effect, c.hasTap, c.effect)
+		hasTap, cost, effect := ParseTapEffect(c.oracle)
+		if hasTap != c.hasTap || cost != c.cost || effect != c.effect {
+			t.Errorf("ParseTapEffect(%q) = (%v, %q, %q), want (%v, %q, %q)", c.oracle, hasTap, cost, effect, c.hasTap, c.cost, c.effect)
 		}
 	}
 }
