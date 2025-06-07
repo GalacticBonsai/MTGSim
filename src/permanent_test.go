@@ -69,3 +69,44 @@ func TestPermanentCheckLife(t *testing.T) {
 		t.Errorf("Expected creature to be in graveyard")
 	}
 }
+
+func TestParseTapEffect(t *testing.T) {
+	cases := []struct {
+		oracle   string
+		hasTap   bool
+		effect   string
+	}{
+		{"{T}: Add {G}.", true, "Add {G}."},
+		{"{T}: Add {R} or {G}.", true, "Add {R} or {G}."},
+		{"Flying\n{T}: Draw a card.", true, "Draw a card."},
+		{"Whenever you gain life, draw a card.", false, ""},
+		{"{T}, Sacrifice this: Add {B}.", true, "Add {B}."},
+		{"{T}: Add one mana of any color.", true, "Add one mana of any color."},
+		{"No tap ability here.", false, ""},
+	}
+	for _, c := range cases {
+		hasTap, effect := ParseTapEffect(c.oracle)
+		if hasTap != c.hasTap || effect != c.effect {
+			t.Errorf("ParseTapEffect(%q) = (%v, %q), want (%v, %q)", c.oracle, hasTap, effect, c.hasTap, c.effect)
+		}
+	}
+}
+
+func TestPermanent_HasTapAbility(t *testing.T) {
+	p := &Permanent{source: Card{OracleText: "{T}: Add {G}."}}
+	if !p.HasTapAbility() {
+		t.Error("Expected HasTapAbility to be true for tap effect")
+	}
+	p2 := &Permanent{source: Card{OracleText: "Flying"}}
+	if p2.HasTapAbility() {
+		t.Error("Expected HasTapAbility to be false for no tap effect")
+	}
+}
+
+func TestPermanent_GetTapEffect(t *testing.T) {
+	p := &Permanent{source: Card{OracleText: "{T}: Add {G}."}}
+	effect := p.GetTapEffect()
+	if effect != "Add {G}." {
+		t.Errorf("Expected GetTapEffect to return 'Add {G}.', got %q", effect)
+	}
+}

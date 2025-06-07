@@ -1,6 +1,9 @@
 package main
 
 import (
+	"regexp"
+	"strings"
+
 	"github.com/google/uuid"
 )
 
@@ -119,4 +122,30 @@ func destroyPermanent(p *Permanent) {
 	// add permanent to owner's graveyard
 	LogCard("%s sent to player %s's graveyard", p.source.Name, p.owner.Name)
 	p.owner.Graveyard = append(p.owner.Graveyard, p.source)
+}
+
+// ParseTapEffect parses the Oracle text for a tap effect (e.g., "{T}: Add {G}") and returns whether a tap effect exists and the effect description.
+func ParseTapEffect(oracle string) (bool, string) {
+	// Regex matches lines like "{T}: ..." or "{T}, ...: ..."
+	re := regexp.MustCompile(`(?m)\{T\}[^:]*: (.+)$`)
+	lines := strings.Split(oracle, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if matches := re.FindStringSubmatch(line); matches != nil {
+			return true, matches[1]
+		}
+	}
+	return false, ""
+}
+
+// HasTapAbility returns true if the permanent has a tap ability.
+func (p *Permanent) HasTapAbility() bool {
+	hasTap, _ := ParseTapEffect(p.source.OracleText)
+	return hasTap
+}
+
+// GetTapEffect returns the effect string for the tap ability, if any.
+func (p *Permanent) GetTapEffect() string {
+	_, effect := ParseTapEffect(p.source.OracleText)
+	return effect
 }
