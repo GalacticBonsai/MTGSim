@@ -137,24 +137,6 @@ func importDeckfile(filename string) (Deck, Deck, error) {
 	return Deck{Cards: cards, Name: deckName}, Deck{Cards: sideboardCards}, nil
 }
 
-/* trunk-ignore(golangci-lint2/unused) */
-func swapCards(deck *Deck, sideboard *Deck, numSwaps int) {
-	rand.Seed(time.Now().UnixNano())
-
-	for i := 0; i < numSwaps; i++ {
-		if len(deck.Cards) == 0 || len(sideboard.Cards) == 0 {
-			break
-		}
-
-		// Randomly select a card from the deck and sideboard
-		deckIndex := rand.Intn(len(deck.Cards))
-		sideboardIndex := rand.Intn(len(sideboard.Cards))
-
-		// Swap the cards
-		deck.Cards[deckIndex], sideboard.Cards[sideboardIndex] = sideboard.Cards[sideboardIndex], deck.Cards[deckIndex]
-	}
-}
-
 func (d *Deck) Display() {
 	for _, card := range d.Cards {
 		card.Display()

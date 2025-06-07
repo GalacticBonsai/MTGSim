@@ -48,8 +48,8 @@ func getDecks(dir string) ([]string, error) {
 }
 
 func getRandom[T any](slice []T) T {
-	rand.Seed(time.Now().UnixNano())
-	return slice[rand.Intn(len(slice))]
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return slice[r.Intn(len(slice))]
 }
 
 func parseLogLevel(level string) LogLevel {
