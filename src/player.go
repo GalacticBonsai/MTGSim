@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// Player represents a Magic: The Gathering player and their board state.
 type Player struct {
 	Name          string
 	LifeTotal     int
@@ -12,15 +13,16 @@ type Player struct {
 	Hand          []Card
 	Graveyard     []Card
 	Exile         []Card
-	Creatures     []*Permanant
-	Enchantments  []*Permanant
-	Artifacts     []*Permanant
-	Planeswalkers []*Permanant
-	Lands         []*Permanant
+	Creatures     []*Permanent
+	Enchantments  []*Permanent
+	Artifacts     []*Permanent
+	Planeswalkers []*Permanent
+	Lands         []*Permanent
 	// mana          mana
 	Opponents []*Player
 }
 
+// NewPlayer creates a new player from a decklist file.
 func NewPlayer(decklist string) *Player {
 	deck, _, err := importDeckfile(decklist)
 	if err != nil {
@@ -34,6 +36,7 @@ func NewPlayer(decklist string) *Player {
 	}
 }
 
+// PlayTurn executes a full turn for the player.
 func (p *Player) PlayTurn() {
 	// p.Display()
 	t := newTurn()
@@ -54,6 +57,7 @@ func (p *Player) DrawCard() {
 	p.Hand = append(p.Hand, p.Deck.DrawCard())
 }
 
+// PlayStep executes a single step in the turn structure.
 func (p *Player) PlayStep(s step, t *turn) {
 	switch s.name {
 	case "Untap Step":
@@ -98,6 +102,7 @@ func (p *Player) PlayStep(s step, t *turn) {
 	}
 }
 
+// CleanupCombat resets combat state for all creatures.
 func (p *Player) CleanupCombat() {
 	for _, creature := range p.Creatures {
 		creature.attacking = nil
@@ -105,6 +110,7 @@ func (p *Player) CleanupCombat() {
 	}
 }
 
+// DeclareBlockers assigns blockers for the player.
 func (p *Player) DeclareBlockers() {
 	for _, potentialBlocker := range p.Creatures {
 		if potentialBlocker.tapped {
@@ -119,7 +125,7 @@ func (p *Player) DeclareBlockers() {
 			}
 
 			if CanBlock(attacker, potentialBlocker) {
-				AssignBlockers(attacker, []*Permanant{potentialBlocker})
+				AssignBlockers(attacker, []*Permanent{potentialBlocker})
 				LogPlayer("%s blocked by %s", attacker.source.Name, potentialBlocker.source.Name)
 				break // This blocker can't block any more attackers
 			}
@@ -127,6 +133,7 @@ func (p *Player) DeclareBlockers() {
 	}
 }
 
+// DeclareAttackers assigns attackers for the player.
 func (p *Player) DeclareAttackers() {
 	LogPlayer("Declare attacker:")
 	attacking := false
@@ -151,6 +158,7 @@ func (p *Player) DeclareAttackers() {
 	}
 }
 
+// PlayLand plays a land from the player's hand if possible.
 func (p *Player) PlayLand(t *turn) {
 	for i := 0; i < len(p.Hand); i++ {
 		c := p.Hand[i]
@@ -162,7 +170,7 @@ func (p *Player) PlayLand(t *turn) {
 			LogCard("Playing land: %s", c.Name)
 
 			// adds land to board
-			land := &Permanant{
+			land := &Permanent{
 				source:            c,
 				owner:             p,
 				tokenType:         Land,
@@ -179,6 +187,7 @@ func (p *Player) PlayLand(t *turn) {
 	}
 }
 
+// ManaAvailable returns the player's available mana pool.
 func (p *Player) ManaAvailable() *ManaPool {
 	manaPool := NewManaPool()
 
@@ -209,6 +218,7 @@ func (p *Player) ManaAvailable() *ManaPool {
 	return manaPool
 }
 
+// PlaySpell attempts to cast all spells in the player's hand.
 func (p *Player) PlaySpell() {
 	for i := 0; i < len(p.Hand); i++ {
 		c := p.Hand[i]
@@ -232,7 +242,8 @@ func (p *Player) PlaySpell() {
 	}
 }
 
-func (p *Player) CastSpell(card *Card, target *Permanant) {
+// CastSpell handles the casting of a spell, including special abilities.
+func (p *Player) CastSpell(card *Card, target *Permanent) {
 	// Handle Ward
 	if target != nil && CardHasEvergreenAbility(target.source, "Ward") {
 		LogPlayer("%s has Ward. The spell is countered unless the opponent pays the Ward cost.", target.source.Name)
@@ -302,7 +313,7 @@ func (p *Player) CastSpell(card *Card, target *Permanant) {
 		LogPlayer("Goading with %s.", card.Name)
 		if target != nil && target.tokenType == Creature {
 			LogPlayer("%s is goaded and must attack next turn.", target.source.Name)
-			target.goaded = true // You may need to add this field to Permanant
+			target.goaded = true // You may need to add this field to Permanent
 		} else {
 			LogPlayer("No valid target for Goad. The spell fails.")
 		}
@@ -313,7 +324,7 @@ func (p *Player) CastSpell(card *Card, target *Permanant) {
 	card.Cast(target, p)
 }
 
-// Scry: Look at the top X cards of your library, reorder or put any on the bottom
+// Scry allows the player to look at and reorder the top n cards of their deck.
 func (p *Player) Scry(n int) {
 	if n <= 0 || len(p.Deck.Cards) == 0 {
 		return
@@ -327,7 +338,7 @@ func (p *Player) Scry(n int) {
 	// For now, just leave them in order (no reordering UI)
 }
 
-// Mill: Put the top X cards of your library into your graveyard
+// Mill puts the top n cards of the player's library into their graveyard.
 func (p *Player) Mill(n int) {
 	if n <= 0 || len(p.Deck.Cards) == 0 {
 		return
@@ -342,10 +353,10 @@ func (p *Player) Mill(n int) {
 	LogPlayer("Milled %d cards: %v", mill, milled)
 }
 
-// Fight: Two creatures deal damage equal to their power to each other
-func (p *Player) Fight(card *Card, target *Permanant) {
+// Fight makes two creatures deal damage to each other.
+func (p *Player) Fight(card *Card, target *Permanent) {
 	// Find the source creature (the one that cast the fight spell)
-	var source *Permanant
+	var source *Permanent
 	for i := range p.Creatures {
 		if p.Creatures[i].source.Name == card.Name {
 			source = p.Creatures[i]
@@ -377,7 +388,7 @@ func (p *Player) tapForMana(cost mana) error {
 	}
 
 	// Helper function to tap permanents for specific mana
-	tapForSpecificMana := func(permanents []*Permanant, manaType ManaType) {
+	tapForSpecificMana := func(permanents []*Permanent, manaType ManaType) {
 		for i := range permanents {
 			if !permanents[i].tapped && permanents[i].manaProducer {
 				for _, producedMana := range permanents[i].manaTypes {
@@ -414,16 +425,18 @@ func (p *Player) tapForMana(cost mana) error {
 	return nil
 }
 
+// Display prints the player's current state.
 func (p *Player) Display() {
 	LogPlayer("Player: %s", p.Name)
 	LogPlayer("Life: %d", p.LifeTotal)
 	LogPlayer("Hand:")
 	DisplayCards(p.Hand)
 	LogPlayer("Board:")
-	DisplayPermanants(p.Creatures)
-	DisplayPermanants(p.Lands)
+	DisplayPermanents(p.Creatures)
+	DisplayPermanents(p.Lands)
 }
 
+// EndStep resets damage counters at the end of turn.
 func (p *Player) EndStep() {
 	for i := range p.Creatures {
 		p.Creatures[i].damage_counters = 0

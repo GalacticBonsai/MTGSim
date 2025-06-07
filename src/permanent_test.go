@@ -6,8 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestPermanantTapUntap(t *testing.T) {
-	p := &Permanant{
+func TestPermanentTapUntap(t *testing.T) {
+	p := &Permanent{
 		id:                uuid.New(),
 		summoningSickness: false,
 		tapped:            false,
@@ -15,17 +15,17 @@ func TestPermanantTapUntap(t *testing.T) {
 
 	p.tap()
 	if !p.tapped {
-		t.Errorf("Expected permanant to be tapped")
+		t.Errorf("Expected Permanent to be tapped")
 	}
 
 	p.untap()
 	if p.tapped {
-		t.Errorf("Expected permanant to be untapped")
+		t.Errorf("Expected Permanent to be untapped")
 	}
 }
 
-func TestPermanantDamages(t *testing.T) {
-	p1 := &Permanant{
+func TestPermanentDamages(t *testing.T) {
+	p1 := &Permanent{
 		id:              uuid.New(),
 		power:           3,
 		toughness:       5,
@@ -33,7 +33,7 @@ func TestPermanantDamages(t *testing.T) {
 		source:          Card{Name: "Attacker"},
 	}
 
-	p2 := &Permanant{
+	p2 := &Permanent{
 		id:              uuid.New(),
 		power:           2,
 		toughness:       4,
@@ -47,15 +47,15 @@ func TestPermanantDamages(t *testing.T) {
 	}
 }
 
-func TestPermanantCheckLife(t *testing.T) {
-	p := Permanant{
+func TestPermanentCheckLife(t *testing.T) {
+	p := Permanent{
 		id:              uuid.New(),
 		toughness:       4,
 		damage_counters: 4,
 		source:          Card{Name: "Test Creature"},
 		owner: &Player{
 			Name:      "Player 1",
-			Creatures: []*Permanant{},
+			Creatures: []*Permanent{},
 			Graveyard: []Card{},
 		},
 	}

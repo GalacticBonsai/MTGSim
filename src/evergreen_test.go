@@ -119,8 +119,8 @@ func TestGetEvergreenAbilityDescriptions(t *testing.T) {
 	}
 }
 
-func TestPermanantHasEvergreenAbility(t *testing.T) {
-	permanant := Permanant{
+func TestPermanentHasEvergreenAbility(t *testing.T) {
+	Permanent := Permanent{
 		source: Card{
 			Name:     "Serra Angel",
 			Keywords: []string{"Flying", "Vigilance"},
@@ -138,15 +138,15 @@ func TestPermanantHasEvergreenAbility(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		hasAbility := CardHasEvergreenAbility(permanant.source, test.abilityName)
+		hasAbility := CardHasEvergreenAbility(Permanent.source, test.abilityName)
 		if hasAbility != test.expected {
-			t.Errorf("PermanantHasEvergreenAbility(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
+			t.Errorf("PermanentHasEvergreenAbility(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
 		}
 	}
 }
 
-func TestPermanantWithMultipleAbilities(t *testing.T) {
-	permanant := Permanant{
+func TestPermanentWithMultipleAbilities(t *testing.T) {
+	Permanent := Permanent{
 		source: Card{
 			Name:     "Akroma, Angel of Wrath",
 			Keywords: []string{"Flying", "First Strike", "Trample", "Haste", "Vigilance"},
@@ -166,15 +166,15 @@ func TestPermanantWithMultipleAbilities(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		hasAbility := CardHasEvergreenAbility(permanant.source, test.abilityName)
+		hasAbility := CardHasEvergreenAbility(Permanent.source, test.abilityName)
 		if hasAbility != test.expected {
-			t.Errorf("PermanantWithMultipleAbilities(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
+			t.Errorf("PermanentWithMultipleAbilities(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
 		}
 	}
 }
 
-func TestPermanantWithoutAbilities(t *testing.T) {
-	permanant := Permanant{
+func TestPermanentWithoutAbilities(t *testing.T) {
+	Permanent := Permanent{
 		source: Card{
 			Name:     "Grizzly Bears",
 			Keywords: []string{},
@@ -191,9 +191,9 @@ func TestPermanantWithoutAbilities(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		hasAbility := CardHasEvergreenAbility(permanant.source, test.abilityName)
+		hasAbility := CardHasEvergreenAbility(Permanent.source, test.abilityName)
 		if hasAbility != test.expected {
-			t.Errorf("PermanantWithoutAbilities(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
+			t.Errorf("PermanentWithoutAbilities(%s) = %v; expected %v", test.abilityName, hasAbility, test.expected)
 		}
 	}
 }

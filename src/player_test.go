@@ -35,8 +35,8 @@ func TestMillAbility(t *testing.T) {
 }
 
 func TestFightAbility(t *testing.T) {
-	creature := &Permanant{source: Card{Name: "Bear"}, power: 2, toughness: 2}
-	target := &Permanant{source: Card{Name: "Wolf"}, power: 3, toughness: 3}
+	creature := &Permanent{source: Card{Name: "Bear"}, power: 2, toughness: 2}
+	target := &Permanent{source: Card{Name: "Wolf"}, power: 3, toughness: 3}
 	creature.Fight(target)
 	// Both should have damage counters
 	if creature.damage_counters == 3 || target.damage_counters == 2 {
@@ -48,7 +48,7 @@ func TestFightAbility(t *testing.T) {
 
 func TestGoadAbility(t *testing.T) {
 	card := Card{Name: "Disrupt Decorum", Keywords: []string{"Goad"}}
-	target := &Permanant{source: Card{Name: "Goblin"}, tokenType: Creature}
+	target := &Permanent{source: Card{Name: "Goblin"}, tokenType: Creature}
 	player := &Player{Name: "P1"}
 	player.CastSpell(&card, target)
 	if !target.goaded {
@@ -58,7 +58,7 @@ func TestGoadAbility(t *testing.T) {
 
 func TestEquipAbility(t *testing.T) {
 	card := Card{Name: "Sword of Fire and Ice", TypeLine: "Artifact - Equipment", Keywords: []string{"Equip"}}
-	target := &Permanant{source: Card{Name: "Knight"}, tokenType: Creature}
+	target := &Permanent{source: Card{Name: "Knight"}, tokenType: Creature}
 	player := &Player{Name: "P1"}
 	player.CastSpell(&card, target)
 	// No assert: just ensure no panic and log output
@@ -66,7 +66,7 @@ func TestEquipAbility(t *testing.T) {
 
 func TestEnchantAbility(t *testing.T) {
 	card := Card{Name: "Pacifism", TypeLine: "Enchantment - Aura", Keywords: []string{"Enchant"}}
-	target := &Permanant{source: Card{Name: "Orc"}, tokenType: Creature}
+	target := &Permanent{source: Card{Name: "Orc"}, tokenType: Creature}
 	player := &Player{Name: "P1"}
 	player.CastSpell(&card, target)
 	// No assert: just ensure no panic and log output
@@ -74,7 +74,7 @@ func TestEnchantAbility(t *testing.T) {
 
 func TestWardAbility(t *testing.T) {
 	card := Card{Name: "Murder"}
-	target := &Permanant{source: Card{Name: "Adeline", Keywords: []string{"Ward"}}, tokenType: Creature}
+	target := &Permanent{source: Card{Name: "Adeline", Keywords: []string{"Ward"}}, tokenType: Creature}
 	player := &Player{Name: "P1"}
 	player.CastSpell(&card, target)
 	if len(player.Graveyard) == 0 {

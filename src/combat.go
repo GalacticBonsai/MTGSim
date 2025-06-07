@@ -3,7 +3,7 @@ package main
 import "strings"
 
 // CanBlock determines if blocker can block attacker, considering abilities like Flying, Reach, Intimidate, Shadow, Fear, etc.
-func CanBlock(attacker, blocker *Permanant) bool {
+func CanBlock(attacker, blocker *Permanent) bool {
 	// Flying: can only be blocked by creatures with flying or reach
 	if CardHasEvergreenAbility(attacker.source, "Flying") {
 		if CardHasEvergreenAbility(blocker.source, "Flying") || CardHasEvergreenAbility(blocker.source, "Reach") {
@@ -64,7 +64,7 @@ func CanBlock(attacker, blocker *Permanant) bool {
 }
 
 // AssignBlockers handles Menace: creatures with Menace must be blocked by two or more creatures if blocked at all.
-func AssignBlockers(attacker *Permanant, blockers []*Permanant) bool {
+func AssignBlockers(attacker *Permanent, blockers []*Permanent) bool {
 	if CardHasEvergreenAbility(attacker.source, "Menace") {
 		if len(blockers) < 2 {
 			LogPlayer("%s has Menace and can't be blocked by fewer than two creatures.", attacker.source.Name)
@@ -78,6 +78,7 @@ func AssignBlockers(attacker *Permanant, blockers []*Permanant) bool {
 	return true
 }
 
+// DealDamage handles the combat damage steps for the player and their opponent.
 func (p *Player) DealDamage() {
 	LogPlayer("First Strike Damage Step")
 	for _, creature := range append(p.Creatures, p.Opponents[0].Creatures...) {
@@ -100,7 +101,8 @@ func (p *Player) DealDamage() {
 	p.Opponents[0].cleanupDeadCreatures()
 }
 
-func (p *Permanant) resolveCombatDamage() {
+// resolveCombatDamage resolves combat damage for a permanent.
+func (p *Permanent) resolveCombatDamage() {
 	if p.attacking != nil {
 		var original_power = p.power
 		for _, blocker := range p.blockedBy {
@@ -117,6 +119,7 @@ func (p *Permanant) resolveCombatDamage() {
 	}
 }
 
+// cleanupDeadCreatures removes dead creatures from the battlefield after combat damage.
 func (p *Player) cleanupDeadCreatures() {
 	for _, creature := range p.Creatures {
 		// Indestructible: can't be destroyed
@@ -132,12 +135,12 @@ func (p *Player) cleanupDeadCreatures() {
 		for _, c := range damageSources {
 			if CardHasEvergreenAbility(c.source, "Deathtouch") && c.power > 0 {
 				LogPlayer("%s deals damage with Deathtouch to %s.", c, creature)
-				destroyPermanant(creature)
+				destroyPermanent(creature)
 			}
 		}
 		if creature.toughness <= creature.damage_counters {
 			LogPlayer("%s dies due to %d damage and %d toughness.", creature.source.Name, creature.damage_counters, creature.toughness)
-			destroyPermanant(creature)
+			destroyPermanent(creature)
 		}
 	}
 }

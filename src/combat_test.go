@@ -3,9 +3,9 @@ package main
 import "testing"
 
 func TestCanBlock(t *testing.T) {
-	// Helper to make a minimal Card and Permanant
-	makePerm := func(name string, keywords []string, colors []string, typeline string) *Permanant {
-		return &Permanant{
+	// Helper to make a minimal Card and Permanent
+	makePerm := func(name string, keywords []string, colors []string, typeline string) *Permanent {
+		return &Permanent{
 			source: Card{
 				Name:     name,
 				Keywords: keywords,
@@ -110,7 +110,7 @@ func TestCanBlock(t *testing.T) {
 }
 
 func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
-	attacker := Permanant{
+	attacker := Permanent{
 		source: Card{
 			Name:     "Fencing Ace",
 			Keywords: []string{"Double Strike"},
@@ -118,7 +118,7 @@ func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
 		power:     1,
 		toughness: 10,
 	}
-	defender := Permanant{
+	defender := Permanent{
 		source: Card{
 			Name:     "Grizzly Bears",
 			Keywords: []string{},
@@ -126,8 +126,8 @@ func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
 		power:     3,
 		toughness: 4,
 	}
-	player := Player{Creatures: []*Permanant{&attacker}, LifeTotal: 20}
-	opp := Player{Creatures: []*Permanant{&defender}, LifeTotal: 20}
+	player := Player{Creatures: []*Permanent{&attacker}, LifeTotal: 20}
+	opp := Player{Creatures: []*Permanent{&defender}, LifeTotal: 20}
 	attacker.owner = &player
 	defender.owner = &opp
 	attacker.attacking = &opp
@@ -135,7 +135,7 @@ func TestDoubleStrikeDealsDoubleDamage(t *testing.T) {
 	opp.Opponents = []*Player{&player}
 
 	// Simulate combat: attacker attacks, defender blocks
-	AssignBlockers(&attacker, []*Permanant{&defender})
+	AssignBlockers(&attacker, []*Permanent{&defender})
 
 	// Use the full combat damage function
 	player.DealDamage()
