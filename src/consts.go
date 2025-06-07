@@ -27,10 +27,10 @@ const (
 )
 
 // Permanent types
-type PermanantType int
+type PermanentType int
 
 const (
-	Creature PermanantType = iota
+	Creature PermanentType = iota
 	Artifact
 	Enchantment
 	Land
