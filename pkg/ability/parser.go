@@ -66,6 +66,15 @@ func (ap *AbilityParser) initializePatterns() {
 	// Static abilities (these don't use the stack)
 	ap.addPattern(Static, `Creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump", ap.parseStaticPump)
 	ap.addPattern(Static, `Other\s+creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump others", ap.parseStaticPumpOthers)
+
+	// Modal spells
+	ap.addPattern(Activated, `Choose one —.*`, DrawCards, "Modal spell", ap.parseModalSpell)
+	ap.addPattern(Activated, `Choose two —.*`, DrawCards, "Modal spell - choose two", ap.parseModalSpellTwo)
+	ap.addPattern(Activated, `Choose any number —.*`, DrawCards, "Modal spell - choose any", ap.parseModalSpellAny)
+
+	// Variable X-cost abilities
+	ap.addPattern(Activated, `\{X\}.*:\s*Draw\s+X\s+cards?`, DrawCards, "X-cost draw", ap.parseXCostDraw)
+	ap.addPattern(Activated, `\{X\}.*:\s*.*\s+deals\s+X\s+damage\s+to\s+(.*)`, DealDamage, "X-cost damage", ap.parseXCostDamage)
 }
 
 // addPattern adds a new pattern to the parser.
@@ -730,6 +739,103 @@ func (ap *AbilityParser) parseTapGainLife(matches []string, fullText string) (*A
 					},
 				},
 				Description: "You gain " + matches[1] + " life",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Modal spell parsers
+func (ap *AbilityParser) parseModalSpell(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       1,
+				Duration:    Instant,
+				Description: "Choose one modal effect",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseModalSpellTwo(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell - Choose Two",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       2,
+				Duration:    Instant,
+				Description: "Choose two modal effects",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseModalSpellAny(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell - Choose Any",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       0, // Variable
+				Duration:    Instant,
+				Description: "Choose any number of modal effects",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// X-cost parsers
+func (ap *AbilityParser) parseXCostDraw(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "X-Cost Draw",
+		Type: Activated,
+		Cost: Cost{
+			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+		},
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       -1, // -1 indicates variable X value
+				Duration:    Instant,
+				Description: "Draw X cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostDamage(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "X-Cost Damage",
+		Type: Activated,
+		Cost: Cost{
+			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+		},
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // -1 indicates variable X value
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal X damage to " + matches[1],
 			},
 		},
 		TimingRestriction: SorcerySpeed,
