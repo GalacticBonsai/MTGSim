@@ -1,6 +1,7 @@
-package main
+// Package game provides core game types and constants for MTG simulation.
+package game
 
-// Log levels
+// LogLevel represents different levels of logging detail.
 type LogLevel int
 
 const (
@@ -10,7 +11,7 @@ const (
 	CARD
 )
 
-// Mana types
+// ManaType represents different types of mana in Magic: The Gathering.
 type ManaType string
 
 const (
@@ -26,7 +27,7 @@ const (
 	X         ManaType = "X"
 )
 
-// Permanent types
+// PermanentType represents different types of permanents on the battlefield.
 type PermanentType int
 
 const (

@@ -1,21 +1,22 @@
 # MTGSim
 
-MTGSim is a Magic: The Gathering (MTG) deck simulation tool that uses AI to simulate MTG decks and help make decisions on card picks. The tool can import decks, simulate games, and track the performance of different decks.
+MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG decks and helps analyze deck performance. The tool can import decks, simulate games, and track the performance of different decks.
 
 ## Features
 
-- Import decks from text files.
-- Simulate games between decks.
-- Track wins and losses for each deck.
-- Display top-performing decks based on win percentage.
-- Generate random decks for simulation.
+- Import decks from `.deck` files with multiple format support
+- Simulate games between decks with configurable parameters
+- Track wins and losses for each deck with detailed statistics
+- Display top-performing decks based on win percentage
+- Automatic card database management with Scryfall integration
+- Modular, well-organized codebase with proper Go package structure
 
 ## Getting Started
 
 ### Prerequisites
 
-- Go 1.16 or later
-- Internet connection (for downloading card data)
+- Go 1.21 or later
+- Internet connection (for downloading card data on first run)
 
 ### Installation
 
@@ -32,7 +33,7 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that uses AI to simu
 
 3. Build the project:
     ```sh
-    go build -o mtgsim ./src
+    go build -o mtgsim ./cmd/mtgsim
     ```
 
 4. Run the project:
@@ -42,77 +43,140 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that uses AI to simu
 
 ## Usage
 
-### Importing Decks
+### Command Line Options
 
-Decks should be stored in the `decks/Generated` directory. Each deck should be a text file with the format:
+```sh
+./mtgsim [options]
+```
+
+**Options:**
+- `-games N`: Number of games to simulate (default: 1)
+- `-decks DIR`: Directory containing deck files (default: "decks/1v1")
+- `-log LEVEL`: Log level - META, GAME, PLAYER, CARD (default: "CARD")
+
+### Deck Format
+
+Decks should be stored as `.deck` files. The tool supports multiple formats:
+
+**Standard Format:**
 ```
 4 Lightning Bolt
 3 Mountain
-...
+20 Forest
 ```
 
-### Simulating Games
+**Extended Format with Set Information:**
+```
+About
+Name My Awesome Deck
 
-The main simulation logic is in the `main.go` file. It reads decks from the `decks/Generated` directory, simulates games, and tracks the results.
+Deck
+4x Lightning Bolt (CLB) 401
+3x Mountain (DSK) 283
+20x Forest (TDM) 276
 
-### Viewing Results
+Sideboard
+2x Naturalize (M19) 190
+```
 
-Results are printed to the console, showing the top-performing decks based on win percentage.
+### Examples
+
+**Simulate 100 games:**
+```sh
+./mtgsim -games=100
+```
+
+**Use different deck directory:**
+```sh
+./mtgsim -decks=decks/welcome -games=50
+```
+
+**Enable detailed logging:**
+```sh
+./mtgsim -log=PLAYER -games=10
+```
 
 ## Project Structure
 
-- `src/`: Contains the source code for the project.
-- `decks/`: Contains the deck files used for simulation.
-- `meta/`: Contains scripts for generating decks and other meta operations.
+```
+MTGSim/
+├── cmd/mtgsim/          # Main application
+├── pkg/                 # Public packages
+│   ├── card/           # Card types and database
+│   ├── deck/           # Deck management
+│   ├── game/           # Game types and constants
+│   └── simulation/     # Simulation utilities
+├── internal/logger/    # Internal logging package
+├── decks/              # Deck files organized by category
+│   ├── 1v1/           # Two-player decks
+│   ├── welcome/       # Beginner-friendly decks
+│   ├── vanilla/       # Simple creature decks
+│   └── novelty/       # Special theme decks
+└── meta/              # Deck generation tools
+```
 
-## Examples
+## Card Database
 
-### Simulating a Game
+MTGSim automatically downloads and caches card data from [Scryfall](https://scryfall.com/) on first run. The database is stored locally as `cardDB.json` and contains comprehensive information about Magic: The Gathering cards.
 
-To simulate a game between two decks, run the following command:
+## Development
+
+### Running Tests
+
 ```sh
-./mtgsim
-```
-The results will be printed to the console.
-
-### Importing a Deck
-
-To import a deck, place a text file in the `decks/Generated` directory with the following format:
-```
-4 Lightning Bolt
-3 Mountain
-...
+go test ./...
 ```
 
-## Configuration
+### Building for Different Platforms
 
-Currently, there are no configuration options available. Future versions may include configurable options for simulation parameters.
+```sh
+# Linux
+GOOS=linux GOARCH=amd64 go build -o mtgsim-linux ./cmd/mtgsim
 
-## Known Issues
+# Windows
+GOOS=windows GOARCH=amd64 go build -o mtgsim.exe ./cmd/mtgsim
 
-- The tool does not yet support parsing and handling of evergreen creature abilities.
-- Activated and triggered abilities are not yet implemented.
-- Card effects are not fully simulated.
+# macOS
+GOOS=darwin GOARCH=amd64 go build -o mtgsim-mac ./cmd/mtgsim
+```
+
+## Architecture
+
+The codebase follows Go best practices with a clean separation of concerns:
+
+- **cmd/**: Application entry points
+- **pkg/**: Reusable packages that could be imported by other projects
+- **internal/**: Private packages not intended for external use
+
+## Known Limitations
+
+- Game simulation is currently simplified (basic damage dealing)
+- Full MTG rules engine is not implemented
+- Advanced card interactions are not simulated
 
 ## Future Enhancements
 
-- **Evergreen Creature Abilities**: Implement parsing and handling of evergreen creature abilities like Flying, Trample, etc.
-- **Activated and Triggered Abilities**: Parse and simulate activated and triggered abilities of cards.
-- **Card Effects**: Implement parsing and simulation of various card effects.
-- **Winrate Comparison**: Compare the win rates of individual cards within different decks.
+- **Complete Rules Engine**: Implement full Magic: The Gathering rules
+- **Advanced Card Interactions**: Support for complex card abilities and interactions
+- **Deck Analysis**: Statistical analysis of deck composition and performance
+- **Tournament Simulation**: Multi-round tournament brackets
+- **Web Interface**: Browser-based deck building and simulation
 
 ## Contributing
 
-Contributions are welcome! Please fork the repository and submit a pull request.
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contact Information
-
-For support or questions, please contact the maintainers at [your-email@example.com].
-
 ## Acknowledgments
 
-- [Scryfall](https://scryfall.com/) for providing the card data.
+- [Scryfall](https://scryfall.com/) for providing comprehensive MTG card data
+- The Magic: The Gathering community for inspiration and feedback

@@ -1,3 +1,4 @@
+// Package main provides deck generation utilities for MTGSim.
 package main
 
 import (
@@ -9,7 +10,7 @@ import (
 func generateDecks(cardNames []string, deckSize int, outputDir string) {
 	combinations := generateCombinations(cardNames, deckSize)
 	for i, deck := range combinations {
-		fileName := fmt.Sprintf("deck_%d.txt", i+1)
+		fileName := fmt.Sprintf("deck_%d.deck", i+1)
 		filePath := filepath.Join(outputDir, fileName)
 		writeDeckToFile(deck, filePath)
 	}
@@ -52,7 +53,7 @@ func writeDeckToFile(deck []string, filePath string) {
 func main() {
 	cardNames := []string{"Mountain", "Lightning Bolt"}
 	deckSize := 30
-	outputDir := "../decks/Generated"
+	outputDir := "../decks/generated"
 
 	err := os.MkdirAll(outputDir, os.ModePerm)
 	if err != nil {
