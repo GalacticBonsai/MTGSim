@@ -1,0 +1,103 @@
+{
+	"folders": [
+		{
+			"name": "MTGSim",
+			"path": "."
+		}
+	],
+	"settings": {
+		"go.toolsManagement.checkForUpdates": "local",
+		"go.useLanguageServer": true,
+		"go.lintOnSave": "package",
+		"go.vetOnSave": "package",
+		"go.formatTool": "goimports",
+		"go.testFlags": ["-v"],
+		"go.testTimeout": "30s",
+		"go.coverOnSave": false,
+		"go.coverOnSingleTest": true,
+		"go.buildOnSave": "package",
+		"files.exclude": {
+			"**/.git": true,
+			"**/*.exe": true,
+			"**/*.test": true,
+			"**/*.out": true,
+			"**/cardDB.json": true,
+			"**/simulation.log": true
+		},
+		"editor.formatOnSave": true,
+		"editor.codeActionsOnSave": {
+			"source.organizeImports": "explicit"
+		},
+		"[go]": {
+			"editor.insertSpaces": false,
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": {
+				"source.organizeImports": "explicit"
+			}
+		}
+	},
+	"extensions": {
+		"recommendations": [
+			"golang.go",
+			"ms-vscode.vscode-json",
+			"redhat.vscode-yaml",
+			"formulahendry.code-runner",
+			"streetsidesoftware.code-spell-checker",
+			"ms-vscode.vscode-markdown",
+			"davidanson.vscode-markdownlint"
+		]
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "Build MTGSim",
+				"type": "shell",
+				"command": "go",
+				"args": ["build", "-o", "mtgsim", "./cmd/mtgsim"],
+				"group": {
+					"kind": "build",
+					"isDefault": true
+				},
+				"presentation": {
+					"echo": true,
+					"reveal": "silent",
+					"focus": false,
+					"panel": "shared"
+				},
+				"problemMatcher": "$go"
+			},
+			{
+				"label": "Test All",
+				"type": "shell",
+				"command": "go",
+				"args": ["test", "./..."],
+				"group": {
+					"kind": "test",
+					"isDefault": true
+				},
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared"
+				},
+				"problemMatcher": "$go"
+			},
+			{
+				"label": "Run MTGSim",
+				"type": "shell",
+				"command": "./mtgsim",
+				"args": ["-games=10", "-log=GAME"],
+				"group": "build",
+				"dependsOn": "Build MTGSim",
+				"presentation": {
+					"echo": true,
+					"reveal": "always",
+					"focus": false,
+					"panel": "shared"
+				}
+			}
+		]
+	}
+}

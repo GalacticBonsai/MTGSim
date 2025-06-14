@@ -1,4 +1,4 @@
-module MTGSim
+module github.com/mtgsim/mtgsim
 
 go 1.21
 
