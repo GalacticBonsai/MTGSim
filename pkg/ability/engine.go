@@ -19,7 +19,7 @@ type GameState interface {
 	IsCombatPhase() bool
 	CanActivateAbilities() bool
 	AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int)
-	DealDamage(source interface{}, target interface{}, amount int)
+	DealDamage(source any, target any, amount int)
 	DrawCards(player AbilityPlayer, count int)
 	GainLife(player AbilityPlayer, amount int)
 	LoseLife(player AbilityPlayer, amount int)
@@ -30,10 +30,10 @@ type AbilityPlayer interface {
 	GetName() string
 	GetLifeTotal() int
 	SetLifeTotal(life int)
-	GetHand() []interface{}
-	AddCardToHand(card interface{})
-	GetCreatures() []interface{}
-	GetLands() []interface{}
+	GetHand() []any
+	AddCardToHand(card any)
+	GetCreatures() []any
+	GetLands() []any
 	CanPayCost(cost Cost) bool
 	PayCost(cost Cost) error
 	GetManaPool() map[game.ManaType]int
@@ -77,7 +77,7 @@ func NewExecutionEngine(gameState GameState) *ExecutionEngine {
 }
 
 // ExecuteAbility executes an ability with the given targets.
-func (ee *ExecutionEngine) ExecuteAbility(ability *Ability, controller AbilityPlayer, targets []interface{}) error {
+func (ee *ExecutionEngine) ExecuteAbility(ability *Ability, controller AbilityPlayer, targets []any) error {
 	logger.LogCard("Executing ability: %s", ability.Name)
 
 	// Check if ability can be activated
@@ -161,7 +161,7 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 }
 
 // payCosts pays the costs for an ability.
-func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, source interface{}) error {
+func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, source any) error {
 	// Handle tap costs by tapping the source permanent
 	if ability.Cost.TapCost {
 		if permanent, ok := source.(AbilityPermanent); ok {
@@ -187,7 +187,7 @@ func (ee *ExecutionEngine) resolveManaAbility(ability *Ability, controller Abili
 }
 
 // resolveAbility resolves a non-mana ability.
-func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPlayer, targets []interface{}) error {
+func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPlayer, targets []any) error {
 	for _, effect := range ability.Effects {
 		if err := ee.applyEffect(effect, controller, targets); err != nil {
 			return err
@@ -197,7 +197,7 @@ func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPl
 }
 
 // applyEffect applies a specific effect.
-func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, targets []interface{}) error {
+func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, targets []any) error {
 	switch effect.Type {
 	case DrawCards:
 		ee.gameState.DrawCards(controller, effect.Value)
@@ -238,7 +238,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 }
 
 // determineManaType determines what type of mana an ability produces.
-func (ee *ExecutionEngine) determineManaType(ability *Ability, effect Effect) game.ManaType {
+func (ee *ExecutionEngine) determineManaType(ability *Ability, _ Effect) game.ManaType {
 	// Parse from ability description or oracle text
 	text := ability.OracleText
 	
@@ -320,7 +320,7 @@ func (ee *ExecutionEngine) hasValidTargetsForEnhanced(enhancedTarget EnhancedTar
 }
 
 // hasValidTargetsBasic provides fallback validation for basic targets.
-func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, controller AbilityPlayer) bool {
+func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, _ AbilityPlayer) bool {
 	switch target.Type {
 	case CreatureTarget:
 		// Check if any creatures exist
@@ -345,8 +345,8 @@ func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, controller Abilit
 }
 
 // getPotentialTargets returns all potential targets of a given type.
-func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []interface{} {
-	var targets []interface{}
+func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []any {
+	var targets []any
 
 	switch targetType {
 	case CreatureTarget:
@@ -376,7 +376,7 @@ func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []interfac
 }
 
 // validateTargets validates that the provided targets are legal for the ability.
-func (ee *ExecutionEngine) validateTargets(ability *Ability, controller AbilityPlayer, targets []interface{}) error {
+func (ee *ExecutionEngine) validateTargets(ability *Ability, controller AbilityPlayer, targets []any) error {
 	targetIndex := 0
 
 	for _, effect := range ability.Effects {
@@ -411,7 +411,7 @@ func (ee *ExecutionEngine) validateTargets(ability *Ability, controller AbilityP
 }
 
 // isValidBasicTarget provides basic target validation for legacy targets.
-func (ee *ExecutionEngine) isValidBasicTarget(target interface{}, targetReq Target) bool {
+func (ee *ExecutionEngine) isValidBasicTarget(target any, targetReq Target) bool {
 	switch targetReq.Type {
 	case CreatureTarget:
 		return ee.targetValidator.isCreature(target)
@@ -427,14 +427,14 @@ func (ee *ExecutionEngine) isValidBasicTarget(target interface{}, targetReq Targ
 }
 
 // applyPumpEffect applies a pump effect to a creature.
-func (ee *ExecutionEngine) applyPumpEffect(target interface{}, power, toughness int, duration EffectDuration) {
+func (ee *ExecutionEngine) applyPumpEffect(_ any, power, toughness int, duration EffectDuration) {
 	// This would need to be implemented based on how creatures are represented
 	// For now, just log the effect
 	logger.LogCard("Applying +%d/+%d effect (duration: %v)", power, toughness, duration)
 }
 
 // applyTapEffect applies a tap/untap effect.
-func (ee *ExecutionEngine) applyTapEffect(target interface{}, shouldTap bool) {
+func (ee *ExecutionEngine) applyTapEffect(target any, shouldTap bool) {
 	if permanent, ok := target.(AbilityPermanent); ok {
 		if shouldTap {
 			permanent.Tap()
@@ -447,7 +447,7 @@ func (ee *ExecutionEngine) applyTapEffect(target interface{}, shouldTap bool) {
 }
 
 // ParseAndRegisterAbilities parses abilities from oracle text and registers them.
-func (ee *ExecutionEngine) ParseAndRegisterAbilities(oracleText string, source interface{}) ([]*Ability, error) {
+func (ee *ExecutionEngine) ParseAndRegisterAbilities(oracleText string, source any) ([]*Ability, error) {
 	abilities, err := ee.parser.ParseAbilities(oracleText, source)
 	if err != nil {
 		return nil, err
