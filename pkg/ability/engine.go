@@ -53,6 +53,11 @@ type AbilityPermanent interface {
 	RemoveAbility(abilityID uuid.UUID)
 }
 
+// SummoningSickness interface for checking if a permanent has summoning sickness
+type SummoningSickness interface {
+	HasSummoningSickness() bool
+}
+
 // ExecutionEngine handles the execution of abilities and their effects.
 type ExecutionEngine struct {
 	gameState       GameState
@@ -115,6 +120,25 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 	case OnlyOnYourTurn:
 		if ee.gameState.GetCurrentPlayer().GetName() != controller.GetName() {
 			return false
+		}
+	}
+
+	// Check tap cost requirements
+	if ability.Cost.TapCost {
+		if permanent, ok := ability.Source.(AbilityPermanent); ok {
+			if permanent.IsTapped() {
+				return false // Cannot activate tap abilities when source is tapped
+			}
+
+			// Check summoning sickness for non-mana abilities
+			if ability.Type != Mana {
+				// Check if this permanent has summoning sickness
+				if summoningSickPerm, ok := permanent.(SummoningSickness); ok {
+					if summoningSickPerm.HasSummoningSickness() {
+						return false // Creatures with summoning sickness cannot use tap abilities (except mana abilities)
+					}
+				}
+			}
 		}
 	}
 

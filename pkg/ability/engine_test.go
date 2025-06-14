@@ -178,12 +178,13 @@ func (m *mockPlayer) GetManaPool() map[game.ManaType]int {
 }
 
 type mockPermanent struct {
-	id         uuid.UUID
-	name       string
-	owner      AbilityPlayer
-	controller AbilityPlayer
-	tapped     bool
-	abilities  []*Ability
+	id            uuid.UUID
+	name          string
+	owner         AbilityPlayer
+	controller    AbilityPlayer
+	tapped        bool
+	abilities     []*Ability
+	summoningSick bool
 }
 
 func (m *mockPermanent) GetID() uuid.UUID {
@@ -229,6 +230,11 @@ func (m *mockPermanent) RemoveAbility(abilityID uuid.UUID) {
 			break
 		}
 	}
+}
+
+// Implement SummoningSickness interface
+func (m *mockPermanent) HasSummoningSickness() bool {
+	return m.summoningSick
 }
 
 func TestExecutionEngine_ExecuteManaAbility(t *testing.T) {
