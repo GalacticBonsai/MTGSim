@@ -75,6 +75,27 @@ func (ap *AbilityParser) initializePatterns() {
 	// Variable X-cost abilities
 	ap.addPattern(Activated, `\{X\}.*:\s*Draw\s+X\s+cards?`, DrawCards, "X-cost draw", ap.parseXCostDraw)
 	ap.addPattern(Activated, `\{X\}.*:\s*.*\s+deals\s+X\s+damage\s+to\s+(.*)`, DealDamage, "X-cost damage", ap.parseXCostDamage)
+
+	// Spell effects (for instants and sorceries)
+	ap.addPattern(Activated, `.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)`, DealDamage, "Spell damage", ap.parseSpellDamage)
+	ap.addPattern(Activated, `Draw\s+(two|three|four|five)\s+cards?`, DrawCards, "Spell draw words", ap.parseSpellDrawWords)
+	ap.addPattern(Activated, `Draw\s+(\d+)\s+cards?`, DrawCards, "Spell draw", ap.parseSpellDraw)
+	ap.addPattern(Activated, `Target\s+player\s+draws\s+(three|four|five)\s+cards?`, DrawCards, "Targeted spell draw words", ap.parseTargetedSpellDrawWords)
+	ap.addPattern(Activated, `Target\s+player\s+draws\s+(\d+)\s+cards?`, DrawCards, "Targeted spell draw", ap.parseTargetedSpellDraw)
+	ap.addPattern(Activated, `Destroy\s+target\s+(.*)`, DestroyPermanent, "Spell destroy", ap.parseSpellDestroy)
+	ap.addPattern(Activated, `Counter\s+target\s+spell`, CounterSpell, "Counterspell", ap.parseCounterspell)
+	ap.addPattern(Activated, `Counter\s+target\s+spell\s+unless\s+its\s+controller\s+pays\s+\{(\d+)\}`, CounterSpell, "Conditional counterspell", ap.parseConditionalCounterspell)
+	ap.addPattern(Activated, `Target\s+player\s+gains\s+(\d+)\s+life`, GainLife, "Targeted life gain", ap.parseTargetedLifeGain)
+	ap.addPattern(Activated, `Target\s+creature\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Spell pump", ap.parseSpellPump)
+
+	// X-cost spell effects
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)`, DealDamage, "X-cost spell damage", ap.parseXCostSpellDamage)
+	ap.addPattern(Activated, `Draw\s+X\s+cards?`, DrawCards, "X-cost spell draw", ap.parseXCostSpellDraw)
+
+	// Complex spell effects
+	ap.addPattern(Activated, `.*\s+deals\s+(\d+)\s+damage\s+divided\s+as\s+you\s+choose\s+among\s+(.*)`, DealDamage, "Divided damage", ap.parseDividedDamage)
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\.\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life", ap.parseDrainLife)
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life no period", ap.parseDrainLife)
 }
 
 // addPattern adds a new pattern to the parser.
@@ -836,6 +857,374 @@ func (ap *AbilityParser) parseXCostDamage(matches []string, fullText string) (*A
 					},
 				},
 				Description: "Deal X damage to " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Spell effect parsers
+func (ap *AbilityParser) parseSpellDamage(matches []string, fullText string) (*Ability, error) {
+	damage := ap.parseIntValue(matches[1])
+	targetType := ap.parseTargetType(matches[2])
+
+	return &Ability{
+		Name: "Spell Damage",
+		Type: Activated, // Spells are treated as activated abilities for parsing
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    damage,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal " + matches[1] + " damage to " + matches[2],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellDraw(matches []string, fullText string) (*Ability, error) {
+	cards := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Spell Draw",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       cards,
+				Duration:    Instant,
+				Description: "Draw " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetedSpellDraw(matches []string, fullText string) (*Ability, error) {
+	cards := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Targeted Spell Draw",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DrawCards,
+				Value:    cards,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     PlayerTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target player draws " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellDestroy(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "Spell Destroy",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DestroyPermanent,
+				Value:    1,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Destroy target " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseCounterspell(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Counterspell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     CounterSpell,
+				Value:    1,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     SpellTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Counter target spell",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetedLifeGain(matches []string, fullText string) (*Ability, error) {
+	life := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Targeted Life Gain",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     GainLife,
+				Value:    life,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     PlayerTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target player gains " + matches[1] + " life",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellPump(matches []string, fullText string) (*Ability, error) {
+	power := ap.parseIntValue(matches[1])
+	toughness := ap.parseIntValue(matches[2])
+
+	return &Ability{
+		Name: "Spell Pump",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     PumpCreature,
+				Value:    power, // Store toughness in description for now
+				Duration: UntilEndOfTurn,
+				Targets: []Target{
+					{
+						Type:     CreatureTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target creature gets +" + matches[1] + "/+" + matches[2] + " until end of turn (toughness: " + strconv.Itoa(toughness) + ")",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Helper function to parse integer values from regex matches
+func (ap *AbilityParser) parseIntValue(s string) int {
+	if val, err := strconv.Atoi(s); err == nil {
+		return val
+	}
+	return 0
+}
+
+// Additional spell parsers
+func (ap *AbilityParser) parseSpellDrawWords(matches []string, fullText string) (*Ability, error) {
+	// Convert word numbers to integers
+	var cardCount int
+	switch strings.ToLower(matches[1]) {
+	case "two":
+		cardCount = 2
+	case "three":
+		cardCount = 3
+	case "four":
+		cardCount = 4
+	case "five":
+		cardCount = 5
+	default:
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Spell Draw Words",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       cardCount,
+				Duration:    Instant,
+				Description: "Draw " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetedSpellDrawWords(matches []string, fullText string) (*Ability, error) {
+	// Convert word numbers to integers
+	var cardCount int
+	switch strings.ToLower(matches[1]) {
+	case "three":
+		cardCount = 3
+	case "four":
+		cardCount = 4
+	case "five":
+		cardCount = 5
+	default:
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Targeted Spell Draw Words",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DrawCards,
+				Value:    cardCount,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     PlayerTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target player draws " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseConditionalCounterspell(matches []string, fullText string) (*Ability, error) {
+	cost := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Conditional Counterspell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     CounterSpell,
+				Value:    cost, // Store the mana cost to pay
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     SpellTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Counter target spell unless its controller pays {" + matches[1] + "}",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostSpellDamage(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "X-Cost Spell Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // -1 indicates variable X value
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal X damage to " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostSpellDraw(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "X-Cost Spell Draw",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       -1, // -1 indicates variable X value
+				Duration:    Instant,
+				Description: "Draw X cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseDividedDamage(matches []string, fullText string) (*Ability, error) {
+	damage := ap.parseIntValue(matches[1])
+	targetDesc := matches[2]
+
+	return &Ability{
+		Name: "Divided Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    damage,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     AnyTarget, // Can target multiple things
+						Required: true,
+						Count:    2, // Up to two targets
+					},
+				},
+				Description: "Deal " + matches[1] + " damage divided as you choose among " + targetDesc,
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseDrainLife(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "Drain Life",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // X damage
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal X damage to " + matches[1],
+			},
+			{
+				Type:        GainLife,
+				Value:       -1, // Equal to damage dealt
+				Duration:    Instant,
+				Description: "Gain life equal to the damage dealt",
 			},
 		},
 		TimingRestriction: SorcerySpeed,

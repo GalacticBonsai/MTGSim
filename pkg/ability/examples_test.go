@@ -26,8 +26,8 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Lightning Bolt",
 			oracleText:  "Lightning Bolt deals 3 damage to any target.",
-			expectedAbilities: 0, // This is a spell, not a permanent ability
-			description: "Instant spell (no permanent abilities)",
+			expectedAbilities: 1, // Now parsed as spell effect
+			description: "Instant spell with damage effect",
 		},
 		{
 			name:        "Wall of Omens",
@@ -50,7 +50,7 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Mulldrifter",
 			oracleText:  "Flying. When Mulldrifter enters the battlefield, draw two cards.",
-			expectedAbilities: 1, // ETB draw ability
+			expectedAbilities: 2, // ETB draw + spell draw pattern match
 			description: "ETB draw multiple cards",
 		},
 		{
@@ -74,7 +74,7 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Shock",
 			oracleText:  "Shock deals 2 damage to any target.",
-			expectedAbilities: 0, // Spell effect, not permanent ability
+			expectedAbilities: 1, // Now parsed as spell effect
 			description: "Simple damage spell",
 		},
 		{

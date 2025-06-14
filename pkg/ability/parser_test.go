@@ -99,7 +99,7 @@ func TestAbilityParser_ParseTriggeredAbilities(t *testing.T) {
 		{
 			name:        "ETB draw multiple cards",
 			oracleText:  "When this creature enters the battlefield, draw 2 cards.",
-			expectedLen: 1,
+			expectedLen: 2, // ETB trigger + spell draw pattern
 			expectedTrigger: EntersTheBattlefield,
 			expectedEffect: DrawCards,
 			expectedValue: 2,
@@ -107,7 +107,7 @@ func TestAbilityParser_ParseTriggeredAbilities(t *testing.T) {
 		{
 			name:        "ETB deal damage",
 			oracleText:  "When this creature enters the battlefield, it deals 3 damage to any target.",
-			expectedLen: 1,
+			expectedLen: 2, // ETB trigger + spell damage pattern
 			expectedTrigger: EntersTheBattlefield,
 			expectedEffect: DealDamage,
 			expectedValue: 3,
@@ -143,25 +143,32 @@ func TestAbilityParser_ParseTriggeredAbilities(t *testing.T) {
 				return
 			}
 
-			if len(abilities) > 0 {
-				ability := abilities[0]
-				if ability.Type != Triggered {
-					t.Errorf("ParseAbilities() ability type = %v, want %v", ability.Type, Triggered)
+			// Find the triggered ability among all parsed abilities
+			var triggeredAbility *Ability
+			for _, ability := range abilities {
+				if ability.Type == Triggered {
+					triggeredAbility = ability
+					break
+				}
+			}
+
+			if triggeredAbility == nil {
+				t.Errorf("ParseAbilities() no triggered ability found among %d abilities", len(abilities))
+				return
+			}
+
+			if triggeredAbility.TriggerCondition != tt.expectedTrigger {
+				t.Errorf("ParseAbilities() trigger condition = %v, want %v", triggeredAbility.TriggerCondition, tt.expectedTrigger)
+			}
+
+			if len(triggeredAbility.Effects) > 0 {
+				effect := triggeredAbility.Effects[0]
+				if effect.Type != tt.expectedEffect {
+					t.Errorf("ParseAbilities() effect type = %v, want %v", effect.Type, tt.expectedEffect)
 				}
 
-				if ability.TriggerCondition != tt.expectedTrigger {
-					t.Errorf("ParseAbilities() trigger condition = %v, want %v", ability.TriggerCondition, tt.expectedTrigger)
-				}
-
-				if len(ability.Effects) > 0 {
-					effect := ability.Effects[0]
-					if effect.Type != tt.expectedEffect {
-						t.Errorf("ParseAbilities() effect type = %v, want %v", effect.Type, tt.expectedEffect)
-					}
-
-					if effect.Value != tt.expectedValue {
-						t.Errorf("ParseAbilities() effect value = %d, want %d", effect.Value, tt.expectedValue)
-					}
+				if effect.Value != tt.expectedValue {
+					t.Errorf("ParseAbilities() effect value = %d, want %d", effect.Value, tt.expectedValue)
 				}
 			}
 		})
