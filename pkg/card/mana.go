@@ -74,6 +74,35 @@ func (mp *ManaPool) Add(manaType types.ManaType, amount int) {
 	mp.pool[manaType] += amount
 }
 
+// Total returns the total amount of mana in the pool.
+func (mp *ManaPool) Total() int {
+	total := 0
+	for _, amount := range mp.pool {
+		total += amount
+	}
+	return total
+}
+
+// Get returns the amount of mana of a specific type.
+func (mp *ManaPool) Get(manaType types.ManaType) int {
+	return mp.pool[manaType]
+}
+
+// String returns a string representation of the mana pool for debugging.
+func (mp *ManaPool) String() string {
+	if mp == nil || mp.pool == nil || mp.Total() == 0 {
+		return "empty"
+	}
+
+	var parts []string
+	for manaType, amount := range mp.pool {
+		if amount > 0 {
+			parts = append(parts, fmt.Sprintf("%s:%d", manaType, amount))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 // CanPay checks if the pool has enough mana to pay the given cost.
 func (mp *ManaPool) CanPay(cost Mana) bool {
 	tempPool := make(map[types.ManaType]int)
@@ -81,11 +110,28 @@ func (mp *ManaPool) CanPay(cost Mana) bool {
 		tempPool[k] = v
 	}
 
+	// First, pay for specific colored mana requirements
 	for manaType, amount := range cost.pool {
-		if tempPool[manaType] < amount {
+		if manaType == types.Any {
+			continue // Handle generic mana later
+		}
+
+		if tempPool[manaType] >= amount {
+			tempPool[manaType] -= amount
+		} else {
+			return false // Not enough of this specific color
+		}
+	}
+
+	// Then, pay for generic mana with any remaining mana
+	if genericCost, hasGeneric := cost.pool[types.Any]; hasGeneric {
+		totalAvailable := 0
+		for _, amount := range tempPool {
+			totalAvailable += amount
+		}
+		if totalAvailable < genericCost {
 			return false
 		}
-		tempPool[manaType] -= amount
 	}
 
 	return true
@@ -97,11 +143,49 @@ func (mp *ManaPool) Pay(cost Mana) error {
 		return fmt.Errorf("not enough mana to pay the cost")
 	}
 
+	// First, pay for specific colored mana requirements
 	for manaType, amount := range cost.pool {
+		if manaType == types.Any {
+			continue // Handle generic mana later
+		}
 		mp.pool[manaType] -= amount
 	}
 
+	// Then, pay for generic mana with any remaining mana
+	if genericCost, hasGeneric := cost.pool[types.Any]; hasGeneric {
+		remaining := genericCost
+
+		// First try to use any colorless mana
+		if mp.pool[types.Colorless] > 0 {
+			used := min(mp.pool[types.Colorless], remaining)
+			mp.pool[types.Colorless] -= used
+			remaining -= used
+		}
+
+		// Then use any other mana types
+		for manaType := range mp.pool {
+			if manaType == types.Any || manaType == types.Colorless {
+				continue
+			}
+			if remaining <= 0 {
+				break
+			}
+			available := mp.pool[manaType]
+			used := min(available, remaining)
+			mp.pool[manaType] -= used
+			remaining -= used
+		}
+	}
+
 	return nil
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // CheckManaProducer analyzes oracle text to determine if a card produces mana.

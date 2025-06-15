@@ -128,6 +128,7 @@ func TestGameBasicFlow(t *testing.T) {
 		Artifacts:     make([]*Permanent, 0),
 		Planeswalkers: make([]*Permanent, 0),
 		Lands:         make([]*Permanent, 0),
+		ManaPool:      card.NewManaPool(),
 	}
 	player1.Deck.Cards = []card.Card{
 		{Name: "Mountain"}, {Name: "Mountain"}, {Name: "Lightning Bolt"},
@@ -145,6 +146,7 @@ func TestGameBasicFlow(t *testing.T) {
 		Artifacts:     make([]*Permanent, 0),
 		Planeswalkers: make([]*Permanent, 0),
 		Lands:         make([]*Permanent, 0),
+		ManaPool:      card.NewManaPool(),
 	}
 	player2.Deck.Cards = []card.Card{
 		{Name: "Mountain"}, {Name: "Mountain"}, {Name: "Lightning Bolt"},

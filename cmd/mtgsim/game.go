@@ -71,6 +71,9 @@ type Player struct {
 	LandDropsThisTurn    int  // Number of lands played this turn
 	LandDropsPerTurn     int  // Maximum lands allowed per turn (default 1)
 	HasPlayedLandThisTurn bool // Simple boolean for basic rule
+
+	// Mana pool
+	ManaPool *card.ManaPool
 }
 
 // Game represents a Magic: The Gathering game.
@@ -114,6 +117,9 @@ func (g *Game) AddPlayer(decklistPath string) error {
 		LandDropsThisTurn:    0,
 		LandDropsPerTurn:     1, // Standard MTG rule: one land per turn
 		HasPlayedLandThisTurn: false,
+
+		// Initialize mana pool
+		ManaPool: card.NewManaPool(),
 	}
 
 	g.Players = append(g.Players, player)
@@ -286,6 +292,10 @@ func (g *Game) endStep(player *Player) {
 		creature.damage_counters = 0
 	}
 
+	// Clear mana pool (mana burn no longer exists in modern MTG)
+	player.ManaPool = card.NewManaPool()
+	logger.LogPlayer("%s: Mana pool cleared", player.Name)
+
 	// Reset land drops per turn to default (in case it was modified by effects)
 	if player.LandDropsPerTurn != 1 {
 		logger.LogPlayer("%s: Land drops per turn reset to 1 (was %d)", player.Name, player.LandDropsPerTurn)
@@ -314,11 +324,14 @@ func (g *Game) endStep(player *Player) {
 func (g *Game) mainPhase(player *Player) {
 	logger.LogPlayer("%s: Main phase", player.Name)
 
+	// Generate mana from lands
+	g.generateMana(player)
+
 	// Simple AI: play a land if possible
 	g.playLand(player)
 
-	// Simple AI: cast creatures if possible
-	g.castCreatures(player)
+	// Simple AI: cast spells if possible
+	g.castSpells(player)
 }
 
 // playLand attempts to play a land from hand
@@ -377,24 +390,220 @@ func (g *Game) hasLandDropAvailable(player *Player) bool {
 	return player.LandDropsThisTurn < player.LandDropsPerTurn
 }
 
-// castCreatures attempts to cast creature spells
-func (g *Game) castCreatures(player *Player) {
+// generateMana taps all untapped lands to generate mana
+func (g *Game) generateMana(player *Player) {
+	logger.LogPlayer("%s: Generating mana from lands", player.Name)
+
+	manaGenerated := 0
+	for _, land := range player.Lands {
+		if !land.tapped && land.manaProducer {
+			// Tap the land
+			land.tapped = true
+
+			// Add mana to pool based on land's mana types
+			for _, manaType := range land.manaTypes {
+				player.ManaPool.Add(manaType, 1)
+				manaGenerated++
+				logger.LogCard("%s taps %s for %s mana", player.Name, land.source.Name, manaType)
+			}
+		}
+	}
+
+	if manaGenerated > 0 {
+		logger.LogPlayer("%s: Mana pool now contains: %s", player.Name, player.ManaPool.String())
+	}
+}
+
+// castSpells attempts to cast spells from hand
+func (g *Game) castSpells(player *Player) {
+	logger.LogPlayer("%s: Attempting to cast spells (Hand: %d cards, Mana: %s)",
+		player.Name, len(player.Hand), player.ManaPool.String())
+
+	spellsCast := 0
 	for i := len(player.Hand) - 1; i >= 0; i-- {
 		cardInHand := player.Hand[i]
-		if cardInHand.IsCreature() {
-			// Simple mana check - just check if we have enough lands
-			availableMana := len(player.Lands)
-			if availableMana >= int(cardInHand.CMC) {
-				// Remove from hand
-				player.Hand = append(player.Hand[:i], player.Hand[i+1:]...)
 
-				// Create permanent
-				permanent := g.createPermanent(cardInHand, player, Creature)
-				permanent.summoningSickness = true
-				player.Creatures = append(player.Creatures, permanent)
+		// Check if we can cast this spell
+		if g.canCastSpell(player, cardInHand) {
+			// Parse mana cost and pay for it
+			manaCost := card.ParseManaCost(cardInHand.ManaCost)
+			logger.LogCard("%s attempting to cast %s (cost: %s, available: %s)",
+				player.Name, cardInHand.Name, cardInHand.ManaCost, player.ManaPool.String())
 
-				logger.LogCard("%s casts %s", player.Name, cardInHand.Name)
+			if err := player.ManaPool.Pay(manaCost); err != nil {
+				logger.LogCard("%s cannot pay mana cost for %s: %v", player.Name, cardInHand.Name, err)
+				continue
 			}
+
+			// Remove from hand
+			player.Hand = append(player.Hand[:i], player.Hand[i+1:]...)
+
+			// Cast the spell based on its type
+			g.resolveSpell(player, cardInHand)
+			spellsCast++
+
+			logger.LogPlayer("%s: Mana pool after casting: %s", player.Name, player.ManaPool.String())
+		} else {
+			logger.LogCard("%s cannot cast %s (timing or mana restrictions)", player.Name, cardInHand.Name)
+		}
+	}
+
+	if spellsCast == 0 {
+		logger.LogPlayer("%s: No spells cast this turn", player.Name)
+	}
+}
+
+// canCastSpell checks if a player can cast a specific spell
+func (g *Game) canCastSpell(player *Player, spell card.Card) bool {
+	// Check timing restrictions
+	if !g.canCastAtThisTime(spell) {
+		return false
+	}
+
+	// Check mana cost
+	manaCost := card.ParseManaCost(spell.ManaCost)
+	if !player.ManaPool.CanPay(manaCost) {
+		return false
+	}
+
+	return true
+}
+
+// canCastAtThisTime checks timing restrictions for spells
+func (g *Game) canCastAtThisTime(spell card.Card) bool {
+	// For now, assume we're in main phase and can cast any spell
+	// In a full implementation, this would check:
+	// - Sorceries only during main phase with empty stack
+	// - Instants any time
+	// - Creatures/artifacts/enchantments only during main phase
+	return true
+}
+
+// resolveSpell resolves a spell based on its type
+func (g *Game) resolveSpell(player *Player, spell card.Card) {
+	logger.LogCard("%s casts %s", player.Name, spell.Name)
+
+	if spell.IsCreature() {
+		g.resolveCreatureSpell(player, spell)
+	} else if spell.IsInstant() {
+		g.resolveInstantSpell(player, spell)
+	} else if spell.IsSorcery() {
+		g.resolveSorcerySpell(player, spell)
+	} else if spell.IsEnchantment() {
+		g.resolveEnchantmentSpell(player, spell)
+	} else if spell.IsArtifact() {
+		g.resolveArtifactSpell(player, spell)
+	} else if spell.IsPlaneswalker() {
+		g.resolvePlaneswalkerSpell(player, spell)
+	} else {
+		// Unknown spell type, put in graveyard
+		logger.LogCard("Unknown spell type for %s, putting in graveyard", spell.Name)
+		player.Graveyard = append(player.Graveyard, spell)
+	}
+}
+
+// resolveCreatureSpell resolves a creature spell
+func (g *Game) resolveCreatureSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Creature)
+	permanent.summoningSickness = true
+	player.Creatures = append(player.Creatures, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// resolveInstantSpell resolves an instant spell
+func (g *Game) resolveInstantSpell(player *Player, spell card.Card) {
+	// Apply instant effects and put in graveyard
+	g.applySpellEffects(player, spell)
+	player.Graveyard = append(player.Graveyard, spell)
+	logger.LogCard("%s resolves and goes to graveyard", spell.Name)
+}
+
+// resolveSorcerySpell resolves a sorcery spell
+func (g *Game) resolveSorcerySpell(player *Player, spell card.Card) {
+	// Apply sorcery effects and put in graveyard
+	g.applySpellEffects(player, spell)
+	player.Graveyard = append(player.Graveyard, spell)
+	logger.LogCard("%s resolves and goes to graveyard", spell.Name)
+}
+
+// resolveEnchantmentSpell resolves an enchantment spell
+func (g *Game) resolveEnchantmentSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Enchantment)
+	player.Enchantments = append(player.Enchantments, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// resolveArtifactSpell resolves an artifact spell
+func (g *Game) resolveArtifactSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Artifact)
+	player.Artifacts = append(player.Artifacts, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// resolvePlaneswalkerSpell resolves a planeswalker spell
+func (g *Game) resolvePlaneswalkerSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Planeswalker)
+	player.Planeswalkers = append(player.Planeswalkers, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// applySpellEffects applies the effects of instant and sorcery spells
+func (g *Game) applySpellEffects(player *Player, spell card.Card) {
+	// This is a simplified implementation
+	// In a full implementation, this would parse the oracle text and apply effects
+
+	// Check for common spell effects based on name or oracle text
+	spellName := strings.ToLower(spell.Name)
+	oracleText := strings.ToLower(spell.OracleText)
+
+	// Lightning Bolt and similar damage spells
+	if strings.Contains(spellName, "lightning bolt") ||
+	   strings.Contains(oracleText, "deals 3 damage") {
+		g.dealDamageToOpponent(player, 3)
+	} else if strings.Contains(spellName, "shock") ||
+	         strings.Contains(oracleText, "deals 2 damage") {
+		g.dealDamageToOpponent(player, 2)
+	} else if strings.Contains(oracleText, "draw") && strings.Contains(oracleText, "card") {
+		// Card draw spells
+		if strings.Contains(oracleText, "draw 2") {
+			g.drawCards(player, 2)
+		} else {
+			g.drawCards(player, 1)
+		}
+	} else if strings.Contains(oracleText, "gain") && strings.Contains(oracleText, "life") {
+		// Life gain spells
+		if strings.Contains(oracleText, "gain 3 life") {
+			player.LifeTotal += 3
+			logger.LogCard("%s gains 3 life (Life: %d)", player.Name, player.LifeTotal)
+		}
+	}
+	// Add more spell effects as needed
+}
+
+// dealDamageToOpponent deals damage to the first opponent
+func (g *Game) dealDamageToOpponent(player *Player, damage int) {
+	if len(player.Opponents) > 0 {
+		opponent := player.Opponents[0]
+		opponent.LifeTotal -= damage
+		logger.LogCard("Spell deals %d damage to %s (Life: %d)", damage, opponent.Name, opponent.LifeTotal)
+	}
+}
+
+// drawCards draws the specified number of cards
+func (g *Game) drawCards(player *Player, count int) {
+	for i := 0; i < count; i++ {
+		if !player.Deck.IsEmpty() {
+			drawnCard := player.Deck.DrawCard()
+			player.Hand = append(player.Hand, drawnCard)
+			logger.LogCard("%s draws %s", player.Name, drawnCard.Name)
+		} else {
+			logger.LogCard("%s tries to draw but deck is empty", player.Name)
+			player.LifeTotal = 0 // Lose the game
+			break
 		}
 	}
 }
