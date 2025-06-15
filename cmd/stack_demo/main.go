@@ -86,7 +86,7 @@ func (gs *DemoGameState) LoseLife(player ability.AbilityPlayer, amount int) {
 }
 
 func main() {
-	fmt.Println("=== MTGSim Stack System Demonstration ===\n")
+	fmt.Println("=== MTGSim Stack System Demonstration ===")
 
 	// Create players
 	alice := &DemoPlayer{name: "Alice", lifeTotal: 20, manaPool: make(map[game.ManaType]int)}
