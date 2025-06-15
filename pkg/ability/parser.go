@@ -66,6 +66,46 @@ func (ap *AbilityParser) initializePatterns() {
 	// Static abilities (these don't use the stack)
 	ap.addPattern(Static, `Creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump", ap.parseStaticPump)
 	ap.addPattern(Static, `Other\s+creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump others", ap.parseStaticPumpOthers)
+
+	// Modal spells - improved patterns
+	ap.addPattern(Activated, `Choose one —.*`, DrawCards, "Modal spell", ap.parseModalSpell)
+	ap.addPattern(Activated, `Choose two —.*`, DrawCards, "Modal spell - choose two", ap.parseModalSpellTwo)
+	ap.addPattern(Activated, `Choose three.*`, DrawCards, "Modal spell - choose three", ap.parseModalSpellThree)
+	ap.addPattern(Activated, `Choose any number —.*`, DrawCards, "Modal spell - choose any", ap.parseModalSpellAny)
+
+	// Variable X-cost abilities
+	ap.addPattern(Activated, `\{X\}.*:\s*Draw\s+X\s+cards?`, DrawCards, "X-cost draw", ap.parseXCostDraw)
+	ap.addPattern(Activated, `\{X\}.*:\s*.*\s+deals\s+X\s+damage\s+to\s+(.*)`, DealDamage, "X-cost damage", ap.parseXCostDamage)
+
+	// Spell effects (for instants and sorceries)
+	ap.addPattern(Activated, `.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)\.?`, DealDamage, "Spell damage", ap.parseSpellDamage)
+	ap.addPattern(Activated, `^([A-Za-z\s]+)\s+deals\s+(\d+)\s+damage\s+to\s+(.*)\.?`, DealDamage, "Named spell damage", ap.parseNamedSpellDamage)
+	ap.addPattern(Activated, `Draw\s+(two|three|four|five)\s+cards?\.?`, DrawCards, "Spell draw words", ap.parseSpellDrawWords)
+	ap.addPattern(Activated, `Draw\s+(\d+)\s+cards?\.?`, DrawCards, "Spell draw", ap.parseSpellDraw)
+	ap.addPattern(Activated, `Target\s+player\s+draws\s+(three|four|five)\s+cards?`, DrawCards, "Targeted spell draw words", ap.parseTargetedSpellDrawWords)
+	ap.addPattern(Activated, `Target\s+player\s+draws\s+(\d+)\s+cards?`, DrawCards, "Targeted spell draw", ap.parseTargetedSpellDraw)
+	ap.addPattern(Activated, `Destroy\s+target\s+(.*)\.?`, DestroyPermanent, "Spell destroy", ap.parseSpellDestroy)
+	ap.addPattern(Activated, `Destroy\s+all\s+(.*)\.?`, DestroyPermanent, "Mass destroy", ap.parseMassDestroy)
+	ap.addPattern(Activated, `Counter\s+target\s+spell\.?`, CounterSpell, "Counterspell", ap.parseCounterspell)
+	ap.addPattern(Activated, `Counter\s+target\s+spell\s+unless\s+its\s+controller\s+pays\s+\{(\d+)\}`, CounterSpell, "Conditional counterspell", ap.parseConditionalCounterspell)
+	ap.addPattern(Activated, `Target\s+player\s+gains\s+(\d+)\s+life`, GainLife, "Targeted life gain", ap.parseTargetedLifeGain)
+	ap.addPattern(Activated, `Target\s+creature\s+gets\s+\+(\d+)/\+(\d+)\s+until\s+end\s+of\s+turn`, PumpCreature, "Spell pump", ap.parseSpellPump)
+
+	// Additional spell effects for common cards
+	ap.addPattern(Activated, `Add\s+\{([WUBRGC])\}\{([WUBRGC])\}\{([WUBRGC])\}\.?`, AddMana, "Triple mana", ap.parseTripleMana)
+	ap.addPattern(Activated, `Prevent\s+all\s+combat\s+damage\s+that\s+would\s+be\s+dealt\s+this\s+turn`, PreventDamage, "Fog effect", ap.parseFogEffect)
+	ap.addPattern(Activated, `Take\s+an\s+extra\s+turn\s+after\s+this\s+one`, DrawCards, "Extra turn", ap.parseExtraTurn) // Using DrawCards as placeholder
+	ap.addPattern(Activated, `Create\s+(\d+)\s+(\d+)/(\d+)\s+.*\s+creature\s+tokens?`, CreateToken, "Token creation", ap.parseTokenCreation)
+
+	// X-cost spell effects
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)`, DealDamage, "X-cost spell damage", ap.parseXCostSpellDamage)
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+divided\s+as\s+you\s+choose\s+among\s+(.*)`, DealDamage, "X-cost divided damage", ap.parseXCostDividedDamage)
+	ap.addPattern(Activated, `Draw\s+X\s+cards?`, DrawCards, "X-cost spell draw", ap.parseXCostSpellDraw)
+
+	// Complex spell effects
+	ap.addPattern(Activated, `.*\s+deals\s+(\d+)\s+damage\s+divided\s+as\s+you\s+choose\s+among\s+(.*)`, DealDamage, "Divided damage", ap.parseDividedDamage)
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\.\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life", ap.parseDrainLife)
+	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life no period", ap.parseDrainLife)
 }
 
 // addPattern adds a new pattern to the parser.
@@ -730,6 +770,625 @@ func (ap *AbilityParser) parseTapGainLife(matches []string, fullText string) (*A
 					},
 				},
 				Description: "You gain " + matches[1] + " life",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Modal spell parsers
+func (ap *AbilityParser) parseModalSpell(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       1,
+				Duration:    Instant,
+				Description: "Choose one modal effect",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseModalSpellTwo(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell - Choose Two",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       2,
+				Duration:    Instant,
+				Description: "Choose two modal effects",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseModalSpellThree(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell - Choose Three",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       3,
+				Duration:    Instant,
+				Description: "Choose three modal effects",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseModalSpellAny(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Modal Spell - Choose Any",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Value:       0, // Variable
+				Duration:    Instant,
+				Description: "Choose any number of modal effects",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// X-cost parsers
+func (ap *AbilityParser) parseXCostDraw(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "X-Cost Draw",
+		Type: Activated,
+		Cost: Cost{
+			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+		},
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       -1, // -1 indicates variable X value
+				Duration:    Instant,
+				Description: "Draw X cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostDamage(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "X-Cost Damage",
+		Type: Activated,
+		Cost: Cost{
+			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+		},
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // -1 indicates variable X value
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal X damage to " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Spell effect parsers
+func (ap *AbilityParser) parseSpellDamage(matches []string, fullText string) (*Ability, error) {
+	damage := ap.parseIntValue(matches[1])
+	targetType := ap.parseTargetType(matches[2])
+
+	return &Ability{
+		Name: "Spell Damage",
+		Type: Activated, // Spells are treated as activated abilities for parsing
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    damage,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal " + matches[1] + " damage to " + matches[2],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseNamedSpellDamage(matches []string, fullText string) (*Ability, error) {
+	spellName := strings.TrimSpace(matches[1])
+	damage := ap.parseIntValue(matches[2])
+	targetType := ap.parseTargetType(matches[3])
+
+	return &Ability{
+		Name: spellName,
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    damage,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: spellName + " deals " + matches[2] + " damage to " + matches[3],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellDraw(matches []string, fullText string) (*Ability, error) {
+	cards := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Spell Draw",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       cards,
+				Duration:    Instant,
+				Description: "Draw " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetedSpellDraw(matches []string, fullText string) (*Ability, error) {
+	cards := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Targeted Spell Draw",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DrawCards,
+				Value:    cards,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     PlayerTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target player draws " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellDestroy(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "Spell Destroy",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DestroyPermanent,
+				Value:    1,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Destroy target " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseCounterspell(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Counterspell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     CounterSpell,
+				Value:    1,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     SpellTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Counter target spell",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetedLifeGain(matches []string, fullText string) (*Ability, error) {
+	life := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Targeted Life Gain",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     GainLife,
+				Value:    life,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     PlayerTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target player gains " + matches[1] + " life",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellPump(matches []string, fullText string) (*Ability, error) {
+	power := ap.parseIntValue(matches[1])
+	toughness := ap.parseIntValue(matches[2])
+
+	return &Ability{
+		Name: "Spell Pump",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     PumpCreature,
+				Value:    power, // Store toughness in description for now
+				Duration: UntilEndOfTurn,
+				Targets: []Target{
+					{
+						Type:     CreatureTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target creature gets +" + matches[1] + "/+" + matches[2] + " until end of turn (toughness: " + strconv.Itoa(toughness) + ")",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Helper function to parse integer values from regex matches
+func (ap *AbilityParser) parseIntValue(s string) int {
+	if val, err := strconv.Atoi(s); err == nil {
+		return val
+	}
+	return 0
+}
+
+// Additional spell parsers
+func (ap *AbilityParser) parseSpellDrawWords(matches []string, fullText string) (*Ability, error) {
+	// Convert word numbers to integers
+	var cardCount int
+	switch strings.ToLower(matches[1]) {
+	case "two":
+		cardCount = 2
+	case "three":
+		cardCount = 3
+	case "four":
+		cardCount = 4
+	case "five":
+		cardCount = 5
+	default:
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Spell Draw Words",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       cardCount,
+				Duration:    Instant,
+				Description: "Draw " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetedSpellDrawWords(matches []string, fullText string) (*Ability, error) {
+	// Convert word numbers to integers
+	var cardCount int
+	switch strings.ToLower(matches[1]) {
+	case "three":
+		cardCount = 3
+	case "four":
+		cardCount = 4
+	case "five":
+		cardCount = 5
+	default:
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Targeted Spell Draw Words",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DrawCards,
+				Value:    cardCount,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     PlayerTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Target player draws " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseConditionalCounterspell(matches []string, fullText string) (*Ability, error) {
+	cost := ap.parseIntValue(matches[1])
+
+	return &Ability{
+		Name: "Conditional Counterspell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     CounterSpell,
+				Value:    cost, // Store the mana cost to pay
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     SpellTarget,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Counter target spell unless its controller pays {" + matches[1] + "}",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostSpellDamage(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "X-Cost Spell Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // -1 indicates variable X value
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal X damage to " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostSpellDraw(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "X-Cost Spell Draw",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       -1, // -1 indicates variable X value
+				Duration:    Instant,
+				Description: "Draw X cards",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseDividedDamage(matches []string, fullText string) (*Ability, error) {
+	damage := ap.parseIntValue(matches[1])
+	targetDesc := matches[2]
+
+	return &Ability{
+		Name: "Divided Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    damage,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     AnyTarget, // Can target multiple things
+						Required: true,
+						Count:    2, // Up to two targets
+					},
+				},
+				Description: "Deal " + matches[1] + " damage divided as you choose among " + targetDesc,
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseDrainLife(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "Drain Life",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // X damage
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    1,
+					},
+				},
+				Description: "Deal X damage to " + matches[1],
+			},
+			{
+				Type:        GainLife,
+				Value:       -1, // Equal to damage dealt
+				Duration:    Instant,
+				Description: "Gain life equal to the damage dealt",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// Additional spell parsers for enhanced coverage
+
+func (ap *AbilityParser) parseMassDestroy(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Mass Destroy",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DestroyPermanent,
+				Value:       0, // All matching permanents
+				Duration:    Instant,
+				Description: "Destroy all " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTripleMana(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Triple Mana",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        AddMana,
+				Value:       3,
+				Duration:    Instant,
+				Description: "Add " + matches[1] + matches[2] + matches[3],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseFogEffect(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Fog Effect",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PreventDamage,
+				Value:       0, // All combat damage
+				Duration:    UntilEndOfTurn,
+				Description: "Prevent all combat damage this turn",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseExtraTurn(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Extra Turn",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards, // Placeholder effect type
+				Value:       1,
+				Duration:    Instant,
+				Description: "Take an extra turn after this one",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTokenCreation(matches []string, fullText string) (*Ability, error) {
+	count := ap.parseIntValue(matches[1])
+	power := ap.parseIntValue(matches[2])
+	toughness := ap.parseIntValue(matches[3])
+
+	return &Ability{
+		Name: "Token Creation",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        CreateToken,
+				Value:       count,
+				Duration:    Instant,
+				Description: "Create " + matches[1] + " " + matches[2] + "/" + matches[3] + " creature tokens (power: " + strconv.Itoa(power) + ", toughness: " + strconv.Itoa(toughness) + ")",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseXCostDividedDamage(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+
+	return &Ability{
+		Name: "X-Cost Divided Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     DealDamage,
+				Value:    -1, // -1 indicates variable X value
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type:     targetType,
+						Required: true,
+						Count:    -1, // Variable number of targets
+					},
+				},
+				Description: "Deal X damage divided as you choose among " + matches[1],
 			},
 		},
 		TimingRestriction: SorcerySpeed,
