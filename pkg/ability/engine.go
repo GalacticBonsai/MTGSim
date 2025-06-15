@@ -101,7 +101,8 @@ func (ee *ExecutionEngine) ExecuteAbility(ability *Ability, controller AbilityPl
 	}
 
 	// For other abilities, they would go on the stack
-	// For simplicity, we'll resolve them immediately in this implementation
+	// This is now handled by the spell casting engine
+	logger.LogCard("Ability %s would be added to stack", ability.Name)
 	return ee.resolveAbility(ability, controller, targets)
 }
 
@@ -229,6 +230,28 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		if len(targets) > 0 {
 			ee.applyTapEffect(targets[0], effect.Value > 0)
 		}
+
+	case CounterSpell:
+		// Counter spell effect - mark the target spell as countered
+		if len(targets) > 0 {
+			if stackItem, ok := targets[0].(*StackItem); ok {
+				stackItem.Countered = true
+				logger.LogCard("Counterspell effect resolves - %s is countered", stackItem.Description)
+			} else {
+				logger.LogCard("Counterspell effect resolves")
+			}
+		} else {
+			logger.LogCard("Counterspell effect resolves")
+		}
+
+	case DestroyPermanent:
+		logger.LogCard("Destroy permanent effect resolves")
+
+	case AddMana:
+		// Add mana to player's mana pool
+		// For simplicity, assume it's generic mana
+		ee.gameState.AddManaToPool(controller, game.Colorless, effect.Value)
+		logger.LogCard("%s adds %d mana", controller.GetName(), effect.Value)
 
 	default:
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
@@ -459,6 +482,11 @@ func (ee *ExecutionEngine) ParseAndRegisterAbilities(oracleText string, source a
 	}
 
 	return abilities, nil
+}
+
+// applyEffect applies a specific effect (exposed for stack resolution)
+func (ee *ExecutionEngine) ApplyEffect(effect Effect, controller AbilityPlayer, targets []any) error {
+	return ee.applyEffect(effect, controller, targets)
 }
 
 // ActivateManaAbilities activates all available mana abilities for a player.

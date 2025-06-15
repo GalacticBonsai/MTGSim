@@ -368,15 +368,7 @@ func parseVariableManaCost(manaCost string, xValue int) map[game.ManaType]int {
 	return cost
 }
 
-func containsX(manaCost string) bool {
-	// Check if the mana cost contains {X} anywhere
-	for i := 0; i <= len(manaCost)-3; i++ {
-		if manaCost[i:i+3] == "{X}" {
-			return true
-		}
-	}
-	return false
-}
+// containsX function removed as it was unused
 
 func calculateCMC(cost map[game.ManaType]int) int {
 	total := 0
