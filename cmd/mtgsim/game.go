@@ -66,6 +66,11 @@ type Player struct {
 	Planeswalkers []*Permanent
 	Lands         []*Permanent
 	Opponents     []*Player
+
+	// Land drop tracking
+	LandDropsThisTurn    int  // Number of lands played this turn
+	LandDropsPerTurn     int  // Maximum lands allowed per turn (default 1)
+	HasPlayedLandThisTurn bool // Simple boolean for basic rule
 }
 
 // Game represents a Magic: The Gathering game.
@@ -104,6 +109,11 @@ func (g *Game) AddPlayer(decklistPath string) error {
 		Artifacts:     make([]*Permanent, 0),
 		Planeswalkers: make([]*Permanent, 0),
 		Lands:         make([]*Permanent, 0),
+
+		// Initialize land drop tracking
+		LandDropsThisTurn:    0,
+		LandDropsPerTurn:     1, // Standard MTG rule: one land per turn
+		HasPlayedLandThisTurn: false,
 	}
 
 	g.Players = append(g.Players, player)
@@ -164,6 +174,9 @@ func (g *Game) Start() (*Player, *Player) {
 
 // executeTurn executes a complete turn for the given player
 func (g *Game) executeTurn(player *Player) {
+	// Reset land drops for the new turn
+	g.resetLandDrops(player)
+
 	// Untap step
 	g.untapStep(player)
 
@@ -218,6 +231,13 @@ func (g *Game) checkGameEnd() bool {
 	return false
 }
 
+// resetLandDrops resets the land drop tracking for the beginning of a turn
+func (g *Game) resetLandDrops(player *Player) {
+	player.LandDropsThisTurn = 0
+	player.HasPlayedLandThisTurn = false
+	logger.LogPlayer("%s: Land drops reset for new turn", player.Name)
+}
+
 // untapStep untaps all permanents controlled by the player
 func (g *Game) untapStep(player *Player) {
 	logger.LogPlayer("%s: Untap step", player.Name)
@@ -266,6 +286,12 @@ func (g *Game) endStep(player *Player) {
 		creature.damage_counters = 0
 	}
 
+	// Reset land drops per turn to default (in case it was modified by effects)
+	if player.LandDropsPerTurn != 1 {
+		logger.LogPlayer("%s: Land drops per turn reset to 1 (was %d)", player.Name, player.LandDropsPerTurn)
+		player.LandDropsPerTurn = 1
+	}
+
 	// Discard to hand size (7)
 	handSize := len(player.Hand)
 	if handSize > 7 {
@@ -297,6 +323,11 @@ func (g *Game) mainPhase(player *Player) {
 
 // playLand attempts to play a land from hand
 func (g *Game) playLand(player *Player) {
+	// Check if player can play a land this turn
+	if !g.canPlayLand(player) {
+		return
+	}
+
 	for i, cardInHand := range player.Hand {
 		if cardInHand.IsLand() {
 			// Remove from hand
@@ -306,10 +337,44 @@ func (g *Game) playLand(player *Player) {
 			permanent := g.createPermanent(cardInHand, player, Land)
 			player.Lands = append(player.Lands, permanent)
 
-			logger.LogCard("%s plays %s", player.Name, cardInHand.Name)
-			return // Only play one land per turn
+			// Update land drop tracking
+			player.LandDropsThisTurn++
+			player.HasPlayedLandThisTurn = true
+
+			logger.LogCard("%s plays %s (land drop %d/%d)",
+				player.Name, cardInHand.Name, player.LandDropsThisTurn, player.LandDropsPerTurn)
+			return // Only play one land per turn (unless effects allow more)
 		}
 	}
+}
+
+// canPlayLand checks if a player can play a land this turn
+func (g *Game) canPlayLand(player *Player) bool {
+	// Check if player has already used all their land drops for this turn
+	if player.LandDropsThisTurn >= player.LandDropsPerTurn {
+		logger.LogPlayer("%s cannot play land: already played %d/%d lands this turn",
+			player.Name, player.LandDropsThisTurn, player.LandDropsPerTurn)
+		return false
+	}
+
+	// Additional checks could be added here:
+	// - Check if it's a main phase (lands can only be played during main phases)
+	// - Check if the stack is empty (sorcery speed restriction)
+	// - Check for effects that prevent land playing
+
+	return true
+}
+
+// grantAdditionalLandDrop grants an additional land drop for this turn
+func (g *Game) grantAdditionalLandDrop(player *Player) {
+	player.LandDropsPerTurn++
+	logger.LogCard("%s gains an additional land drop this turn (now %d total)",
+		player.Name, player.LandDropsPerTurn)
+}
+
+// hasLandDropAvailable checks if player has any land drops remaining
+func (g *Game) hasLandDropAvailable(player *Player) bool {
+	return player.LandDropsThisTurn < player.LandDropsPerTurn
 }
 
 // castCreatures attempts to cast creature spells
