@@ -3,7 +3,7 @@ package ability
 import (
 	"testing"
 
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 func TestAbilityParser_ParseManaAbilities(t *testing.T) {
@@ -99,7 +99,7 @@ func TestAbilityParser_ParseTriggeredAbilities(t *testing.T) {
 		{
 			name:        "ETB draw multiple cards",
 			oracleText:  "When this creature enters the battlefield, draw 2 cards.",
-			expectedLen: 2, // ETB trigger + spell draw pattern
+			expectedLen: 1, // ETB trigger only
 			expectedTrigger: EntersTheBattlefield,
 			expectedEffect: DrawCards,
 			expectedValue: 2,
@@ -107,7 +107,7 @@ func TestAbilityParser_ParseTriggeredAbilities(t *testing.T) {
 		{
 			name:        "ETB deal damage",
 			oracleText:  "When this creature enters the battlefield, it deals 3 damage to any target.",
-			expectedLen: 2, // ETB trigger + spell damage pattern
+			expectedLen: 1, // ETB trigger only
 			expectedTrigger: EntersTheBattlefield,
 			expectedEffect: DealDamage,
 			expectedValue: 3,
@@ -236,8 +236,8 @@ func TestAbilityParser_ParseActivatedAbilities(t *testing.T) {
 				}
 
 				if tt.expectedManaCost > 0 {
-					if ability.Cost.ManaCost[game.Any] != tt.expectedManaCost {
-						t.Errorf("ParseAbilities() mana cost = %d, want %d", ability.Cost.ManaCost[game.Any], tt.expectedManaCost)
+					if ability.Cost.ManaCost[types.Any] != tt.expectedManaCost {
+						t.Errorf("ParseAbilities() mana cost = %d, want %d", ability.Cost.ManaCost[types.Any], tt.expectedManaCost)
 					}
 				}
 

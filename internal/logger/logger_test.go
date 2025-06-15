@@ -6,20 +6,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 func TestParseLogLevel(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected game.LogLevel
+		expected types.LogLevel
 	}{
-		{"META", game.META},
-		{"GAME", game.GAME},
-		{"PLAYER", game.PLAYER},
-		{"CARD", game.CARD},
-		{"invalid", game.CARD}, // default case
-		{"", game.CARD},        // default case
+		{"META", types.META},
+		{"GAME", types.GAME},
+		{"PLAYER", types.PLAYER},
+		{"CARD", types.CARD},
+		{"invalid", types.CARD}, // default case
+		{"", types.CARD},        // default case
 	}
 
 	for _, test := range tests {
@@ -37,13 +37,13 @@ func TestSetLogLevel(t *testing.T) {
 		currentLogLevel = originalLevel // restore original level
 	}()
 
-	SetLogLevel(game.META)
-	if currentLogLevel != game.META {
+	SetLogLevel(types.META)
+	if currentLogLevel != types.META {
 		t.Errorf("Expected log level to be META, got %d", currentLogLevel)
 	}
 
-	SetLogLevel(game.PLAYER)
-	if currentLogLevel != game.PLAYER {
+	SetLogLevel(types.PLAYER)
+	if currentLogLevel != types.PLAYER {
 		t.Errorf("Expected log level to be PLAYER, got %d", currentLogLevel)
 	}
 }
@@ -58,7 +58,7 @@ func TestLoggingFunctions(t *testing.T) {
 	}()
 
 	// Test with CARD level (should log everything)
-	SetLogLevel(game.CARD)
+	SetLogLevel(types.CARD)
 	buf.Reset()
 
 	LogMeta("Meta message")
@@ -83,7 +83,7 @@ func TestLoggingFunctions(t *testing.T) {
 	}
 
 	// Test with GAME level (should only log META and GAME)
-	SetLogLevel(game.GAME)
+	SetLogLevel(types.GAME)
 	buf.Reset()
 
 	LogMeta("Meta message 2")
@@ -107,7 +107,7 @@ func TestLoggingFunctions(t *testing.T) {
 	}
 
 	// Test with META level (should only log META)
-	SetLogLevel(game.META)
+	SetLogLevel(types.META)
 	buf.Reset()
 
 	LogMeta("Meta message 3")
@@ -136,7 +136,7 @@ func TestLoggingWithFormatting(t *testing.T) {
 		logger.logger = originalLogger // restore original logger
 	}()
 
-	SetLogLevel(game.CARD)
+	SetLogLevel(types.CARD)
 	buf.Reset()
 
 	LogGame("Player %s has %d life", "Alice", 20)

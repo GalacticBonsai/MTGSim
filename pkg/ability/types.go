@@ -3,7 +3,7 @@ package ability
 
 import (
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // AbilityType represents the different types of abilities in Magic: The Gathering.
@@ -74,7 +74,7 @@ const (
 
 // Cost represents the cost to activate an ability.
 type Cost struct {
-	ManaCost     map[game.ManaType]int
+	ManaCost     map[types.ManaType]int
 	TapCost      bool
 	SacrificeCost bool
 	DiscardCost  int
@@ -180,7 +180,7 @@ func (a *Ability) Reset() {
 	a.UsedThisTurn = 0
 }
 
-// AbilityEngine manages all abilities in the game.
+// AbilityEngine manages all abilities in the types.
 type AbilityEngine struct {
 	abilities       map[uuid.UUID]*Ability
 	triggeredQueue  []*Ability

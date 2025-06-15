@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // Mock implementations for testing
@@ -49,7 +49,7 @@ func (m *mockGameState) CanActivateAbilities() bool {
 	return true
 }
 
-func (m *mockGameState) AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int) {
+func (m *mockGameState) AddManaToPool(player AbilityPlayer, manaType types.ManaType, amount int) {
 	if mp, ok := player.(*mockPlayer); ok {
 		mp.manaPool[manaType] += amount
 	}
@@ -90,7 +90,7 @@ type mockPlayer struct {
 	name      string
 	life      int
 	hand      []interface{}
-	manaPool  map[game.ManaType]int
+	manaPool  map[types.ManaType]int
 	creatures []interface{}
 	lands     []interface{}
 }
@@ -173,7 +173,7 @@ func (m *mockPlayer) PayCost(cost Cost) error {
 	return nil
 }
 
-func (m *mockPlayer) GetManaPool() map[game.ManaType]int {
+func (m *mockPlayer) GetManaPool() map[types.ManaType]int {
 	return m.manaPool
 }
 
@@ -241,7 +241,7 @@ func TestExecutionEngine_ExecuteManaAbility(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 	
 	gameState := &mockGameState{
@@ -291,7 +291,7 @@ func TestExecutionEngine_ExecuteDrawAbility(t *testing.T) {
 		name:     "Test Player",
 		life:     20,
 		hand:     []interface{}{},
-		manaPool: map[game.ManaType]int{game.Any: 3},
+		manaPool: map[types.ManaType]int{types.Any: 3},
 	}
 	
 	gameState := &mockGameState{
@@ -308,7 +308,7 @@ func TestExecutionEngine_ExecuteDrawAbility(t *testing.T) {
 		Name: "Draw Cards",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: 2},
+			ManaCost: map[types.ManaType]int{types.Any: 2},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -336,8 +336,8 @@ func TestExecutionEngine_ExecuteDrawAbility(t *testing.T) {
 	}
 	
 	// Check that mana was spent
-	if player.manaPool[game.Any] != 1 {
-		t.Errorf("Expected 1 mana remaining, got %d", player.manaPool[game.Any])
+	if player.manaPool[types.Any] != 1 {
+		t.Errorf("Expected 1 mana remaining, got %d", player.manaPool[types.Any])
 	}
 }
 
@@ -345,7 +345,7 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: map[game.ManaType]int{game.Any: 2},
+		manaPool: map[types.ManaType]int{types.Any: 2},
 	}
 	
 	gameState := &mockGameState{
@@ -367,7 +367,7 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 			name: "Can activate in main phase",
 			ability: &Ability{
 				Type: Activated,
-				Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
+				Cost: Cost{ManaCost: map[types.ManaType]int{types.Any: 1}},
 				TimingRestriction: SorcerySpeed,
 			},
 			gameState: &mockGameState{
@@ -382,7 +382,7 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 			name: "Cannot activate in combat",
 			ability: &Ability{
 				Type: Activated,
-				Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
+				Cost: Cost{ManaCost: map[types.ManaType]int{types.Any: 1}},
 				TimingRestriction: SorcerySpeed,
 			},
 			gameState: &mockGameState{
@@ -398,7 +398,7 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 			name: "Cannot activate without mana",
 			ability: &Ability{
 				Type: Activated,
-				Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 5}},
+				Cost: Cost{ManaCost: map[types.ManaType]int{types.Any: 5}},
 				TimingRestriction: AnyTime,
 			},
 			gameState: &mockGameState{
@@ -485,7 +485,7 @@ func TestExecutionEngine_ActivateManaAbilities(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 		lands:    []interface{}{},
 	}
 	

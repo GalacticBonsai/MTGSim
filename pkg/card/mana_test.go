@@ -3,20 +3,20 @@ package card
 import (
 	"testing"
 
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 func TestParseManaCost(t *testing.T) {
 	tests := []struct {
 		cost     string
-		expected map[game.ManaType]int
+		expected map[types.ManaType]int
 	}{
-		{"{W}{W}{U}{U}{B}{B}{R}{R}{G}{G}", map[game.ManaType]int{game.White: 2, game.Blue: 2, game.Black: 2, game.Red: 2, game.Green: 2}}, // Progenitus
-		{"{G}{G}{G}{G}{G}{G}{G}{G}", map[game.ManaType]int{game.Green: 8}},                                                                  // Khalni Hydra
-		{"{5}{C}{C}", map[game.ManaType]int{game.Any: 5, game.Colorless: 2}},                                                               // Devourer of Destiny
-		{"{W}{U}{B}{R}{G}{C}", map[game.ManaType]int{game.White: 1, game.Blue: 1, game.Black: 1, game.Red: 1, game.Green: 1, game.Colorless: 1}}, // Slivdrazi Monstrosity
-		{"{C}", map[game.ManaType]int{game.Colorless: 1}},                                                                                   // Eldritch Immunity
-		{"{X}{X}{W}{W}{W}", map[game.ManaType]int{game.White: 3, game.X: 2}},                                                               // Entreat the Angels
+		{"{W}{W}{U}{U}{B}{B}{R}{R}{G}{G}", map[types.ManaType]int{types.White: 2, types.Blue: 2, types.Black: 2, types.Red: 2, types.Green: 2}}, // Progenitus
+		{"{G}{G}{G}{G}{G}{G}{G}{G}", map[types.ManaType]int{types.Green: 8}},                                                                  // Khalni Hydra
+		{"{5}{C}{C}", map[types.ManaType]int{types.Any: 5, types.Colorless: 2}},                                                               // Devourer of Destiny
+		{"{W}{U}{B}{R}{G}{C}", map[types.ManaType]int{types.White: 1, types.Blue: 1, types.Black: 1, types.Red: 1, types.Green: 1, types.Colorless: 1}}, // Slivdrazi Monstrosity
+		{"{C}", map[types.ManaType]int{types.Colorless: 1}},                                                                                   // Eldritch Immunity
+		{"{X}{X}{W}{W}{W}", map[types.ManaType]int{types.White: 3, types.X: 2}},                                                               // Entreat the Angels
 	}
 
 	for _, test := range tests {
@@ -38,13 +38,13 @@ func TestCheckManaProducer(t *testing.T) {
 	tests := []struct {
 		oracleText string
 		expected   bool
-		manaTypes  []game.ManaType
+		manaTypes  []types.ManaType
 	}{
-		{"{T}, Sacrifice this artifact: Add one mana of any color", true, []game.ManaType{game.Any}},
-		{"Sacrifice a creature: Add {C}{C}.", true, []game.ManaType{game.Colorless, game.Colorless}},
-		{"({T}: Add {R}.)", true, []game.ManaType{game.Red}},
-		{"({T}: Add {U} or {R}.)", true, []game.ManaType{game.Blue, game.Red}},
-		{"{T}: Add one mana of any color in your commander's color identity.", true, []game.ManaType{game.Any}},
+		{"{T}, Sacrifice this artifact: Add one mana of any color", true, []types.ManaType{types.Any}},
+		{"Sacrifice a creature: Add {C}{C}.", true, []types.ManaType{types.Colorless, types.Colorless}},
+		{"({T}: Add {R}.)", true, []types.ManaType{types.Red}},
+		{"({T}: Add {U} or {R}.)", true, []types.ManaType{types.Blue, types.Red}},
+		{"{T}: Add one mana of any color in your commander's color identity.", true, []types.ManaType{types.Any}},
 	}
 
 	for _, test := range tests {
@@ -64,8 +64,8 @@ func TestCheckManaProducer(t *testing.T) {
 
 func TestManaPool(t *testing.T) {
 	manaPool := NewManaPool()
-	manaPool.Add(game.Red, 2)
-	manaPool.Add(game.Green, 1)
+	manaPool.Add(types.Red, 2)
+	manaPool.Add(types.Green, 1)
 
 	cost := ParseManaCost("{R}{G}")
 	if !manaPool.CanPay(cost) {
@@ -77,9 +77,9 @@ func TestManaPool(t *testing.T) {
 		t.Errorf("Expected to pay {R}{G}, but got error: %v", err)
 	}
 
-	if manaPool.pool[game.Red] != 1 || manaPool.pool[game.Green] != 0 {
+	if manaPool.pool[types.Red] != 1 || manaPool.pool[types.Green] != 0 {
 		t.Errorf("Mana pool not updated correctly after payment. Red: %d, Green: %d", 
-			manaPool.pool[game.Red], manaPool.pool[game.Green])
+			manaPool.pool[types.Red], manaPool.pool[types.Green])
 	}
 
 	cost = ParseManaCost("{R}{R}")
@@ -92,15 +92,15 @@ func TestManaOperations(t *testing.T) {
 	mana := NewMana()
 	
 	// Test adding mana
-	mana.Add(game.Red, 3)
-	mana.Add(game.Blue, 2)
+	mana.Add(types.Red, 3)
+	mana.Add(types.Blue, 2)
 	
-	if mana.Get(game.Red) != 3 {
-		t.Errorf("Expected 3 red mana, got %d", mana.Get(game.Red))
+	if mana.Get(types.Red) != 3 {
+		t.Errorf("Expected 3 red mana, got %d", mana.Get(types.Red))
 	}
 	
-	if mana.Get(game.Blue) != 2 {
-		t.Errorf("Expected 2 blue mana, got %d", mana.Get(game.Blue))
+	if mana.Get(types.Blue) != 2 {
+		t.Errorf("Expected 2 blue mana, got %d", mana.Get(types.Blue))
 	}
 	
 	// Test total
@@ -109,8 +109,8 @@ func TestManaOperations(t *testing.T) {
 	}
 	
 	// Test getting non-existent mana type
-	if mana.Get(game.Green) != 0 {
-		t.Errorf("Expected 0 green mana, got %d", mana.Get(game.Green))
+	if mana.Get(types.Green) != 0 {
+		t.Errorf("Expected 0 green mana, got %d", mana.Get(types.Green))
 	}
 }
 

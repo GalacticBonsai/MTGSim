@@ -1,39 +1,38 @@
 // Package game provides core game types and constants for MTG simulation.
 package game
 
-// LogLevel represents different levels of logging detail.
-type LogLevel int
+import "github.com/mtgsim/mtgsim/pkg/types"
 
+// Re-export types for backward compatibility
+type LogLevel = types.LogLevel
+type ManaType = types.ManaType
+type PermanentType = types.PermanentType
+
+// Re-export constants for backward compatibility
 const (
-	META LogLevel = iota
-	GAME
-	PLAYER
-	CARD
+	META   = types.META
+	GAME   = types.GAME
+	PLAYER = types.PLAYER
+	CARD   = types.CARD
 )
 
-// ManaType represents different types of mana in Magic: The Gathering.
-type ManaType string
-
 const (
-	White     ManaType = "W"
-	Blue      ManaType = "U"
-	Black     ManaType = "B"
-	Red       ManaType = "R"
-	Green     ManaType = "G"
-	Colorless ManaType = "C"
-	Any       ManaType = "A"
-	Phyrexian ManaType = "P"
-	Snow      ManaType = "S"
-	X         ManaType = "X"
+	White     = types.White
+	Blue      = types.Blue
+	Black     = types.Black
+	Red       = types.Red
+	Green     = types.Green
+	Colorless = types.Colorless
+	Any       = types.Any
+	Phyrexian = types.Phyrexian
+	Snow      = types.Snow
+	X         = types.X
 )
 
-// PermanentType represents different types of permanents on the battlefield.
-type PermanentType int
-
 const (
-	Creature PermanentType = iota
-	Artifact
-	Enchantment
-	Land
-	Planeswalker
+	Creature     = types.Creature
+	Artifact     = types.Artifact
+	Enchantment  = types.Enchantment
+	Land         = types.Land
+	Planeswalker = types.Planeswalker
 )

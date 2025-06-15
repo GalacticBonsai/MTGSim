@@ -2,13 +2,14 @@
 package ability
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // AbilityParser parses oracle text to extract abilities.
@@ -124,12 +125,23 @@ func (ap *AbilityParser) addPattern(abilityType AbilityType, pattern string, eff
 // ParseAbilities parses oracle text and returns a list of abilities.
 func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) ([]*Ability, error) {
 	var abilities []*Ability
+	var unparsedSentences []string
 
 	// Split oracle text by sentences/lines for better parsing
 	sentences := ap.splitOracleText(oracleText)
 
 	for _, sentence := range sentences {
-		for abilityType, patterns := range ap.patterns {
+		found := false
+
+		// Try ability types in priority order: Triggered, Mana, Static, Activated
+		priorityOrder := []AbilityType{Triggered, Mana, Static, Activated}
+
+		for _, abilityType := range priorityOrder {
+			patterns, exists := ap.patterns[abilityType]
+			if !exists {
+				continue
+			}
+
 			for _, pattern := range patterns {
 				if matches := pattern.Regex.FindStringSubmatch(sentence); matches != nil {
 					ability, err := pattern.Parser(matches, sentence)
@@ -150,10 +162,36 @@ func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) (
 					}
 
 					abilities = append(abilities, ability)
+					found = true
 					break // Found a match, don't try other patterns for this sentence
 				}
 			}
+			if found {
+				break
+			}
 		}
+
+		// Track unparsed sentences for logging
+		if !found && strings.TrimSpace(sentence) != "" {
+			unparsedSentences = append(unparsedSentences, sentence)
+		}
+	}
+
+	// Log parsing failures for cards with unparsed abilities
+	if len(unparsedSentences) > 0 {
+		cardName := "Unknown Card"
+		if source != nil {
+			// Try to extract card name from source
+			if card, ok := source.(interface{ GetName() string }); ok {
+				cardName = card.GetName()
+			} else if hasName := fmt.Sprintf("%v", source); hasName != "" {
+				cardName = hasName
+			}
+		}
+
+		errorDetails := fmt.Sprintf("Failed to parse %d sentences: %v",
+			len(unparsedSentences), unparsedSentences)
+		logger.LogParsingFailure(cardName, oracleText, errorDetails)
 	}
 
 	return abilities, nil
@@ -204,7 +242,7 @@ func (ap *AbilityParser) parseManaAbility(matches []string, fullText string) (*A
 		return nil, ErrParsingFailed
 	}
 
-	manaType := game.ManaType(matches[1])
+	manaType := types.ManaType(matches[1])
 	
 	return &Ability{
 		Name: "Mana Ability",
@@ -499,7 +537,7 @@ func (ap *AbilityParser) parseActivatedDraw(matches []string, fullText string) (
 		Name: "Activated Draw",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: manaCost},
+			ManaCost: map[types.ManaType]int{types.Any: manaCost},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -528,7 +566,7 @@ func (ap *AbilityParser) parseActivatedDrawCard(matches []string, fullText strin
 		Name: "Activated Draw",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: manaCost},
+			ManaCost: map[types.ManaType]int{types.Any: manaCost},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -564,7 +602,7 @@ func (ap *AbilityParser) parseActivatedDamage(matches []string, fullText string)
 		Name: "Activated Damage",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: manaCost},
+			ManaCost: map[types.ManaType]int{types.Any: manaCost},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -847,7 +885,7 @@ func (ap *AbilityParser) parseXCostDraw(matches []string, fullText string) (*Abi
 		Name: "X-Cost Draw",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+			ManaCost: map[types.ManaType]int{types.Any: -1}, // -1 indicates X cost
 		},
 		Effects: []Effect{
 			{
@@ -868,7 +906,7 @@ func (ap *AbilityParser) parseXCostDamage(matches []string, fullText string) (*A
 		Name: "X-Cost Damage",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+			ManaCost: map[types.ManaType]int{types.Any: -1}, // -1 indicates X cost
 		},
 		Effects: []Effect{
 			{

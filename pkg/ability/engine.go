@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // GameState represents the current state of the game for ability resolution.
@@ -18,7 +18,7 @@ type GameState interface {
 	IsMainPhase() bool
 	IsCombatPhase() bool
 	CanActivateAbilities() bool
-	AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int)
+	AddManaToPool(player AbilityPlayer, manaType types.ManaType, amount int)
 	DealDamage(source any, target any, amount int)
 	DrawCards(player AbilityPlayer, count int)
 	GainLife(player AbilityPlayer, amount int)
@@ -36,7 +36,7 @@ type AbilityPlayer interface {
 	GetLands() []any
 	CanPayCost(cost Cost) bool
 	PayCost(cost Cost) error
-	GetManaPool() map[game.ManaType]int
+	GetManaPool() map[types.ManaType]int
 }
 
 // AbilityPermanent represents a permanent for ability purposes.
@@ -250,7 +250,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 	case AddMana:
 		// Add mana to player's mana pool
 		// For simplicity, assume it's generic mana
-		ee.gameState.AddManaToPool(controller, game.Colorless, effect.Value)
+		ee.gameState.AddManaToPool(controller, types.Colorless, effect.Value)
 		logger.LogCard("%s adds %d mana", controller.GetName(), effect.Value)
 
 	default:
@@ -261,33 +261,33 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 }
 
 // determineManaType determines what type of mana an ability produces.
-func (ee *ExecutionEngine) determineManaType(ability *Ability, _ Effect) game.ManaType {
+func (ee *ExecutionEngine) determineManaType(ability *Ability, _ Effect) types.ManaType {
 	// Parse from ability description or oracle text
 	text := ability.OracleText
 	
 	if contains(text, "{W}") {
-		return game.White
+		return types.White
 	}
 	if contains(text, "{U}") {
-		return game.Blue
+		return types.Blue
 	}
 	if contains(text, "{B}") {
-		return game.Black
+		return types.Black
 	}
 	if contains(text, "{R}") {
-		return game.Red
+		return types.Red
 	}
 	if contains(text, "{G}") {
-		return game.Green
+		return types.Green
 	}
 	if contains(text, "{C}") {
-		return game.Colorless
+		return types.Colorless
 	}
 	if contains(text, "any color") {
-		return game.Any
+		return types.Any
 	}
 
-	return game.Colorless // Default
+	return types.Colorless // Default
 }
 
 // requiresTargets checks if an ability requires targets.

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // MockGameState for stack testing
@@ -50,7 +50,7 @@ func (m *mockStackGameState) CanActivateAbilities() bool {
 	return true
 }
 
-func (m *mockStackGameState) AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int) {}
+func (m *mockStackGameState) AddManaToPool(player AbilityPlayer, manaType types.ManaType, amount int) {}
 func (m *mockStackGameState) DealDamage(source any, target any, amount int)                {}
 func (m *mockStackGameState) DrawCards(player AbilityPlayer, count int)                   {}
 func (m *mockStackGameState) GainLife(player AbilityPlayer, amount int)                   {}
@@ -74,9 +74,9 @@ func (m *mockStackPlayer) RemoveCardFromHand(card any) bool { return true }
 func (m *mockStackPlayer) GetHandSize() int { return 7 }
 func (m *mockStackPlayer) GetLifeTotal() int { return 20 }
 func (m *mockStackPlayer) SetLifeTotal(life int) {}
-func (m *mockStackPlayer) GetManaPool() map[game.ManaType]int { return make(map[game.ManaType]int) }
-func (m *mockStackPlayer) AddMana(manaType game.ManaType, amount int) {}
-func (m *mockStackPlayer) SpendMana(manaType game.ManaType, amount int) bool { return true }
+func (m *mockStackPlayer) GetManaPool() map[types.ManaType]int { return make(map[types.ManaType]int) }
+func (m *mockStackPlayer) AddMana(manaType types.ManaType, amount int) {}
+func (m *mockStackPlayer) SpendMana(manaType types.ManaType, amount int) bool { return true }
 func (m *mockStackPlayer) CanPayCost(cost Cost) bool { return true }
 func (m *mockStackPlayer) GetCreatures() []any { return []any{} }
 func (m *mockStackPlayer) GetPermanents() []any { return []any{} }

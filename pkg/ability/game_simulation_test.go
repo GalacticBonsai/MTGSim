@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // GameSimulationTest runs multiple games to ensure different outcomes
@@ -95,7 +95,7 @@ func runSingleGame(t *testing.T, gameNum int, rng *rand.Rand) GameResult {
 		hand:     make([]gameCard, 0),
 		lands:    make([]*gamePermanent, 0),
 		creatures: make([]*gamePermanent, 0),
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	player2 := &gamePlayer{
@@ -105,7 +105,7 @@ func runSingleGame(t *testing.T, gameNum int, rng *rand.Rand) GameResult {
 		hand:     make([]gameCard, 0),
 		lands:    make([]*gamePermanent, 0),
 		creatures: make([]*gamePermanent, 0),
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 	
 	// Create game state
@@ -278,7 +278,7 @@ func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEng
 	currentPlayer := gameState.currentPlayer.(*gamePlayer)
 	
 	// Reset mana pool
-	currentPlayer.manaPool = make(map[game.ManaType]int)
+	currentPlayer.manaPool = make(map[types.ManaType]int)
 	
 	// Untap permanents
 	for _, land := range currentPlayer.lands {
@@ -297,7 +297,7 @@ func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEng
 					if err == nil {
 						abilitiesUsed++
 						// Add mana to pool
-						currentPlayer.manaPool[game.Green]++
+						currentPlayer.manaPool[types.Green]++
 					}
 					break
 				}
@@ -408,7 +408,7 @@ func getRedDeckWinsDecklist() []CardData {
 		// Creatures
 		{
 			Name:       "Goblin Guide",
-			ManaCost:   map[game.ManaType]int{game.Red: 1},
+			ManaCost:   map[types.ManaType]int{types.Red: 1},
 			CardType:   "Creature",
 			OracleText: "Haste. Whenever Goblin Guide attacks, defending player reveals the top card of their library. If it's a land card, that player puts it into their hand.",
 			Power:      2,
@@ -417,7 +417,7 @@ func getRedDeckWinsDecklist() []CardData {
 		},
 		{
 			Name:       "Monastery Swiftspear",
-			ManaCost:   map[game.ManaType]int{game.Red: 1},
+			ManaCost:   map[types.ManaType]int{types.Red: 1},
 			CardType:   "Creature",
 			OracleText: "Haste. Prowess",
 			Power:      1,
@@ -426,7 +426,7 @@ func getRedDeckWinsDecklist() []CardData {
 		},
 		{
 			Name:       "Prodigal Pyromancer",
-			ManaCost:   map[game.ManaType]int{game.Red: 3},
+			ManaCost:   map[types.ManaType]int{types.Red: 3},
 			CardType:   "Creature",
 			OracleText: "{T}: Prodigal Pyromancer deals 3 damage to any target.",
 			Power:      1,
@@ -435,7 +435,7 @@ func getRedDeckWinsDecklist() []CardData {
 		},
 		{
 			Name:       "Fire Elemental",
-			ManaCost:   map[game.ManaType]int{game.Red: 2},
+			ManaCost:   map[types.ManaType]int{types.Red: 2},
 			CardType:   "Creature",
 			OracleText: "{1}, {T}: Fire Elemental deals 2 damage to any target.",
 			Power:      2,
@@ -446,21 +446,21 @@ func getRedDeckWinsDecklist() []CardData {
 		// Burn spells
 		{
 			Name:       "Lightning Bolt",
-			ManaCost:   map[game.ManaType]int{game.Red: 1},
+			ManaCost:   map[types.ManaType]int{types.Red: 1},
 			CardType:   "Instant",
 			OracleText: "Lightning Bolt deals 3 damage to any target.",
 			Count:      4,
 		},
 		{
 			Name:       "Lava Spike",
-			ManaCost:   map[game.ManaType]int{game.Red: 1},
+			ManaCost:   map[types.ManaType]int{types.Red: 1},
 			CardType:   "Sorcery",
 			OracleText: "Lava Spike deals 3 damage to target player or planeswalker.",
 			Count:      4,
 		},
 		{
 			Name:       "Rift Bolt",
-			ManaCost:   map[game.ManaType]int{game.Red: 3},
+			ManaCost:   map[types.ManaType]int{types.Red: 3},
 			CardType:   "Sorcery",
 			OracleText: "Suspend 1—{R}. Rift Bolt deals 3 damage to any target.",
 			Count:      4,
@@ -487,7 +487,7 @@ func getControlDecklist() []CardData {
 		// Creatures
 		{
 			Name:       "Snapcaster Mage",
-			ManaCost:   map[game.ManaType]int{game.Blue: 1, game.Any: 1},
+			ManaCost:   map[types.ManaType]int{types.Blue: 1, types.Any: 1},
 			CardType:   "Creature",
 			OracleText: "Flash. When Snapcaster Mage enters the battlefield, target instant or sorcery card in your graveyard gains flashback until end of turn.",
 			Power:      2,
@@ -496,7 +496,7 @@ func getControlDecklist() []CardData {
 		},
 		{
 			Name:       "Wall of Omens",
-			ManaCost:   map[game.ManaType]int{game.White: 1, game.Any: 1},
+			ManaCost:   map[types.ManaType]int{types.White: 1, types.Any: 1},
 			CardType:   "Creature",
 			OracleText: "When Wall of Omens enters the battlefield, draw a card.",
 			Power:      0,
@@ -507,21 +507,21 @@ func getControlDecklist() []CardData {
 		// Spells
 		{
 			Name:       "Counterspell",
-			ManaCost:   map[game.ManaType]int{game.Blue: 2},
+			ManaCost:   map[types.ManaType]int{types.Blue: 2},
 			CardType:   "Instant",
 			OracleText: "Counter target spell.",
 			Count:      4,
 		},
 		{
 			Name:       "Wrath of God",
-			ManaCost:   map[game.ManaType]int{game.White: 2, game.Any: 2},
+			ManaCost:   map[types.ManaType]int{types.White: 2, types.Any: 2},
 			CardType:   "Sorcery",
 			OracleText: "Destroy all creatures. They can't be regenerated.",
 			Count:      4,
 		},
 		{
 			Name:       "Fact or Fiction",
-			ManaCost:   map[game.ManaType]int{game.Blue: 1, game.Any: 3},
+			ManaCost:   map[types.ManaType]int{types.Blue: 1, types.Any: 3},
 			CardType:   "Instant",
 			OracleText: "Reveal the top five cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.",
 			Count:      4,
@@ -533,7 +533,7 @@ func getControlDecklist() []CardData {
 
 type CardData struct {
 	Name       string
-	ManaCost   map[game.ManaType]int
+	ManaCost   map[types.ManaType]int
 	CardType   string
 	OracleText string
 	Power      int
@@ -548,7 +548,7 @@ type gamePlayer struct {
 	hand      []gameCard
 	lands     []*gamePermanent
 	creatures []*gamePermanent
-	manaPool  map[game.ManaType]int
+	manaPool  map[types.ManaType]int
 }
 
 func (p *gamePlayer) GetName() string {
@@ -644,13 +644,13 @@ func (p *gamePlayer) PayCost(cost Cost) error {
 	return nil
 }
 
-func (p *gamePlayer) GetManaPool() map[game.ManaType]int {
+func (p *gamePlayer) GetManaPool() map[types.ManaType]int {
 	return p.manaPool
 }
 
 type gameCard struct {
 	name       string
-	manaCost   map[game.ManaType]int
+	manaCost   map[types.ManaType]int
 	cardType   string
 	oracleText string
 }
@@ -793,7 +793,7 @@ func (g *gameSimulationState) CanActivateAbilities() bool {
 	return g.isMainPhase
 }
 
-func (g *gameSimulationState) AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int) {
+func (g *gameSimulationState) AddManaToPool(player AbilityPlayer, manaType types.ManaType, amount int) {
 	if gamePlayer, ok := player.(*gamePlayer); ok {
 		gamePlayer.manaPool[manaType] += amount
 	}
