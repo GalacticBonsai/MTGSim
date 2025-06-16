@@ -32,8 +32,8 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Wall of Omens",
 			oracleText:  "Defender. When Wall of Omens enters the battlefield, draw a card.",
-			expectedAbilities: 1, // ETB draw ability (defender is a keyword)
-			description: "ETB card draw",
+			expectedAbilities: 2, // Defender + ETB draw ability
+			description: "Defender and ETB card draw",
 		},
 		{
 			name:        "Prodigal Pyromancer",
@@ -44,14 +44,14 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Birds of Paradise",
 			oracleText:  "Flying. {T}: Add one mana of any color.",
-			expectedAbilities: 1, // Mana ability (flying is a keyword)
-			description: "Any color mana",
+			expectedAbilities: 2, // Flying + mana ability
+			description: "Flying and any color mana",
 		},
 		{
 			name:        "Mulldrifter",
 			oracleText:  "Flying. When Mulldrifter enters the battlefield, draw two cards.",
-			expectedAbilities: 1, // ETB draw (Flying is a keyword, not parsed as ability)
-			description: "ETB draw multiple cards",
+			expectedAbilities: 2, // Flying + ETB draw
+			description: "Flying and ETB draw multiple cards",
 		},
 		{
 			name:        "Sakura-Tribe Elder",

@@ -125,6 +125,7 @@ func TestSpellCasting(t *testing.T) {
 	player.ManaPool.Add(types.Colorless, 1)
 
 	// Cast spells
+	game.currentPhase = "Main"
 	game.castSpells(player)
 
 	// Check that Lightning Bolt was cast (should be in graveyard)
@@ -206,5 +207,132 @@ func TestColoredManaRequirements(t *testing.T) {
 	// Now should be able to pay
 	if !manaPool.CanPay(cost) {
 		t.Error("Should be able to pay {R}{R} with 2 red mana")
+	}
+}
+
+func TestSummoningSickness(t *testing.T) {
+	// Create a test game
+	cardDB := &card.CardDB{}
+	game := NewGame(cardDB)
+
+	// Create a test player with a creature
+	player := &Player{
+		Name:     "Test Player",
+		ManaPool: card.NewManaPool(),
+		Hand: []card.Card{
+			{
+				Name:     "Grizzly Bears",
+				ManaCost: "{1}{G}",
+				CMC:      2,
+				TypeLine: "Creature — Bear",
+				Power:    "2",
+				Toughness: "2",
+			},
+		},
+		Creatures: []*Permanent{},
+		Opponents: []*Player{
+			{
+				Name:      "Opponent",
+				LifeTotal: 20,
+				Creatures: []*Permanent{},
+			},
+		},
+	}
+
+	// Add mana to cast the creature
+	player.ManaPool.Add(types.Green, 1)
+	player.ManaPool.Add(types.Colorless, 1)
+
+	// Cast the creature
+	game.currentPhase = "Main"
+	game.castSpells(player)
+
+	// Check that creature was cast
+	if len(player.Creatures) != 1 {
+		t.Errorf("Expected 1 creature, got %d", len(player.Creatures))
+	}
+
+	creature := player.Creatures[0]
+
+	// Check that creature has summoning sickness
+	if !creature.summoningSickness {
+		t.Error("Creature should have summoning sickness when first cast")
+	}
+
+	// Try to attack - should not be able to due to summoning sickness
+	attackers := game.declareAttackers(player)
+	if len(attackers) != 0 {
+		t.Errorf("Creature with summoning sickness should not be able to attack, but %d attackers were declared", len(attackers))
+	}
+
+	// Simulate untap step (beginning of next turn)
+	game.untapStep(player)
+
+	// Check that summoning sickness is removed
+	if creature.summoningSickness {
+		t.Error("Creature should not have summoning sickness after untap step")
+	}
+
+	// Now should be able to attack
+	attackers = game.declareAttackers(player)
+	if len(attackers) != 1 {
+		t.Errorf("Creature without summoning sickness should be able to attack, but %d attackers were declared", len(attackers))
+	}
+}
+
+func TestHasteBypassesSummoningSickness(t *testing.T) {
+	// Create a test game
+	cardDB := &card.CardDB{}
+	game := NewGame(cardDB)
+
+	// Create a test player with a haste creature
+	player := &Player{
+		Name:     "Test Player",
+		ManaPool: card.NewManaPool(),
+		Hand: []card.Card{
+			{
+				Name:     "Lightning Elemental",
+				ManaCost: "{3}{R}",
+				CMC:      4,
+				TypeLine: "Creature — Elemental",
+				Power:    "4",
+				Toughness: "1",
+				Keywords: []string{"Haste"},
+			},
+		},
+		Creatures: []*Permanent{},
+		Opponents: []*Player{
+			{
+				Name:      "Opponent",
+				LifeTotal: 20,
+				Creatures: []*Permanent{},
+			},
+		},
+	}
+
+	// Add mana to cast the creature
+	player.ManaPool.Add(types.Red, 1)
+	player.ManaPool.Add(types.Colorless, 3)
+
+	// Cast the creature
+	game.currentPhase = "Main"
+	game.castSpells(player)
+
+	// Check that creature was cast
+	if len(player.Creatures) != 1 {
+		t.Errorf("Expected 1 creature, got %d", len(player.Creatures))
+	}
+
+	creature := player.Creatures[0]
+
+	// Check that creature has summoning sickness (it should, even with haste)
+	if !creature.summoningSickness {
+		t.Error("Creature should have summoning sickness when first cast, even with haste")
+	}
+
+	// Try to attack - should be able to due to haste
+	attackers := game.declareAttackers(player)
+	if len(attackers) != 1 {
+		t.Errorf("Creature with haste should be able to attack despite summoning sickness, but %d attackers were declared", len(attackers))
 	}
 }

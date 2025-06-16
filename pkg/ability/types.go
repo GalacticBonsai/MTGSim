@@ -58,6 +58,7 @@ const (
 	TapUntap
 	ChangeControl
 	PreventDamage
+	EvergreenAbility // For keyword abilities like Flying, Trample, etc.
 )
 
 // TimingRestriction represents when an ability can be activated.

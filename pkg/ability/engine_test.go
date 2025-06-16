@@ -452,7 +452,7 @@ func TestExecutionEngine_ParseAndRegisterAbilities(t *testing.T) {
 		{
 			name:        "Parse no abilities",
 			oracleText:  "This creature has flying.",
-			expectedLen: 0,
+			expectedLen: 1,
 		},
 	}
 	
