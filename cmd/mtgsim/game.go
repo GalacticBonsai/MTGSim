@@ -460,11 +460,13 @@ func (g *Game) isShockLand(land card.Card) bool {
 		   strings.Contains(oracleText, "enters tapped unless you pay 2 life")
 }
 
-// generateMana taps all untapped lands to generate mana
+// generateMana taps all untapped mana-producing permanents (lands, creatures, artifacts) to generate mana
 func (g *Game) generateMana(player *Player) {
-	logger.LogPlayer("%s: Generating mana from lands", player.Name)
+	logger.LogPlayer("%s: Generating mana from all sources", player.Name)
 
 	manaGenerated := 0
+
+	// Generate mana from lands
 	for _, land := range player.Lands {
 		if !land.tapped && land.manaProducer {
 			// Tap the land
@@ -476,13 +478,47 @@ func (g *Game) generateMana(player *Player) {
 				chosenManaType := land.manaTypes[0] // Simple AI: always choose first color
 				player.ManaPool.Add(chosenManaType, 1)
 				manaGenerated++
-				logger.LogCard("%s taps %s for %s mana", player.Name, land.source.Name, chosenManaType)
+				logger.LogCard("%s taps %s (land) for %s mana", player.Name, land.source.Name, chosenManaType)
+			}
+		}
+	}
+
+	// Generate mana from creatures (prioritize mana production over attacking)
+	for _, creature := range player.Creatures {
+		if !creature.tapped && creature.manaProducer && !creature.summoningSickness {
+			// Tap the creature for mana
+			creature.tapped = true
+
+			// Choose mana type (simple AI: choose first available)
+			if len(creature.manaTypes) > 0 {
+				chosenManaType := creature.manaTypes[0] // Simple AI: always choose first color
+				player.ManaPool.Add(chosenManaType, 1)
+				manaGenerated++
+				logger.LogCard("%s taps %s (creature) for %s mana", player.Name, creature.source.Name, chosenManaType)
+			}
+		}
+	}
+
+	// Generate mana from artifacts
+	for _, artifact := range player.Artifacts {
+		if !artifact.tapped && artifact.manaProducer {
+			// Tap the artifact for mana
+			artifact.tapped = true
+
+			// Choose mana type (simple AI: choose first available)
+			if len(artifact.manaTypes) > 0 {
+				chosenManaType := artifact.manaTypes[0] // Simple AI: always choose first color
+				player.ManaPool.Add(chosenManaType, 1)
+				manaGenerated++
+				logger.LogCard("%s taps %s (artifact) for %s mana", player.Name, artifact.source.Name, chosenManaType)
 			}
 		}
 	}
 
 	if manaGenerated > 0 {
 		logger.LogPlayer("%s: Mana pool now contains: %s", player.Name, player.ManaPool.String())
+	} else {
+		logger.LogPlayer("%s: No mana sources available to tap", player.Name)
 	}
 }
 
@@ -855,7 +891,7 @@ func (g *Game) combatPhase(player *Player) {
 	g.resolveCombatDamage(attackers)
 }
 
-// declareAttackers chooses which creatures attack
+// declareAttackers chooses which creatures attack (prioritizing mana production)
 func (g *Game) declareAttackers(player *Player) []*Permanent {
 	var attackers []*Permanent
 
@@ -868,7 +904,30 @@ func (g *Game) declareAttackers(player *Player) []*Permanent {
 				continue
 			}
 
-			// Simple AI: attack with all available creatures
+			// Prioritize mana production: don't attack with mana-producing creatures unless they have vigilance
+			// or we have excess mana sources
+			if creature.manaProducer {
+				// If creature has vigilance, it can attack and still tap for mana
+				if creature.hasEvergreenAbility("Vigilance") {
+					logger.LogCard("%s can attack with vigilance and still produce mana", creature.source.Name)
+				} else {
+					// Count total available mana sources
+					totalManaProducers := g.countAvailableManaProducers(player)
+
+					// Only attack with mana creatures if we have excess mana production
+					// (more than 3 available mana sources, indicating we have plenty)
+					if totalManaProducers <= 3 {
+						logger.LogCard("%s stays back to produce mana (%d total mana sources available)",
+							creature.source.Name, totalManaProducers)
+						continue
+					} else {
+						logger.LogCard("%s attacks despite being a mana producer (excess mana available: %d sources)",
+							creature.source.Name, totalManaProducers)
+					}
+				}
+			}
+
+			// Attack with this creature
 			if len(player.Opponents) > 0 {
 				creature.attacking = player.Opponents[0] // Attack first opponent
 
@@ -885,6 +944,34 @@ func (g *Game) declareAttackers(player *Player) []*Permanent {
 	}
 
 	return attackers
+}
+
+// countAvailableManaProducers counts all untapped mana-producing permanents
+func (g *Game) countAvailableManaProducers(player *Player) int {
+	count := 0
+
+	// Count untapped lands
+	for _, land := range player.Lands {
+		if !land.tapped && land.manaProducer {
+			count++
+		}
+	}
+
+	// Count untapped mana-producing creatures (without summoning sickness)
+	for _, creature := range player.Creatures {
+		if !creature.tapped && creature.manaProducer && !creature.summoningSickness {
+			count++
+		}
+	}
+
+	// Count untapped mana-producing artifacts
+	for _, artifact := range player.Artifacts {
+		if !artifact.tapped && artifact.manaProducer {
+			count++
+		}
+	}
+
+	return count
 }
 
 // declareBlockers chooses which creatures block
