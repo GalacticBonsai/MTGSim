@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug mtgstats: single game",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/mtgstats",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "-games=100",
+        "-decks=decks/welcome",
+        "-swap=0",
+        "-v=2",
+        "-log=META"
+      ],
+      "console": "integratedTerminal"
+    }
+  ]
+}
+
