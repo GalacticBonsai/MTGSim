@@ -264,7 +264,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 func (ee *ExecutionEngine) determineManaType(ability *Ability, _ Effect) game.ManaType {
 	// Parse from ability description or oracle text
 	text := ability.OracleText
-	
+
 	if contains(text, "{W}") {
 		return game.White
 	}
@@ -450,9 +450,22 @@ func (ee *ExecutionEngine) isValidBasicTarget(target any, targetReq Target) bool
 }
 
 // applyPumpEffect applies a pump effect to a creature.
-func (ee *ExecutionEngine) applyPumpEffect(_ any, power, toughness int, duration EffectDuration) {
-	// This would need to be implemented based on how creatures are represented
-	// For now, just log the effect
+func (ee *ExecutionEngine) applyPumpEffect(target any, power, toughness int, duration EffectDuration) {
+	// Apply temporary P/T changes until end of turn where applicable
+	if gp, ok := target.(*game.Permanent); ok {
+		if duration == UntilEndOfTurn || duration == Instant || duration == UntilEndOfCombat {
+			gp.AddTempBuff(power, toughness)
+			logger.LogCard("Applying temporary +%d/+%d to %s (duration: %v)", power, toughness, gp.GetName(), duration)
+			return
+		}
+		// For permanent duration, adjust base stats (simplified)
+		if duration == Permanent {
+			gp.SetPower(gp.GetPower() + power)
+			gp.SetToughness(gp.GetToughness() + toughness)
+			logger.LogCard("Applying permanent +%d/+%d to %s", power, toughness, gp.GetName())
+			return
+		}
+	}
 	logger.LogCard("Applying +%d/+%d effect (duration: %v)", power, toughness, duration)
 }
 
@@ -492,7 +505,7 @@ func (ee *ExecutionEngine) ApplyEffect(effect Effect, controller AbilityPlayer, 
 // ActivateManaAbilities activates all available mana abilities for a player.
 func (ee *ExecutionEngine) ActivateManaAbilities(player AbilityPlayer) int {
 	totalManaAdded := 0
-	
+
 	// Get all lands controlled by the player
 	for _, land := range player.GetLands() {
 		if permanent, ok := land.(AbilityPermanent); ok {
@@ -509,14 +522,14 @@ func (ee *ExecutionEngine) ActivateManaAbilities(player AbilityPlayer) int {
 			}
 		}
 	}
-	
+
 	return totalManaAdded
 }
 
 // GetActivatableAbilities returns all abilities that can be activated by a player.
 func (ee *ExecutionEngine) GetActivatableAbilities(player AbilityPlayer) []*Ability {
 	var activatable []*Ability
-	
+
 	// Check creatures for activated abilities
 	for _, creature := range player.GetCreatures() {
 		if permanent, ok := creature.(AbilityPermanent); ok {
@@ -538,18 +551,18 @@ func (ee *ExecutionEngine) GetActivatableAbilities(player AbilityPlayer) []*Abil
 			}
 		}
 	}
-	
+
 	return activatable
 }
 
 // Helper function to check if a string contains a substring (case-insensitive).
 func contains(text, substr string) bool {
-	return len(text) >= len(substr) && 
-		   (text == substr || 
-		    (len(text) > len(substr) && 
-		     (text[:len(substr)] == substr || 
-		      text[len(text)-len(substr):] == substr ||
-		      containsSubstring(text, substr))))
+	return len(text) >= len(substr) &&
+		(text == substr ||
+			(len(text) > len(substr) &&
+				(text[:len(substr)] == substr ||
+					text[len(text)-len(substr):] == substr ||
+					containsSubstring(text, substr))))
 }
 
 func containsSubstring(text, substr string) bool {

@@ -24,6 +24,9 @@ type Permanent struct {
 	tempPowerMod     int
 	tempToughnessMod int
 
+	// Summoning sickness tracking (CR 302.6)
+	enteredTurn int
+
 	// Minimal keyword flags (subset for Task 10)
 	firstStrike  bool
 	doubleStrike bool
@@ -42,6 +45,7 @@ func NewPermanent(c SimpleCard, owner *Player, controller *Player) *Permanent {
 		damage:           0,
 		tempPowerMod:     0,
 		tempToughnessMod: 0,
+		enteredTurn:      0,
 		firstStrike:      false,
 		doubleStrike:     false,
 	}
@@ -72,9 +76,17 @@ func (p *Permanent) GetDamageCounters() int { return p.damage }
 func (p *Permanent) AddDamage(d int)        { p.damage += d }
 func (p *Permanent) ClearDamage()           { p.damage = 0 }
 
+// Summoning sickness helpers (CR 302.6)
+func (p *Permanent) SetEnteredTurn(turn int) { p.enteredTurn = turn }
+func (p *Permanent) GetEnteredTurn() int     { return p.enteredTurn }
+
 // Temporary pump helpers
 func (p *Permanent) addTempPump(dp, dt int) { p.tempPowerMod += dp; p.tempToughnessMod += dt }
 func (p *Permanent) clearTempPump()         { p.tempPowerMod = 0; p.tempToughnessMod = 0 }
+
+// Exported wrappers for ability engine
+func (p *Permanent) AddTempBuff(dp, dt int) { p.addTempPump(dp, dt) }
+func (p *Permanent) ClearTempBuffs()        { p.clearTempPump() }
 
 // Minimal keyword setters/getters
 func (p *Permanent) SetFirstStrike(v bool)  { p.firstStrike = v }

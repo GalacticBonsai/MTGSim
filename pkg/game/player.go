@@ -96,6 +96,23 @@ func (p *Player) SummonCreature(name string) (*Permanent, error) {
 	return perm, nil
 }
 
+// CastPermanent moves a nonland permanent card (artifact/enchantment/planeswalker/etc.) from hand to battlefield.
+func (p *Player) CastPermanent(name string) (*Permanent, error) {
+	idx := p.FindCardInHand(name)
+	if idx < 0 {
+		return nil, errors.New("card not in hand")
+	}
+	c := p.Hand[idx]
+	if c.IsLand() || c.IsInstant() || c.IsSorcery() {
+		return nil, errors.New("card is not a nonland permanent")
+	}
+	// remove from hand and create permanent
+	p.Hand = append(p.Hand[:idx], p.Hand[idx+1:]...)
+	perm := NewPermanent(c, p, p)
+	p.Battlefield = append(p.Battlefield, perm)
+	return perm, nil
+}
+
 // DestroyPermanent moves a permanent to its owner's graveyard.
 func (p *Player) DestroyPermanent(perm *Permanent) bool {
 	// find on battlefield

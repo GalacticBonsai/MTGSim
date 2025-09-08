@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/mtgsim/mtgsim/internal/logger"
+	abil "github.com/mtgsim/mtgsim/pkg/ability"
+	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
@@ -143,6 +145,13 @@ func clearManaPool(p *game.Player) {
 	}
 }
 
+// Clear all temporary EOT effects (e.g., pump) on a player's permanents
+func clearTempEffects(p *game.Player) {
+	for _, perm := range p.Battlefield {
+		perm.ClearTempBuffs()
+	}
+}
+
 // Untap all permanents a player controls
 func untapAll(p *game.Player) {
 	for _, perm := range p.Battlefield {
@@ -163,6 +172,24 @@ func parseCostToGameMana(cost string) game.Mana {
 	gm.Add(game.Colorless, cm.Get(game.Colorless))
 	// Generic (Any) numeric
 	gm.Add(game.Any, cm.Get(game.Any))
+	return gm
+}
+
+// Convert game.Mana to ability.Cost
+func toAbilityCostFromGameMana(gm game.Mana) abil.Cost {
+	mc := map[game.ManaType]int{}
+	for _, t := range []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green, game.Colorless, game.Any} {
+		mc[t] = gm.Get(t)
+	}
+	return abil.Cost{ManaCost: mc}
+}
+
+// Convert ability.Cost back to game.Mana
+func abilityCostToGameMana(c abil.Cost) game.Mana {
+	gm := game.Mana{}
+	for k, v := range c.ManaCost {
+		gm.Add(k, v)
+	}
 	return gm
 }
 
@@ -261,6 +288,76 @@ func chooseProduction(types []game.ManaType) game.ManaType {
 		return types[0]
 	}
 	return game.Colorless
+}
+
+// abilityStackAdapter adapts the ability spell casting engine to game.SimpleStack
+// so we can call g.CastSimpleSpell without importing ability everywhere.
+// CR 601: Casting Spells; CR 117: Priority (casting is only allowed when you have priority).
+type abilityStackAdapter struct {
+	sce    *abil.SpellCastingEngine
+	gs     *bridge.AbilityGameState
+	cardDB *card.CardDB
+}
+
+func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, _ string, controller any, targets []any) error {
+	// Look up the real card from the database to include oracle/effects
+	cc, ok := a.cardDB.GetCardByName(name)
+	if !ok {
+		return fmt.Errorf("card not found: %s", name)
+	}
+	c, ok := controller.(abil.AbilityPlayer)
+	if !ok {
+		// try to map by player name if we received a *game.Player
+		if gp, ok2 := controller.(*game.Player); ok2 {
+			c = a.gs.GetPlayer(gp.GetName())
+		} else {
+			return fmt.Errorf("invalid controller type for %s", name)
+		}
+	}
+	// Convert []any targets -> []interface{}
+	var ts []interface{}
+	for _, t := range targets {
+		ts = append(ts, t)
+	} // S1011
+	return a.sce.CastSpell(cc, c, ts)
+}
+
+func (a *abilityStackAdapter) Size() int { return a.sce.GetStack().Size() }
+
+// resolveStackWithPermanents resolves the ability stack one item at a time.
+// After each resolution, if the item was a permanent spell, we create the
+// corresponding permanent on the battlefield by moving the card from hand.
+// CR 117.4b: When all players pass in succession, the top object on the stack resolves.
+func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
+	st := sce.GetStack()
+	for !st.IsEmpty() {
+		item := st.Peek()
+		// Resolve through the engine so effects (instants/sorceries) apply
+		_ = st.ResolveTop()
+		if item == nil || item.Spell == nil {
+			continue
+		}
+		name := item.Spell.Name
+		tl := item.Spell.TypeLine
+		ctrlName := item.Controller.GetName()
+		var ctrl *game.Player
+		for _, pl := range g.GetPlayersRaw() {
+			if pl.GetName() == ctrlName {
+				ctrl = pl
+				break
+			}
+		}
+		if ctrl == nil {
+			continue
+		}
+		// Move permanent spells onto the battlefield
+		if strings.Contains(tl, "Creature") {
+			_, _ = g.SummonCreature(ctrl, name)
+		} else if strings.Contains(tl, "Enchantment") || strings.Contains(tl, "Artifact") || strings.Contains(tl, "Planeswalker") {
+			_, _ = g.CastPermanent(ctrl, name)
+		}
+		g.ApplyStateBasedActions()
+	}
 }
 
 // Tap all available producers to generate mana (simple heuristic)
@@ -431,11 +528,13 @@ func produceSmartMana(p *game.Player, cardDB *card.CardDB) {
 }
 
 // Cast as many creatures as possible with current pool (descending power)
-func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB) {
+// Spells are cast through the stack (SimpleStack adapter) and then resolved.
+func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB, controller any) {
 	for {
 		bestIdx := -1
 		bestPow := -1
 		bestCost := game.Mana{}
+		var bestCard card.Card
 		for i, c := range p.Hand {
 			if !c.IsCreature() {
 				continue
@@ -448,6 +547,7 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB)
 						bestPow = pow
 						bestIdx = i
 						bestCost = cost
+						bestCard = cardData
 					}
 				}
 			}
@@ -455,14 +555,148 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB)
 		if bestIdx < 0 {
 			break
 		}
-		// Pay and summon
+		// Pay and cast through the stack (do NOT remove from hand here)
 		if poolPay(p.GetManaPool(), bestCost) {
-			c := p.Hand[bestIdx]
-			p.Hand = append(p.Hand[:bestIdx], p.Hand[bestIdx+1:]...)
-			_, _ = g.SummonCreature(p, c.Name)
+			if err := g.CastSimpleSpell(bestCard.Name, int(bestCard.CMC), bestCard.ManaCost, bestCard.TypeLine, controller, nil); err != nil {
+				break
+			}
 		} else {
 			break
 		}
+	}
+}
+
+// Cast artifacts/enchantments/planeswalkers in main phase (non-creature permanents)
+func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB, controller any) {
+	for {
+		castSomething := false
+		for _, c := range p.Hand {
+			if !(c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()) {
+				continue
+			}
+			cardData, ok := cardDB.GetCardByName(c.Name)
+			if !ok {
+				continue
+			}
+			cost := parseCostToGameMana(cardData.ManaCost)
+			if !poolCanPay(p.GetManaPool(), cost) {
+				continue
+			}
+			if !poolPay(p.GetManaPool(), cost) {
+				continue
+			}
+			if err := g.CastSimpleSpell(cardData.Name, int(cardData.CMC), cardData.ManaCost, cardData.TypeLine, controller, nil); err == nil {
+				castSomething = true
+			}
+		}
+		if !castSomething {
+			break
+		}
+	}
+}
+
+// AI-driven sorcery casting in main phase
+func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.CardDB, controller any, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine) {
+	// Build candidate abilities from sorceries in hand
+	var abilities []*abil.Ability
+	cardByAbility := map[*abil.Ability]card.Card{}
+	for _, sc := range p.Hand {
+		if !sc.IsSorcery() {
+			continue
+		}
+		cd, ok := cardDB.GetCardByName(sc.Name)
+		if !ok {
+			continue
+		}
+		abs, err := exec.ParseAndRegisterAbilities(cd.OracleText, cd)
+		if err != nil || len(abs) == 0 {
+			continue
+		}
+		// Use first parsed ability as proxy and attach mana cost
+		ab := *abs[0]
+		cost := toAbilityCostFromGameMana(parseCostToGameMana(cd.ManaCost))
+		ab.Cost = cost
+		abilities = append(abilities, &ab)
+		cardByAbility[&ab] = cd
+	}
+	if len(abilities) == 0 {
+		return
+	}
+	// Decision context
+	ap := gs.GetPlayer(p.GetName())
+	op := gs.GetPlayer(dp.GetName())
+	ctx := ai.BuildDecisionContext(ap, []abil.AbilityPlayer{op}, "Main")
+	selected := ai.ChooseAbilitiesToActivate(abilities, ctx)
+	for _, ab := range selected {
+		cd := cardByAbility[ab]
+		// Pay cost from game pool
+		gm := abilityCostToGameMana(ab.Cost)
+		if !poolCanPay(p.GetManaPool(), gm) {
+			continue
+		}
+		// Choose targets via AI
+		ts := ai.ChooseTargetsFor(ab, ctx)
+		var anyTargets []any
+		for _, t := range ts {
+			anyTargets = append(anyTargets, t)
+		}
+		if !poolPay(p.GetManaPool(), gm) {
+			continue
+		}
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+	}
+}
+
+// AI-driven instant casting for a single window (casts best available one or few)
+func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.CardDB, controller any, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine) {
+	var abilities []*abil.Ability
+	cardByAbility := map[*abil.Ability]card.Card{}
+	for _, sc := range p.Hand {
+		if !sc.IsInstant() {
+			continue
+		}
+		cd, ok := cardDB.GetCardByName(sc.Name)
+		if !ok {
+			continue
+		}
+		abs, err := exec.ParseAndRegisterAbilities(cd.OracleText, cd)
+		if err != nil || len(abs) == 0 {
+			continue
+		}
+		ab := *abs[0]
+		ab.Cost = toAbilityCostFromGameMana(parseCostToGameMana(cd.ManaCost))
+		abilities = append(abilities, &ab)
+		cardByAbility[&ab] = cd
+	}
+	if len(abilities) == 0 {
+		return
+	}
+	phaseLabel := "Combat"
+	if g.IsMainPhase() {
+		phaseLabel = "Main"
+	}
+	if g.GetCurrentPhase() == game.PhaseEnd {
+		phaseLabel = "End"
+	}
+	ap := gs.GetPlayer(p.GetName())
+	op := gs.GetPlayer(dp.GetName())
+	ctx := ai.BuildDecisionContext(ap, []abil.AbilityPlayer{op}, phaseLabel)
+	selected := ai.ChooseAbilitiesToActivate(abilities, ctx)
+	for _, ab := range selected {
+		cd := cardByAbility[ab]
+		gm := abilityCostToGameMana(ab.Cost)
+		if !poolCanPay(p.GetManaPool(), gm) {
+			continue
+		}
+		ts := ai.ChooseTargetsFor(ab, ctx)
+		var anyTargets []any
+		for _, t := range ts {
+			anyTargets = append(anyTargets, t)
+		}
+		if !poolPay(p.GetManaPool(), gm) {
+			continue
+		}
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
 	}
 }
 
@@ -531,10 +765,36 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 	start := time.Now()
 	landDropUsed := map[*game.Player]bool{}
 	maxTurns := 30
+
+	// Wire ability stack + priority engine
+	gs := bridge.NewAbilityGameState(g)
+	exec := abil.NewExecutionEngine(gs)
+	sce := abil.NewSpellCastingEngine(gs, exec)
+	ai := abil.NewAIDecisionMaker(exec)
+	adapter := &abilityStackAdapter{sce: sce, gs: gs, cardDB: cardDB}
+	g.SetStack(adapter)
+
 	for g.GetTurnNumber() <= maxTurns {
 		ap := g.GetActivePlayerRaw()
 		dp := opponentOf(g, ap)
 		phase := g.GetCurrentPhase()
+
+		// Keep ability engine in sync with game state.
+		// CR 117.1a: A player gets priority at specific times; CR 117.3b: sorcery timing requires main phase and empty stack.
+		sce.SetPlayers(gs.GetAllPlayers())
+		sce.SetActivePlayer(gs.GetActivePlayer())
+		var phaseLabel string
+		switch phase {
+		case game.PhaseMain1, game.PhaseMain2:
+			phaseLabel = "Main Phase"
+		case game.PhaseCombat:
+			phaseLabel = "Combat Phase"
+		case game.PhaseEnd:
+			phaseLabel = "End Step"
+		default:
+			phaseLabel = ""
+		}
+		sce.SetPhase(phaseLabel)
 
 		switch phase {
 		case game.PhaseUntap:
@@ -557,17 +817,29 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 				}
 				if landIdx >= 0 {
 					c := ap.Hand[landIdx]
-					ap.Hand = append(ap.Hand[:landIdx], ap.Hand[landIdx+1:]...)
+					// CR 305.2: A player may play one land during their main phase when they have priority and the stack is empty.
+					// Do not remove from hand here; Player.PlayLand handles the zone change (single removal).
 					if _, err := g.PlayLand(ap, c.Name); err == nil {
 						landDropUsed[ap] = true
 					}
 				}
 			}
-			// Generate mana by tapping producers and cast creatures respecting costs
-			clearManaPool(ap)
+			// Generate mana by tapping producers and cast spells via stack
 			produceSmartMana(ap, cardDB)
-			castAllPossibleCreatures(g, ap, cardDB)
-			// Mana empties at step end
+			// Pre-sorcery instant-speed window
+			produceAllAvailableMana(ap)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			resolveStackWithPermanents(sce, g)
+			// Cast non-creature permanents first, then sorceries, then creatures
+			castNonCreaturePermanents(g, ap, cardDB, ap)
+			castSorceries(g, ap, dp, cardDB, ap, gs, ai, exec)
+			castAllPossibleCreatures(g, ap, cardDB, ap)
+			// Post-sorcery instant-speed window
+			produceAllAvailableMana(ap)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			// Resolve the stack completely before leaving main phase
+			resolveStackWithPermanents(sce, g)
+			// CR 106.4: Any unused mana in a player's mana pool empties as steps and phases end.
 			clearManaPool(ap)
 		case game.PhaseCombat:
 			g.BeginCombat()
@@ -577,6 +849,10 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 					_ = g.DeclareAttacker(perm, dp)
 				}
 			}
+			// Attacker instant-speed window (after attackers declared, before blocks)
+			produceAllAvailableMana(ap)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			resolveStackWithPermanents(sce, g)
 			// Blockers: only block sometimes; prefer survival blocks, then trades
 			for _, blocker := range dp.GetCreatures() {
 				if blocker.IsTapped() {
@@ -607,8 +883,19 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 					}
 				}
 			}
+			// Defender instant-speed window (after blocks declared, before damage)
+			produceAllAvailableMana(dp)
+			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec)
+			resolveStackWithPermanents(sce, g)
 			g.ResolveCombatDamage()
 		case game.PhaseEnd:
+			// End step instant windows (active then non-active player)
+			produceAllAvailableMana(ap)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			resolveStackWithPermanents(sce, g)
+			produceAllAvailableMana(dp)
+			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec)
+			resolveStackWithPermanents(sce, g)
 			// Discard down to 7
 			for len(ap.Hand) > 7 {
 				i := rand.Intn(len(ap.Hand))
@@ -616,7 +903,9 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 				ap.Hand = append(ap.Hand[:i], ap.Hand[i+1:]...)
 				ap.Graveyard = append(ap.Graveyard, c)
 			}
-			// Clear mana pools
+			// Cleanup EOT temporary effects and empty pools
+			clearTempEffects(ap)
+			clearTempEffects(dp)
 			clearManaPool(ap)
 			clearManaPool(dp)
 		}

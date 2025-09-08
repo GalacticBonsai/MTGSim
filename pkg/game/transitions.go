@@ -6,6 +6,20 @@ func (g *Game) SummonCreature(p *Player, name string) (*Permanent, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Track summoning sickness (CR 302.6): remember the turn a creature entered
+	perm.SetEnteredTurn(g.turnNumber)
+	g.emit(Event{Type: EventEntersBattlefield, ZoneChange: &ZoneChange{Permanent: perm, To: Battlefield}})
+	return perm, nil
+}
+
+// CastPermanent wraps Player.CastPermanent and emits ETB event.
+func (g *Game) CastPermanent(p *Player, name string) (*Permanent, error) {
+	perm, err := p.CastPermanent(name)
+	if err != nil {
+		return nil, err
+	}
+	// Set turn entered for summoning sickness relevance (only matters if it's a creature)
+	perm.SetEnteredTurn(g.turnNumber)
 	g.emit(Event{Type: EventEntersBattlefield, ZoneChange: &ZoneChange{Permanent: perm, To: Battlefield}})
 	return perm, nil
 }
@@ -16,6 +30,8 @@ func (g *Game) PlayLand(p *Player, name string) (*Permanent, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Lands also "entered the battlefield this turn" but don't have summoning sickness.
+	perm.SetEnteredTurn(g.turnNumber)
 	g.emit(Event{Type: EventEntersBattlefield, ZoneChange: &ZoneChange{Permanent: perm, To: Battlefield}})
 	return perm, nil
 }

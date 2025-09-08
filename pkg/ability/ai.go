@@ -41,21 +41,21 @@ func NewAIDecisionMaker(engine *ExecutionEngine) *AIDecisionMaker {
 func (ai *AIDecisionMaker) initializePriorities() {
 	// Mana abilities are highest priority (needed for everything else)
 	ai.priorities[AddMana] = PriorityCritical
-	
+
 	// Card advantage is very important
 	ai.priorities[DrawCards] = PriorityHigh
-	
+
 	// Direct damage and removal are important
 	ai.priorities[DealDamage] = PriorityHigh
 	ai.priorities[DestroyPermanent] = PriorityHigh
-	
+
 	// Life gain/loss is medium priority
 	ai.priorities[GainLife] = PriorityMedium
 	ai.priorities[LoseLife] = PriorityMedium
-	
+
 	// Creature pumping is situational
 	ai.priorities[PumpCreature] = PriorityMedium
-	
+
 	// Utility effects are lower priority
 	ai.priorities[TapUntap] = PriorityLow
 	ai.priorities[SearchLibrary] = PriorityLow
@@ -63,13 +63,13 @@ func (ai *AIDecisionMaker) initializePriorities() {
 
 // DecisionContext provides context for AI decision making.
 type DecisionContext struct {
-	Player           AbilityPlayer
-	Opponents        []AbilityPlayer
-	Phase            string
-	AvailableMana    int
-	HandSize         int
-	BoardState       BoardState
-	ThreatLevel      int
+	Player            AbilityPlayer
+	Opponents         []AbilityPlayer
+	Phase             string
+	AvailableMana     int
+	HandSize          int
+	BoardState        BoardState
+	ThreatLevel       int
 	CanCastMoreSpells bool
 }
 
@@ -89,22 +89,22 @@ func (ai *AIDecisionMaker) ShouldActivateAbilities(context DecisionContext) bool
 	if context.CanCastMoreSpells && context.AvailableMana < 3 {
 		return true
 	}
-	
+
 	// Activate abilities when we have excess mana
 	if context.AvailableMana > 5 {
 		return true
 	}
-	
+
 	// Activate abilities when under threat
 	if context.ThreatLevel > 3 {
 		return true
 	}
-	
+
 	// Activate abilities when we have few cards in hand
 	if context.HandSize < 3 {
 		return true
 	}
-	
+
 	// Random chance to activate abilities for variety
 	return ai.rng.Float32() < 0.3
 }
@@ -114,30 +114,30 @@ func (ai *AIDecisionMaker) ChooseAbilitiesToActivate(abilities []*Ability, conte
 	if len(abilities) == 0 {
 		return nil
 	}
-	
+
 	// Score each ability based on current context
 	scoredAbilities := ai.scoreAbilities(abilities, context)
-	
+
 	// Sort by score (highest first)
 	sort.Slice(scoredAbilities, func(i, j int) bool {
 		return scoredAbilities[i].Score > scoredAbilities[j].Score
 	})
-	
+
 	// Select abilities to activate based on available mana and priorities
 	var toActivate []*Ability
 	remainingMana := context.AvailableMana
-	
+
 	for _, scored := range scoredAbilities {
 		ability := scored.Ability
 		cost := ai.calculateManaCost(ability)
-		
+
 		// Check if we can afford this ability
 		if cost <= remainingMana {
 			// Check if we should activate this ability
 			if ai.shouldActivateSpecificAbility(ability, context, scored.Score) {
 				toActivate = append(toActivate, ability)
 				remainingMana -= cost
-				
+
 				// Don't activate too many abilities at once
 				if len(toActivate) >= 3 {
 					break
@@ -145,7 +145,7 @@ func (ai *AIDecisionMaker) ChooseAbilitiesToActivate(abilities []*Ability, conte
 			}
 		}
 	}
-	
+
 	return toActivate
 }
 
@@ -158,7 +158,7 @@ type ScoredAbility struct {
 // scoreAbilities calculates scores for abilities based on the current context.
 func (ai *AIDecisionMaker) scoreAbilities(abilities []*Ability, context DecisionContext) []ScoredAbility {
 	var scored []ScoredAbility
-	
+
 	for _, ability := range abilities {
 		score := ai.scoreAbility(ability, context)
 		scored = append(scored, ScoredAbility{
@@ -166,14 +166,14 @@ func (ai *AIDecisionMaker) scoreAbilities(abilities []*Ability, context Decision
 			Score:   score,
 		})
 	}
-	
+
 	return scored
 }
 
 // scoreAbility calculates a score for a single ability.
 func (ai *AIDecisionMaker) scoreAbility(ability *Ability, context DecisionContext) float64 {
 	baseScore := 0.0
-	
+
 	// Base score from priority
 	for _, effect := range ability.Effects {
 		priority := ai.priorities[effect.Type]
@@ -187,23 +187,23 @@ func (ai *AIDecisionMaker) scoreAbility(ability *Ability, context DecisionContex
 		case PriorityLow:
 			baseScore += 1.0
 		}
-		
+
 		// Adjust score based on effect type and context
 		baseScore += ai.scoreEffectInContext(effect, context)
 	}
-	
+
 	// Adjust for mana cost efficiency
 	manaCost := ai.calculateManaCost(ability)
 	if manaCost > 0 {
 		baseScore = baseScore / float64(manaCost) * 2.0 // Favor cheaper abilities
 	}
-	
+
 	// Adjust for timing
 	baseScore += ai.scoreTimingContext(ability, context)
-	
+
 	// Add some randomness for variety
 	baseScore += ai.rng.Float64() * 0.5
-	
+
 	return baseScore
 }
 
@@ -216,7 +216,7 @@ func (ai *AIDecisionMaker) scoreEffectInContext(effect Effect, context DecisionC
 			return 3.0
 		}
 		return 0.5
-		
+
 	case DrawCards:
 		// Card draw is more valuable when we have few cards
 		if context.HandSize < 3 {
@@ -225,7 +225,7 @@ func (ai *AIDecisionMaker) scoreEffectInContext(effect Effect, context DecisionC
 			return 2.0
 		}
 		return 1.0
-		
+
 	case DealDamage:
 		// Damage is more valuable when opponent has creatures or low life
 		score := 2.0
@@ -235,12 +235,12 @@ func (ai *AIDecisionMaker) scoreEffectInContext(effect Effect, context DecisionC
 		// Assume we can target opponent's life total
 		score += 1.0
 		return score
-		
+
 	case GainLife:
 		// Life gain is more valuable when we're low on life
 		// We don't have access to current life, so use a base value
 		return 1.5
-		
+
 	case PumpCreature:
 		// Creature pumping is more valuable when we have creatures and are attacking
 		if context.BoardState.MyCreatures > 0 {
@@ -250,14 +250,14 @@ func (ai *AIDecisionMaker) scoreEffectInContext(effect Effect, context DecisionC
 			return 1.5
 		}
 		return 0.5
-		
+
 	case DestroyPermanent:
 		// Removal is more valuable when opponent has threats
 		if context.BoardState.OpponentCreatures > 0 {
 			return 4.0
 		}
 		return 1.0
-		
+
 	default:
 		return 1.0
 	}
@@ -291,7 +291,7 @@ func (ai *AIDecisionMaker) shouldActivateSpecificAbility(ability *Ability, conte
 	if score > 8.0 {
 		return true
 	}
-	
+
 	// Activate medium-scoring abilities based on context
 	if score > 5.0 {
 		// More likely to activate if we have excess mana
@@ -305,12 +305,12 @@ func (ai *AIDecisionMaker) shouldActivateSpecificAbility(ability *Ability, conte
 		// Random chance
 		return ai.rng.Float32() < 0.7
 	}
-	
+
 	// Activate low-scoring abilities only if we have lots of excess mana
 	if score > 2.0 && context.AvailableMana > 6 {
 		return ai.rng.Float32() < 0.4
 	}
-	
+
 	return false
 }
 
@@ -327,12 +327,12 @@ func (ai *AIDecisionMaker) calculateManaCost(ability *Ability) int {
 func (ai *AIDecisionMaker) ActivateAbilitiesForPlayer(player AbilityPlayer, phase string) {
 	// Build decision context
 	context := ai.buildDecisionContext(player, phase)
-	
+
 	// Check if we should activate abilities at all
 	if !ai.ShouldActivateAbilities(context) {
 		return
 	}
-	
+
 	// First, activate mana abilities if needed
 	if context.CanCastMoreSpells || context.AvailableMana < 2 {
 		manaAdded := ai.engine.ActivateManaAbilities(player)
@@ -341,16 +341,16 @@ func (ai *AIDecisionMaker) ActivateAbilitiesForPlayer(player AbilityPlayer, phas
 			context.AvailableMana += manaAdded
 		}
 	}
-	
+
 	// Get all activatable abilities
 	abilities := ai.engine.GetActivatableAbilities(player)
 	if len(abilities) == 0 {
 		return
 	}
-	
+
 	// Choose which abilities to activate
 	toActivate := ai.ChooseAbilitiesToActivate(abilities, context)
-	
+
 	// Activate chosen abilities
 	for _, ability := range toActivate {
 		targets := ai.chooseTargets(ability, context)
@@ -363,6 +363,20 @@ func (ai *AIDecisionMaker) ActivateAbilitiesForPlayer(player AbilityPlayer, phas
 	}
 }
 
+// Exported helpers for spell casting integration
+
+// BuildDecisionContext exposes the decision context builder for external callers (e.g., spell AI).
+func (ai *AIDecisionMaker) BuildDecisionContext(player AbilityPlayer, opponents []AbilityPlayer, phase string) DecisionContext {
+	ctx := ai.buildDecisionContext(player, phase)
+	ctx.Opponents = opponents
+	return ctx
+}
+
+// ChooseTargetsFor exposes target selection for a given (parsed) ability using the AI logic.
+func (ai *AIDecisionMaker) ChooseTargetsFor(ability *Ability, context DecisionContext) []interface{} {
+	return ai.chooseTargets(ability, context)
+}
+
 // buildDecisionContext builds a decision context for the given player.
 func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase string) DecisionContext {
 	// Calculate available mana
@@ -370,7 +384,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	for _, amount := range player.GetManaPool() {
 		availableMana += amount
 	}
-	
+
 	// Add untapped lands (simplified)
 	for _, land := range player.GetLands() {
 		if permanent, ok := land.(AbilityPermanent); ok {
@@ -390,7 +404,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	for range player.GetCreatures() {
 		boardState.MyCreaturePower += 2 // Assume average power of 2
 	}
-	
+
 	// Calculate threat level (simplified)
 	threatLevel := 0
 	if boardState.OpponentCreatures > boardState.MyCreatures {
@@ -399,7 +413,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	if boardState.OpponentPower > boardState.MyCreaturePower {
 		threatLevel += 2
 	}
-	
+
 	return DecisionContext{
 		Player:            player,
 		Phase:             phase,
