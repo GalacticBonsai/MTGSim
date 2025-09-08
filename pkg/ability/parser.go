@@ -106,6 +106,15 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `.*\s+deals\s+(\d+)\s+damage\s+divided\s+as\s+you\s+choose\s+among\s+(.*)`, DealDamage, "Divided damage", ap.parseDividedDamage)
 	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\.\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life", ap.parseDrainLife)
 	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life no period", ap.parseDrainLife)
+
+	// New spell patterns for bounce, debuff, control change, and bite effects
+	ap.addPattern(Activated, `Return\s+target\s+creature\s+to\s+its\s+owner'?s\s+hand`, ReturnToHand, "Bounce creature", ap.parseBounceCreature)
+	ap.addPattern(Activated, `Return\s+up\s+to\s+three\s+target\s+creatures\s+to\s+their\s+owners'?\s+hands`, ReturnToHand, "Bounce up to three creatures", ap.parseBounceUpToThree)
+	ap.addPattern(Activated, `Target\s+creature\s+gets\s+-([0-9]+)\/-([0-9]+)\s+until\s+end\s+of\s+turn`, PumpCreature, "Debuff creature until EOT", ap.parseSpellDebuff)
+	ap.addPattern(Activated, `Draw\s+a\s+card`, DrawCards, "Draw a card", ap.parseSpellDrawACard)
+	ap.addPattern(Activated, `Gain\s+control\s+of\s+target\s+creature\s+until\s+end\s+of\s+turn.*Untap\s+that\s+creature.*`, ChangeControl, "Act of Treason style", ap.parseActOfTreason)
+	ap.addPattern(Activated, `Target\s+creature\s+you\s+control\s+deals\s+damage\s+equal\s+to\s+its\s+power\s+to\s+target\s+creature\s+you\s+don'?t\s+control`, SourcePowerDamage, "Rabid Bite style", ap.parseRabidBite)
+
 }
 
 // addPattern adds a new pattern to the parser.
@@ -186,14 +195,14 @@ func (ap *AbilityParser) splitOracleText(text string) []string {
 	// Split by periods, but be careful about mana symbols like {T}
 	sentences := strings.Split(text, ".")
 	var result []string
-	
+
 	for _, sentence := range sentences {
 		trimmed := strings.TrimSpace(sentence)
 		if trimmed != "" {
 			result = append(result, trimmed)
 		}
 	}
-	
+
 	return result
 }
 
@@ -205,7 +214,7 @@ func (ap *AbilityParser) parseManaAbility(matches []string, fullText string) (*A
 	}
 
 	manaType := game.ManaType(matches[1])
-	
+
 	return &Ability{
 		Name: "Mana Ability",
 		Type: Mana,
@@ -214,9 +223,9 @@ func (ap *AbilityParser) parseManaAbility(matches []string, fullText string) (*A
 		},
 		Effects: []Effect{
 			{
-				Type:  AddMana,
-				Value: 1,
-				Duration: Instant,
+				Type:        AddMana,
+				Value:       1,
+				Duration:    Instant,
 				Description: "Add " + string(manaType),
 			},
 		},
@@ -233,9 +242,9 @@ func (ap *AbilityParser) parseAnyColorMana(matches []string, fullText string) (*
 		},
 		Effects: []Effect{
 			{
-				Type:  AddMana,
-				Value: 1,
-				Duration: Instant,
+				Type:        AddMana,
+				Value:       1,
+				Duration:    Instant,
 				Description: "Add one mana of any color",
 			},
 		},
@@ -252,9 +261,9 @@ func (ap *AbilityParser) parseColorlessMana(matches []string, fullText string) (
 		},
 		Effects: []Effect{
 			{
-				Type:  AddMana,
-				Value: 2,
-				Duration: Instant,
+				Type:        AddMana,
+				Value:       2,
+				Duration:    Instant,
 				Description: "Add {C}{C}",
 			},
 		},
@@ -273,14 +282,14 @@ func (ap *AbilityParser) parseETBDrawCards(matches []string, fullText string) (*
 	}
 
 	return &Ability{
-		Name: "ETB Draw Cards",
-		Type: Triggered,
+		Name:             "ETB Draw Cards",
+		Type:             Triggered,
 		TriggerCondition: EntersTheBattlefield,
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: cardCount,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       cardCount,
+				Duration:    Instant,
 				Description: "Draw " + matches[1] + " cards",
 			},
 		},
@@ -290,14 +299,14 @@ func (ap *AbilityParser) parseETBDrawCards(matches []string, fullText string) (*
 
 func (ap *AbilityParser) parseETBDrawCard(matches []string, fullText string) (*Ability, error) {
 	return &Ability{
-		Name: "ETB Draw Card",
-		Type: Triggered,
+		Name:             "ETB Draw Card",
+		Type:             Triggered,
 		TriggerCondition: EntersTheBattlefield,
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: 1,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       1,
+				Duration:    Instant,
 				Description: "Draw a card",
 			},
 		},
@@ -326,14 +335,14 @@ func (ap *AbilityParser) parseETBDrawWordsCards(matches []string, fullText strin
 	}
 
 	return &Ability{
-		Name: "ETB Draw Cards",
-		Type: Triggered,
+		Name:             "ETB Draw Cards",
+		Type:             Triggered,
 		TriggerCondition: EntersTheBattlefield,
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: cardCount,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       cardCount,
+				Duration:    Instant,
 				Description: "Draw " + matches[1] + " cards",
 			},
 		},
@@ -352,21 +361,21 @@ func (ap *AbilityParser) parseETBDamage(matches []string, fullText string) (*Abi
 	}
 
 	target := matches[2]
-	
+
 	return &Ability{
-		Name: "ETB Deal Damage",
-		Type: Triggered,
+		Name:             "ETB Deal Damage",
+		Type:             Triggered,
 		TriggerCondition: EntersTheBattlefield,
 		Effects: []Effect{
 			{
-				Type:  DealDamage,
-				Value: damage,
+				Type:     DealDamage,
+				Value:    damage,
 				Duration: Instant,
 				Targets: []Target{
 					{
-						Type: ap.parseTargetType(target),
+						Type:     ap.parseTargetType(target),
 						Required: true,
-						Count: 1,
+						Count:    1,
 					},
 				},
 				Description: "Deal " + matches[1] + " damage to " + target,
@@ -387,14 +396,14 @@ func (ap *AbilityParser) parseETBGainLife(matches []string, fullText string) (*A
 	}
 
 	return &Ability{
-		Name: "ETB Gain Life",
-		Type: Triggered,
+		Name:             "ETB Gain Life",
+		Type:             Triggered,
 		TriggerCondition: EntersTheBattlefield,
 		Effects: []Effect{
 			{
-				Type:  GainLife,
-				Value: life,
-				Duration: Instant,
+				Type:        GainLife,
+				Value:       life,
+				Duration:    Instant,
 				Description: "Gain " + matches[1] + " life",
 			},
 		},
@@ -413,14 +422,14 @@ func (ap *AbilityParser) parseDeathDrawCards(matches []string, fullText string) 
 	}
 
 	return &Ability{
-		Name: "Death Draw Cards",
-		Type: Triggered,
+		Name:             "Death Draw Cards",
+		Type:             Triggered,
 		TriggerCondition: Dies,
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: cardCount,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       cardCount,
+				Duration:    Instant,
 				Description: "Draw " + matches[1] + " cards",
 			},
 		},
@@ -430,14 +439,14 @@ func (ap *AbilityParser) parseDeathDrawCards(matches []string, fullText string) 
 
 func (ap *AbilityParser) parseDeathDrawCard(matches []string, fullText string) (*Ability, error) {
 	return &Ability{
-		Name: "Death Draw Card",
-		Type: Triggered,
+		Name:             "Death Draw Card",
+		Type:             Triggered,
 		TriggerCondition: Dies,
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: 1,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       1,
+				Duration:    Instant,
 				Description: "Draw a card",
 			},
 		},
@@ -456,21 +465,21 @@ func (ap *AbilityParser) parseDeathDamage(matches []string, fullText string) (*A
 	}
 
 	target := matches[2]
-	
+
 	return &Ability{
-		Name: "Death Deal Damage",
-		Type: Triggered,
+		Name:             "Death Deal Damage",
+		Type:             Triggered,
 		TriggerCondition: Dies,
 		Effects: []Effect{
 			{
-				Type:  DealDamage,
-				Value: damage,
+				Type:     DealDamage,
+				Value:    damage,
 				Duration: Instant,
 				Targets: []Target{
 					{
-						Type: ap.parseTargetType(target),
+						Type:     ap.parseTargetType(target),
 						Required: true,
-						Count: 1,
+						Count:    1,
 					},
 				},
 				Description: "Deal " + matches[1] + " damage to " + target,
@@ -504,9 +513,9 @@ func (ap *AbilityParser) parseActivatedDraw(matches []string, fullText string) (
 		},
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: cardCount,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       cardCount,
+				Duration:    Instant,
 				Description: "Draw " + matches[2] + " cards",
 			},
 		},
@@ -533,9 +542,9 @@ func (ap *AbilityParser) parseActivatedDrawCard(matches []string, fullText strin
 		},
 		Effects: []Effect{
 			{
-				Type:  DrawCards,
-				Value: 1,
-				Duration: Instant,
+				Type:        DrawCards,
+				Value:       1,
+				Duration:    Instant,
 				Description: "Draw a card",
 			},
 		},
@@ -569,14 +578,14 @@ func (ap *AbilityParser) parseActivatedDamage(matches []string, fullText string)
 		},
 		Effects: []Effect{
 			{
-				Type:  DealDamage,
-				Value: damage,
+				Type:     DealDamage,
+				Value:    damage,
 				Duration: Instant,
 				Targets: []Target{
 					{
-						Type: ap.parseTargetType(target),
+						Type:     ap.parseTargetType(target),
 						Required: true,
-						Count: 1,
+						Count:    1,
 					},
 				},
 				Description: "Deal " + matches[2] + " damage to " + target,
@@ -606,14 +615,14 @@ func (ap *AbilityParser) parseTapDamage(matches []string, fullText string) (*Abi
 		},
 		Effects: []Effect{
 			{
-				Type:  DealDamage,
-				Value: damage,
+				Type:     DealDamage,
+				Value:    damage,
 				Duration: Instant,
 				Targets: []Target{
 					{
-						Type: ap.parseTargetType(target),
+						Type:     ap.parseTargetType(target),
 						Required: true,
-						Count: 1,
+						Count:    1,
 					},
 				},
 				Description: "Deal " + matches[1] + " damage to " + target,
@@ -646,14 +655,14 @@ func (ap *AbilityParser) parsePumpAbility(matches []string, fullText string) (*A
 		},
 		Effects: []Effect{
 			{
-				Type:  PumpCreature,
-				Value: power*100 + toughness, // Encode both values
+				Type:     PumpCreature,
+				Value:    power*100 + toughness, // Encode both values
 				Duration: UntilEndOfTurn,
 				Targets: []Target{
 					{
-						Type: CreatureTarget,
+						Type:     CreatureTarget,
 						Required: true,
-						Count: 1,
+						Count:    1,
 					},
 				},
 				Description: "Target creature gets +" + matches[1] + "/+" + matches[2] + " until end of turn",
@@ -683,9 +692,9 @@ func (ap *AbilityParser) parseStaticPump(matches []string, fullText string) (*Ab
 		Type: Static,
 		Effects: []Effect{
 			{
-				Type:  PumpCreature,
-				Value: power*100 + toughness, // Encode both values
-				Duration: UntilLeavesPlay,
+				Type:        PumpCreature,
+				Value:       power*100 + toughness, // Encode both values
+				Duration:    UntilLeavesPlay,
 				Description: "Creatures you control get +" + matches[1] + "/+" + matches[2],
 			},
 		},
@@ -712,9 +721,9 @@ func (ap *AbilityParser) parseStaticPumpOthers(matches []string, fullText string
 		Type: Static,
 		Effects: []Effect{
 			{
-				Type:  PumpCreature,
-				Value: power*100 + toughness, // Encode both values
-				Duration: UntilLeavesPlay,
+				Type:        PumpCreature,
+				Value:       power*100 + toughness, // Encode both values
+				Duration:    UntilLeavesPlay,
 				Description: "Other creatures you control get +" + matches[1] + "/+" + matches[2],
 			},
 		},
@@ -759,14 +768,14 @@ func (ap *AbilityParser) parseTapGainLife(matches []string, fullText string) (*A
 		},
 		Effects: []Effect{
 			{
-				Type:  GainLife,
-				Value: lifeGain,
+				Type:     GainLife,
+				Value:    lifeGain,
 				Duration: Instant,
 				Targets: []Target{
 					{
-						Type: PlayerTarget,
+						Type:     PlayerTarget,
 						Required: true,
-						Count: 1,
+						Count:    1,
 					},
 				},
 				Description: "You gain " + matches[1] + " life",
@@ -832,7 +841,7 @@ func (ap *AbilityParser) parseModalSpellAny(matches []string, fullText string) (
 		Effects: []Effect{
 			{
 				Type:        DrawCards, // Placeholder - would need more complex parsing
-				Value:       0, // Variable
+				Value:       0,         // Variable
 				Duration:    Instant,
 				Description: "Choose any number of modal effects",
 			},
@@ -1386,9 +1395,123 @@ func (ap *AbilityParser) parseXCostDividedDamage(matches []string, fullText stri
 						Type:     targetType,
 						Required: true,
 						Count:    -1, // Variable number of targets
+
 					},
 				},
 				Description: "Deal X damage divided as you choose among " + matches[1],
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// --- New parser functions for specific card-style effects ---
+
+func (ap *AbilityParser) parseBounceCreature(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Bounce Creature",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ReturnToHand,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: CreatureTarget, Required: true, Count: 1}},
+				Description: "Return target creature to its owner's hand",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseBounceUpToThree(matches []string, fullText string) (*Ability, error) {
+	// Simplified: model as a single-target bounce
+	return &Ability{
+		Name: "Mass Bounce (Simplified)",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ReturnToHand,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: CreatureTarget, Required: false, Count: 1}},
+				Description: "Return up to three target creatures to their owners' hands (simplified)",
+			},
+		},
+		TimingRestriction: SorcerySpeed, // Captivating Gyre is a sorcery
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellDebuff(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	pow, _ := strconv.Atoi(matches[1])
+	tgh, _ := strconv.Atoi(matches[2])
+	pow = -pow
+	tgh = -tgh
+	return &Ability{
+		Name: "Spell Debuff",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       pow*100 + tgh,
+				Duration:    UntilEndOfTurn,
+				Targets:     []Target{{Type: CreatureTarget, Required: true, Count: 1}},
+				Description: "Target creature gets " + fullText[strings.Index(strings.ToLower(fullText), "target creature gets")+len("Target creature gets "):],
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSpellDrawACard(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name:              "Draw a Card",
+		Type:              Activated,
+		Effects:           []Effect{{Type: DrawCards, Value: 1, Duration: Instant, Description: "Draw a card"}},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseActOfTreason(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Act of Treason",
+		Type: Activated,
+		Effects: []Effect{
+			{ // Change control until EOT
+				Type:        ChangeControl,
+				Value:       1,
+				Duration:    UntilEndOfTurn,
+				Targets:     []Target{{Type: CreatureTarget, Required: true, Count: 1}},
+				Description: "Gain control of target creature until end of turn",
+			},
+			{ // Untap that creature
+				Type:        TapUntap,
+				Value:       0, // 0 => untap
+				Duration:    Instant,
+				Description: "Untap that creature",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseRabidBite(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Rabid Bite",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     SourcePowerDamage,
+				Value:    0,
+				Duration: Instant,
+				Targets: []Target{
+					{Type: CreatureTarget, Required: true, Count: 1}, // your creature (simplified)
+					{Type: CreatureTarget, Required: true, Count: 1}, // opponent creature (simplified)
+				},
+				Description: "Target creature you control deals damage equal to its power to target creature you don't control",
 			},
 		},
 		TimingRestriction: SorcerySpeed,

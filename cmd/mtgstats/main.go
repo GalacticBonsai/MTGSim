@@ -1092,6 +1092,22 @@ func main() {
 			(&aggregateStats{}).meanInt(agg.p1HandEnd), (&aggregateStats{}).meanInt(agg.p2HandEnd))
 		fmt.Printf("Avg Game Duration: %s\n", agg.meanDur(agg.durations).Truncate(time.Millisecond))
 	}
+
+	// Report unimplemented/unsupported cards encountered
+	um := abil.GetUnimplementedCards()
+	if len(um) > 0 {
+		fmt.Println()
+		fmt.Println("Unimplemented/Unsupported Cards Encountered")
+		names := make([]string, 0, len(um))
+		for n := range um {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			fmt.Printf("- %s: %s\n", n, um[n])
+		}
+	}
+
 }
 
 func truncate(s string, n int) string {

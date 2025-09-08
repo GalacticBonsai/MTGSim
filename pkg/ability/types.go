@@ -58,6 +58,7 @@ const (
 	TapUntap
 	ChangeControl
 	PreventDamage
+	SourcePowerDamage // e.g., Rabid Bite style: first target deals damage equal to its power to second target
 )
 
 // TimingRestriction represents when an ability can be activated.
@@ -74,12 +75,12 @@ const (
 
 // Cost represents the cost to activate an ability.
 type Cost struct {
-	ManaCost     map[game.ManaType]int
-	TapCost      bool
+	ManaCost      map[game.ManaType]int
+	TapCost       bool
 	SacrificeCost bool
-	DiscardCost  int
-	LifeCost     int
-	OtherCosts   []string // For complex costs that need special handling
+	DiscardCost   int
+	LifeCost      int
+	OtherCosts    []string // For complex costs that need special handling
 }
 
 // Target represents a target for an ability.
@@ -87,7 +88,7 @@ type Target struct {
 	Type         TargetType
 	Required     bool
 	Count        int
-	Restrictions []string // e.g., "creature", "non-artifact", "with flying"
+	Restrictions []string        // e.g., "creature", "non-artifact", "with flying"
 	Enhanced     *EnhancedTarget // New comprehensive targeting system
 }
 
@@ -108,11 +109,11 @@ const (
 // Effect represents the effect of an ability.
 type Effect struct {
 	Type        EffectType
-	Value       int           // Amount of damage, cards drawn, etc.
+	Value       int // Amount of damage, cards drawn, etc.
 	Duration    EffectDuration
 	Targets     []Target
-	Conditions  []string      // Additional conditions for the effect
-	Description string        // Human-readable description
+	Conditions  []string // Additional conditions for the effect
+	Description string   // Human-readable description
 }
 
 // EffectDuration represents how long an effect lasts.
@@ -128,19 +129,19 @@ const (
 
 // Ability represents a Magic: The Gathering ability.
 type Ability struct {
-	ID               uuid.UUID
-	Name             string
-	Type             AbilityType
-	Source           interface{} // The card or permanent that has this ability
-	Cost             Cost
-	Effects          []Effect
-	TriggerCondition TriggerCondition
+	ID                uuid.UUID
+	Name              string
+	Type              AbilityType
+	Source            interface{} // The card or permanent that has this ability
+	Cost              Cost
+	Effects           []Effect
+	TriggerCondition  TriggerCondition
 	TimingRestriction TimingRestriction
-	UsesPerTurn      int // 0 = unlimited, -1 = once per game
-	UsedThisTurn     int
-	IsOptional       bool
-	OracleText       string
-	ParsedFromText   bool
+	UsesPerTurn       int // 0 = unlimited, -1 = once per game
+	UsedThisTurn      int
+	IsOptional        bool
+	OracleText        string
+	ParsedFromText    bool
 }
 
 // CanActivate checks if an ability can be activated by the given player.
@@ -149,7 +150,7 @@ func (a *Ability) CanActivate(player interface{}) bool {
 	if a.TimingRestriction == OncePerTurn && a.UsedThisTurn >= 1 {
 		return false
 	}
-	
+
 	if a.UsesPerTurn > 0 && a.UsedThisTurn >= a.UsesPerTurn {
 		return false
 	}
@@ -182,19 +183,19 @@ func (a *Ability) Reset() {
 
 // AbilityEngine manages all abilities in the game.
 type AbilityEngine struct {
-	abilities       map[uuid.UUID]*Ability
-	triggeredQueue  []*Ability
+	abilities      map[uuid.UUID]*Ability
+	triggeredQueue []*Ability
 	stack          []*StackObject
 	priorityPlayer interface{}
 }
 
 // StackObject represents an ability or spell on the stack.
 type StackObject struct {
-	ID       uuid.UUID
-	Ability  *Ability
-	Source   interface{}
-	Targets  []interface{}
-	Player   interface{}
+	ID      uuid.UUID
+	Ability *Ability
+	Source  interface{}
+	Targets []interface{}
+	Player  interface{}
 }
 
 // NewAbilityEngine creates a new ability engine.
@@ -202,7 +203,7 @@ func NewAbilityEngine() *AbilityEngine {
 	return &AbilityEngine{
 		abilities:      make(map[uuid.UUID]*Ability),
 		triggeredQueue: make([]*Ability, 0),
-		stack:         make([]*StackObject, 0),
+		stack:          make([]*StackObject, 0),
 	}
 }
 
@@ -241,7 +242,7 @@ func (ae *AbilityEngine) ProcessTriggeredAbilities() {
 	for len(ae.triggeredQueue) > 0 {
 		ability := ae.triggeredQueue[0]
 		ae.triggeredQueue = ae.triggeredQueue[1:]
-		
+
 		// Put triggered ability on stack
 		stackObj := &StackObject{
 			ID:      uuid.New(),

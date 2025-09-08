@@ -128,6 +128,20 @@ func (p *Player) DestroyPermanent(perm *Permanent) bool {
 	return false
 }
 
+// ReturnPermanentToHand moves a permanent to its owner's hand.
+func (p *Player) ReturnPermanentToHand(perm *Permanent) bool {
+	for i, bp := range p.Battlefield {
+		if bp == perm {
+			// remove from battlefield
+			p.Battlefield = append(p.Battlefield[:i], p.Battlefield[i+1:]...)
+			// to hand using source card
+			p.Hand = append(p.Hand, perm.source)
+			return true
+		}
+	}
+	return false
+}
+
 // DestroyPermanentToExile moves a permanent to its owner's exile.
 func (p *Player) DestroyPermanentToExile(perm *Permanent) bool {
 	for i, bp := range p.Battlefield {

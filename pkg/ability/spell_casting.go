@@ -23,7 +23,7 @@ type SpellCastingEngine struct {
 func NewSpellCastingEngine(gameState GameState, executionEngine *ExecutionEngine) *SpellCastingEngine {
 	stack := NewStack(gameState, executionEngine)
 	priorityManager := NewPriorityManager(stack, gameState)
-	
+
 	return &SpellCastingEngine{
 		stack:           stack,
 		priorityManager: priorityManager,
@@ -46,28 +46,28 @@ func (sce *SpellCastingEngine) GetPriorityManager() *PriorityManager {
 // CastSpell handles casting a spell from a card
 func (sce *SpellCastingEngine) CastSpell(cardToCast card.Card, caster AbilityPlayer, targets []interface{}) error {
 	logger.LogCard("%s attempts to cast %s", caster.GetName(), cardToCast.Name)
-	
+
 	// Convert card to spell
 	spell, err := sce.cardToSpell(cardToCast)
 	if err != nil {
 		return fmt.Errorf("failed to convert card to spell: %v", err)
 	}
-	
+
 	// Check if spell can be cast
 	if !sce.priorityManager.CanCastSpell(spell, caster) {
 		return fmt.Errorf("cannot cast %s at this time", spell.Name)
 	}
-	
+
 	// Validate targets
 	if err := sce.validateSpellTargets(spell, targets); err != nil {
 		return fmt.Errorf("invalid targets for %s: %v", spell.Name, err)
 	}
-	
+
 	// Pay mana costs (simplified for now)
 	if err := sce.paySpellCosts(spell, caster); err != nil {
 		return fmt.Errorf("cannot pay costs for %s: %v", spell.Name, err)
 	}
-	
+
 	// Cast the spell (add to stack)
 	return sce.priorityManager.CastSpell(caster, spell, targets)
 }
@@ -77,7 +77,7 @@ func (sce *SpellCastingEngine) CastInstantSpell(cardToCast card.Card, caster Abi
 	if !sce.isInstantSpell(cardToCast) {
 		return fmt.Errorf("%s is not an instant spell", cardToCast.Name)
 	}
-	
+
 	return sce.CastSpell(cardToCast, caster, targets)
 }
 
@@ -86,53 +86,53 @@ func (sce *SpellCastingEngine) CastSorcerySpell(cardToCast card.Card, caster Abi
 	if !sce.isSorcerySpell(cardToCast) {
 		return fmt.Errorf("%s is not a sorcery spell", cardToCast.Name)
 	}
-	
+
 	// Sorcery spells have additional timing restrictions
 	if !sce.gameState.IsMainPhase() || !sce.stack.IsEmpty() {
 		return fmt.Errorf("can only cast sorcery spells during main phase with empty stack")
 	}
-	
+
 	return sce.CastSpell(cardToCast, caster, targets)
 }
 
 // CounterSpell handles counterspell effects
 func (sce *SpellCastingEngine) CounterSpell(counterSpell card.Card, caster AbilityPlayer, targetSpell *StackItem) error {
 	logger.LogCard("%s attempts to counter %s", caster.GetName(), targetSpell.Description)
-	
+
 	// Verify the counter spell can target the spell
 	if targetSpell.Type != StackItemSpell {
 		return fmt.Errorf("can only counter spells")
 	}
-	
+
 	// Cast the counterspell first
 	spell, err := sce.cardToSpell(counterSpell)
 	if err != nil {
 		return err
 	}
-	
+
 	// Add counterspell to stack with target
 	targets := []interface{}{targetSpell}
 	if err := sce.priorityManager.CastSpell(caster, spell, targets); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
 // ActivateAbility handles activating abilities that use the stack
 func (sce *SpellCastingEngine) ActivateAbility(ability *Ability, controller AbilityPlayer, targets []interface{}) error {
 	logger.LogCard("%s attempts to activate %s", controller.GetName(), ability.Name)
-	
+
 	// Check if ability can be activated
 	if !sce.priorityManager.CanActivateAbility(ability, controller) {
 		return fmt.Errorf("cannot activate %s at this time", ability.Name)
 	}
-	
+
 	// Validate targets
 	if err := sce.validateAbilityTargets(ability, targets); err != nil {
 		return fmt.Errorf("invalid targets for %s: %v", ability.Name, err)
 	}
-	
+
 	// Activate the ability
 	return sce.priorityManager.ActivateAbility(controller, ability, targets)
 }
@@ -145,13 +145,13 @@ func (sce *SpellCastingEngine) ProcessPriority() error {
 // ResolveStack resolves all items on the stack
 func (sce *SpellCastingEngine) ResolveStack() error {
 	logger.LogCard("Resolving stack with %d items", sce.stack.Size())
-	
+
 	for !sce.stack.IsEmpty() {
 		if err := sce.stack.ResolveTop(); err != nil {
 			return err
 		}
 	}
-	
+
 	logger.LogCard("Stack resolution complete")
 	return nil
 }
@@ -177,15 +177,23 @@ func (sce *SpellCastingEngine) cardToSpell(cardToCast card.Card) (*Spell, error)
 	// Parse abilities from the card's oracle text
 	abilities, err := sce.parser.ParseAbilities(cardToCast.OracleText, cardToCast)
 	if err != nil {
+		markUnimplementedCard(cardToCast.Name, fmt.Sprintf("parse error: %v", err))
 		return nil, err
 	}
-	
+
 	// Convert abilities to effects
 	var effects []Effect
 	for _, ability := range abilities {
 		effects = append(effects, ability.Effects...)
 	}
-	
+
+	// If no effects for instants/sorceries with non-empty oracle text, mark as unimplemented
+	if len(effects) == 0 {
+		if (strings.Contains(cardToCast.TypeLine, "Instant") || strings.Contains(cardToCast.TypeLine, "Sorcery")) && strings.TrimSpace(cardToCast.OracleText) != "" {
+			markUnimplementedCard(cardToCast.Name, "no parsed effects")
+		}
+	}
+
 	spell := &Spell{
 		ID:         uuid.New(),
 		Name:       cardToCast.Name,
@@ -196,7 +204,7 @@ func (sce *SpellCastingEngine) cardToSpell(cardToCast card.Card) (*Spell, error)
 		Effects:    effects,
 		Source:     cardToCast,
 	}
-	
+
 	return spell, nil
 }
 
@@ -218,11 +226,11 @@ func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, targets []inte
 			}
 		}
 	}
-	
+
 	if len(targets) < requiredTargets {
 		return fmt.Errorf("spell requires %d targets, got %d", requiredTargets, len(targets))
 	}
-	
+
 	// TODO: Implement detailed target validation (type checking, legality, etc.)
 	return nil
 }
@@ -237,11 +245,11 @@ func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, targets 
 			}
 		}
 	}
-	
+
 	if len(targets) < requiredTargets {
 		return fmt.Errorf("ability requires %d targets, got %d", requiredTargets, len(targets))
 	}
-	
+
 	// TODO: Implement detailed target validation
 	return nil
 }
@@ -257,12 +265,12 @@ func (sce *SpellCastingEngine) paySpellCosts(spell *Spell, caster AbilityPlayer)
 func (sce *SpellCastingEngine) GetStackState() []string {
 	items := sce.stack.GetItems()
 	state := make([]string, len(items))
-	
+
 	for i, item := range items {
-		state[i] = fmt.Sprintf("%d: %s (controlled by %s)", 
+		state[i] = fmt.Sprintf("%d: %s (controlled by %s)",
 			i+1, item.Description, item.Controller.GetName())
 	}
-	
+
 	return state
 }
 

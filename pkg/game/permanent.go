@@ -73,8 +73,12 @@ func (p *Permanent) GetToughness() int      { return p.toughness + p.tempToughne
 func (p *Permanent) SetPower(v int)         { p.power = v }
 func (p *Permanent) SetToughness(v int)     { p.toughness = v }
 func (p *Permanent) GetDamageCounters() int { return p.damage }
-func (p *Permanent) AddDamage(d int)        { p.damage += d }
-func (p *Permanent) ClearDamage()           { p.damage = 0 }
+
+// Controller setter (needed for control-changing effects)
+func (p *Permanent) SetController(pl *Player) { p.controller = pl }
+
+func (p *Permanent) AddDamage(d int) { p.damage += d }
+func (p *Permanent) ClearDamage()    { p.damage = 0 }
 
 // Summoning sickness helpers (CR 302.6)
 func (p *Permanent) SetEnteredTurn(turn int) { p.enteredTurn = turn }
