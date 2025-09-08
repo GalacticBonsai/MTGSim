@@ -148,6 +148,46 @@ The codebase follows Go best practices with a clean separation of concerns:
 - **pkg/**: Reusable packages that could be imported by other projects
 - **internal/**: Private packages not intended for external use
 
+
+## Rules Engine (pkg/game)
+
+A lightweight, headless rules engine powers automated simulations without UI/networking. It implements:
+
+- Turn/phase progression with end-of-turn cleanup
+- Combat (attackers, one-to-one blocks, first/double strike timing)
+- Continuous effects: Set power/toughness and temporary pumps until EOT (timestamp last-wins for SetPT)
+- Triggers and watchers: event-driven actions with per-turn watcher reset
+- Replacement effects: e.g., "would die → exile instead" centralized in dies handling
+- Damage prevention: shield pools for players/permanents that consume before damage is applied
+
+Key entry points:
+- Game.AdvancePhase() and IsMainPhase()/IsCombatPhase()
+- SummonCreature/PlayLand (emit ETB events)
+- ApplySetPTUntilEOT, ApplyTempPump
+- AddWouldDieExileUntilEOT, ApplyDamageToPlayer/ApplyDamageToPermanent
+- AddTrigger, AddWatcher (CreatureETBWatcher provided)
+
+Example (integrated mini-scenario):
+
+```go
+p1, p2 := game.NewPlayer("P1", 20), game.NewPlayer("P2", 20)
+g := game.NewGame(p1, p2)
+// ETB trigger: draw a card when your creature enters
+g.AddTrigger(&game.Trigger{ On: game.EventEntersBattlefield,
+  Condition: func(e game.Event) bool { return e.ZoneChange.Permanent.GetController()==p1 },
+  Action: func(g *game.Game, e game.Event){ p1.Draw(1) },
+})
+// Summon 2/2, set 5/5 until EOT, then EOT resets
+p1.AddCardToHand(game.SimpleCard{Name:"Bear", TypeLine:"Creature", Power:"2", Toughness:"2"})
+perm, _ := g.SummonCreature(p1, "Bear")
+g.ApplySetPTUntilEOT(perm, 5, 5)
+for i := 0; i < 7; i++ { g.AdvancePhase() } // clears EOT effects
+```
+
+AI and automation:
+- pkg/bridge exposes AutoActivateMainPhaseAbilities(g) to safely call the ability AI during main phases
+- pkg/simulation.RunOneTurnAuto(g) advances a full turn and calls the AI hook in each main phase
+
 ## Known Limitations
 
 - Game simulation is currently simplified (basic damage dealing)

@@ -2,10 +2,9 @@
 package card
 
 import (
+	"log"
 	"strconv"
 	"strings"
-
-	"github.com/mtgsim/mtgsim/internal/logger"
 )
 
 // Card represents a Magic: The Gathering card with all its properties.
@@ -41,11 +40,11 @@ type Card struct {
 // Display prints the details of a Card instance in a single line.
 func (c *Card) Display() {
 	if strings.Contains(c.TypeLine, "Land") {
-		logger.LogCard("%s", c.Name)
+		log.Printf("CARD: %s", c.Name)
 	} else if strings.Contains(c.TypeLine, "Creature") {
-		logger.LogCard("Name: %s, Mana Value: %.2f, Power: %s, Toughness: %s", c.Name, c.CMC, c.Power, c.Toughness)
+		log.Printf("CARD: Name: %s, Mana Value: %.2f, Power: %s, Toughness: %s", c.Name, c.CMC, c.Power, c.Toughness)
 	} else {
-		logger.LogCard("Name: %s, Mana Value: %.2f, Type: %s", c.Name, c.CMC, c.TypeLine)
+		log.Printf("CARD: Name: %s, Mana Value: %.2f, Type: %s", c.Name, c.CMC, c.TypeLine)
 	}
 }
 
@@ -63,12 +62,12 @@ func (c *Card) Cast(target interface{}, player interface{}) {
 		toughness, _ := strconv.Atoi(c.Toughness)
 
 		// This would need to be implemented with proper player interface
-		logger.LogCard("Casting creature: %s (%d/%d)", c.Name, power, toughness)
+		log.Printf("CARD: Casting creature: %s (%d/%d)", c.Name, power, toughness)
 		return
 	}
 
 	// For non-creature spells, they typically go to graveyard after resolving
-	logger.LogCard("Casting spell: %s", c.Name)
+	log.Printf("CARD: Casting spell: %s", c.Name)
 }
 
 // IsLand returns true if the card is a land.
