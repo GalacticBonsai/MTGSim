@@ -14,7 +14,7 @@ func TestGameCreation(t *testing.T) {
 		{Name: "Forest", CMC: 0, TypeLine: "Basic Land — Forest"},
 		{Name: "Llanowar Elves", CMC: 1, ManaCost: "{G}", TypeLine: "Creature — Elf Druid", Power: "1", Toughness: "1"},
 	}
-	
+
 	cardDB := card.NewCardDB(cards)
 	if cardDB == nil {
 		t.Fatal("Failed to create card database")
@@ -112,7 +112,7 @@ func TestGameBasicFlow(t *testing.T) {
 		{Name: "Lightning Bolt", CMC: 1, ManaCost: "{R}", TypeLine: "Instant"},
 		{Name: "Mountain", CMC: 0, TypeLine: "Basic Land — Mountain"},
 	}
-	
+
 	cardDB := card.NewCardDB(cards)
 	game := NewGame(cardDB)
 
@@ -155,20 +155,20 @@ func TestGameBasicFlow(t *testing.T) {
 
 	// Test that the game can start and finish without crashing
 	winner, loser := game.Start()
-	
+
 	if winner == nil || loser == nil {
 		t.Errorf("Expected both winner and loser to be non-nil")
 	}
-	
+
 	if winner == loser {
 		t.Errorf("Winner and loser should be different players")
 	}
-	
+
 	// One of the players should have 0 or negative life
 	if winner.LifeTotal <= 0 {
 		t.Errorf("Winner should have positive life, got %d", winner.LifeTotal)
 	}
-	
+
 	if loser.LifeTotal > 0 {
 		t.Errorf("Loser should have 0 or negative life, got %d", loser.LifeTotal)
 	}

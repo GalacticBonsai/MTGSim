@@ -19,7 +19,7 @@ type RealMTGCard struct {
 // TestRealInstantSpells tests parsing and effects of real instant spells
 func TestRealInstantSpells(t *testing.T) {
 	parser := NewAbilityParser()
-	
+
 	realInstants := []RealMTGCard{
 		{
 			Name:       "Lightning Bolt",
@@ -102,7 +102,7 @@ func TestRealInstantSpells(t *testing.T) {
 // TestRealSorcerySpells tests parsing and effects of real sorcery spells
 func TestRealSorcerySpells(t *testing.T) {
 	parser := NewAbilityParser()
-	
+
 	realSorceries := []RealMTGCard{
 		{
 			Name:       "Divination",
@@ -175,7 +175,7 @@ func TestRealSorcerySpells(t *testing.T) {
 // TestRealCreatureSpells tests parsing of real creature spells
 func TestRealCreatureSpells(t *testing.T) {
 	parser := NewAbilityParser()
-	
+
 	realCreatures := []RealMTGCard{
 		{
 			Name:       "Grizzly Bears",
@@ -382,12 +382,12 @@ func testAncestralRecallEffect(t *testing.T, ability *Ability) {
 		t.Error("Ancestral Recall should have draw effect")
 		return
 	}
-	
+
 	effect := ability.Effects[0]
 	if effect.Type != DrawCards {
 		t.Errorf("Ancestral Recall effect should be DrawCards, got %v", effect.Type)
 	}
-	
+
 	if effect.Value != 3 {
 		t.Errorf("Ancestral Recall should draw 3 cards, got %d", effect.Value)
 	}
@@ -398,18 +398,18 @@ func testDivinationEffect(t *testing.T, abilities []*Ability) {
 		t.Error("Divination should have draw effect")
 		return
 	}
-	
+
 	ability := abilities[0]
 	if len(ability.Effects) == 0 {
 		t.Error("Divination should have effects")
 		return
 	}
-	
+
 	effect := ability.Effects[0]
 	if effect.Type != DrawCards {
 		t.Errorf("Divination effect should be DrawCards, got %v", effect.Type)
 	}
-	
+
 	if effect.Value != 2 {
 		t.Errorf("Divination should draw 2 cards, got %d", effect.Value)
 	}
@@ -420,13 +420,13 @@ func testWrathOfGodEffect(t *testing.T, abilities []*Ability) {
 		t.Error("Wrath of God should have destroy effect")
 		return
 	}
-	
+
 	ability := abilities[0]
 	if len(ability.Effects) == 0 {
 		t.Error("Wrath of God should have effects")
 		return
 	}
-	
+
 	effect := ability.Effects[0]
 	if effect.Type != DestroyPermanent {
 		t.Errorf("Wrath of God effect should be DestroyPermanent, got %v", effect.Type)
@@ -438,13 +438,13 @@ func testDarkRitualEffect(t *testing.T, abilities []*Ability) {
 		t.Error("Dark Ritual should have mana effect")
 		return
 	}
-	
+
 	ability := abilities[0]
 	if len(ability.Effects) == 0 {
 		t.Error("Dark Ritual should have effects")
 		return
 	}
-	
+
 	effect := ability.Effects[0]
 	if effect.Type != AddMana {
 		t.Errorf("Dark Ritual effect should be AddMana, got %v", effect.Type)
@@ -489,7 +489,7 @@ func testLlanowarElvesAbility(t *testing.T, abilities []*Ability) {
 		t.Error("Llanowar Elves should have mana ability")
 		return
 	}
-	
+
 	ability := abilities[0]
 	if ability.Type != Mana {
 		t.Errorf("Llanowar Elves ability should be Mana type, got %v", ability.Type)
@@ -501,13 +501,13 @@ func testProdigalPyromancerAbility(t *testing.T, abilities []*Ability) {
 		t.Error("Prodigal Pyromancer should have damage ability")
 		return
 	}
-	
+
 	ability := abilities[0]
 	if len(ability.Effects) == 0 {
 		t.Error("Prodigal Pyromancer should have damage effect")
 		return
 	}
-	
+
 	effect := ability.Effects[0]
 	if effect.Type != DealDamage {
 		t.Errorf("Prodigal Pyromancer effect should be DealDamage, got %v", effect.Type)

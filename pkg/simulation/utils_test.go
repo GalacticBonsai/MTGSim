@@ -9,7 +9,7 @@ import (
 func TestSliceGet(t *testing.T) {
 	// Test with string slice
 	slice := []string{"a", "b", "c", "d"}
-	
+
 	// Test getting element at valid index
 	element, newSlice := SliceGet(slice, 1)
 	if element != "b" {
@@ -75,7 +75,7 @@ func TestSliceGet(t *testing.T) {
 
 func TestSliceGetWithInts(t *testing.T) {
 	slice := []int{10, 20, 30, 40, 50}
-	
+
 	element, newSlice := SliceGet(slice, 2)
 	if element != 30 {
 		t.Errorf("Expected element 30, got %d", element)
@@ -94,7 +94,7 @@ func TestSliceGetWithInts(t *testing.T) {
 
 func TestGetRandom(t *testing.T) {
 	slice := []string{"a", "b", "c", "d", "e"}
-	
+
 	// Test that GetRandom returns an element from the slice
 	for i := 0; i < 10; i++ {
 		element := GetRandom(slice)
@@ -124,7 +124,7 @@ func TestGetRandomPanic(t *testing.T) {
 			t.Errorf("Expected GetRandom to panic with empty slice")
 		}
 	}()
-	
+
 	emptySlice := []string{}
 	GetRandom(emptySlice)
 }
@@ -132,14 +132,14 @@ func TestGetRandomPanic(t *testing.T) {
 func TestGetDecks(t *testing.T) {
 	// Create a temporary directory structure
 	tempDir := t.TempDir()
-	
+
 	// Create some test files and directories
 	subDir := filepath.Join(tempDir, "subdir")
 	err := os.Mkdir(subDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create subdirectory: %v", err)
 	}
-	
+
 	// Create test files
 	files := []string{
 		filepath.Join(tempDir, "deck1.deck"),
@@ -147,37 +147,37 @@ func TestGetDecks(t *testing.T) {
 		filepath.Join(subDir, "deck3.deck"),
 		filepath.Join(subDir, "deck4.txt"),
 	}
-	
+
 	for _, file := range files {
 		err := os.WriteFile(file, []byte("test content"), 0644)
 		if err != nil {
 			t.Fatalf("Failed to create test file %s: %v", file, err)
 		}
 	}
-	
+
 	// Test GetDecks
 	foundFiles, err := GetDecks(tempDir)
 	if err != nil {
 		t.Fatalf("GetDecks failed: %v", err)
 	}
-	
+
 	if len(foundFiles) != 4 {
 		t.Errorf("Expected 4 files, got %d", len(foundFiles))
 	}
-	
+
 	// Check that all expected files are found
 	expectedFiles := make(map[string]bool)
 	for _, file := range files {
 		expectedFiles[file] = true
 	}
-	
+
 	for _, foundFile := range foundFiles {
 		if !expectedFiles[foundFile] {
 			t.Errorf("Unexpected file found: %s", foundFile)
 		}
 		delete(expectedFiles, foundFile)
 	}
-	
+
 	if len(expectedFiles) > 0 {
 		t.Errorf("Some expected files were not found: %v", expectedFiles)
 	}

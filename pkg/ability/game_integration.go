@@ -21,16 +21,16 @@ type GameStackIntegration struct {
 func NewGameStackIntegration(gameInterface GameInterface) *GameStackIntegration {
 	gameAdapter := NewGameAdapter(gameInterface)
 	spellCastingEngine := NewSpellCastingEngine(gameAdapter, gameAdapter.executionEngine)
-	
+
 	integration := &GameStackIntegration{
 		spellCastingEngine: spellCastingEngine,
 		gameAdapter:        gameAdapter,
 		currentPhase:       "Main Phase",
 	}
-	
+
 	// Set up players
 	integration.setupPlayers()
-	
+
 	return integration
 }
 
@@ -38,14 +38,14 @@ func NewGameStackIntegration(gameInterface GameInterface) *GameStackIntegration 
 func (gsi *GameStackIntegration) setupPlayers() {
 	gamePlayers := gsi.gameAdapter.game.GetPlayers()
 	gsi.players = make([]AbilityPlayer, len(gamePlayers))
-	
+
 	for i, gamePlayer := range gamePlayers {
 		gsi.players[i] = &PlayerAdapter{
 			player:  gamePlayer,
 			adapter: gsi.gameAdapter,
 		}
 	}
-	
+
 	if len(gsi.players) > 0 {
 		gsi.activePlayer = gsi.players[0]
 		gsi.spellCastingEngine.SetPlayers(gsi.players)
@@ -79,7 +79,7 @@ func (gsi *GameStackIntegration) CastSpell(cardToCast card.Card, casterName stri
 	if caster == nil {
 		return fmt.Errorf("player %s not found", casterName)
 	}
-	
+
 	logger.LogCard("%s attempts to cast %s", casterName, cardToCast.Name)
 	return gsi.spellCastingEngine.CastSpell(cardToCast, caster, targets)
 }
@@ -90,7 +90,7 @@ func (gsi *GameStackIntegration) CastInstantSpell(cardToCast card.Card, casterNa
 	if caster == nil {
 		return fmt.Errorf("player %s not found", casterName)
 	}
-	
+
 	return gsi.spellCastingEngine.CastInstantSpell(cardToCast, caster, targets)
 }
 
@@ -100,7 +100,7 @@ func (gsi *GameStackIntegration) CastSorcerySpell(cardToCast card.Card, casterNa
 	if caster == nil {
 		return fmt.Errorf("player %s not found", casterName)
 	}
-	
+
 	return gsi.spellCastingEngine.CastSorcerySpell(cardToCast, caster, targets)
 }
 
@@ -110,13 +110,13 @@ func (gsi *GameStackIntegration) CounterSpell(counterSpell card.Card, casterName
 	if caster == nil {
 		return fmt.Errorf("player %s not found", casterName)
 	}
-	
+
 	// Get the target spell from stack
 	stackItems := gsi.spellCastingEngine.GetStack().GetItems()
 	if targetSpellIndex < 0 || targetSpellIndex >= len(stackItems) {
 		return fmt.Errorf("invalid target spell index %d", targetSpellIndex)
 	}
-	
+
 	targetSpell := stackItems[targetSpellIndex]
 	return gsi.spellCastingEngine.CounterSpell(counterSpell, caster, targetSpell)
 }
@@ -127,7 +127,7 @@ func (gsi *GameStackIntegration) ActivateAbility(ability *Ability, controllerNam
 	if controller == nil {
 		return fmt.Errorf("player %s not found", controllerName)
 	}
-	
+
 	return gsi.spellCastingEngine.ActivateAbility(ability, controller, targets)
 }
 
@@ -137,7 +137,7 @@ func (gsi *GameStackIntegration) PassPriority(playerName string) error {
 	if player == nil {
 		return fmt.Errorf("player %s not found", playerName)
 	}
-	
+
 	return gsi.spellCastingEngine.GetPriorityManager().PassPriority(player)
 }
 
@@ -177,13 +177,13 @@ func (gsi *GameStackIntegration) CanCastSpell(cardToCast card.Card, casterName s
 	if caster == nil {
 		return false
 	}
-	
+
 	// Convert card to spell for checking
 	spell, err := gsi.cardToSpell(cardToCast)
 	if err != nil {
 		return false
 	}
-	
+
 	return gsi.spellCastingEngine.GetPriorityManager().CanCastSpell(spell, caster)
 }
 
@@ -193,7 +193,7 @@ func (gsi *GameStackIntegration) CanActivateAbility(ability *Ability, controller
 	if controller == nil {
 		return false
 	}
-	
+
 	return gsi.spellCastingEngine.GetPriorityManager().CanActivateAbility(ability, controller)
 }
 
@@ -203,39 +203,39 @@ func (gsi *GameStackIntegration) GetAvailableActions() []string {
 	if priorityPlayer == nil {
 		return []string{}
 	}
-	
+
 	actions := []string{"Pass Priority"}
-	
+
 	// Add spell casting options based on phase and stack state
 	if gsi.currentPhase == "Main Phase" && gsi.spellCastingEngine.IsStackEmpty() {
 		actions = append(actions, "Cast Sorcery Spell")
 	}
-	
+
 	actions = append(actions, "Cast Instant Spell")
 	actions = append(actions, "Activate Ability")
-	
+
 	return actions
 }
 
 // HandleSpellResolution handles the resolution of a specific spell
 func (gsi *GameStackIntegration) HandleSpellResolution(spellName string) error {
 	logger.LogCard("Resolving spell: %s", spellName)
-	
+
 	// This would integrate with the existing game state to apply spell effects
 	// For now, just log the resolution
 	logger.LogCard("Spell %s resolved successfully", spellName)
-	
+
 	return nil
 }
 
 // HandleAbilityResolution handles the resolution of a specific ability
 func (gsi *GameStackIntegration) HandleAbilityResolution(abilityName string) error {
 	logger.LogCard("Resolving ability: %s", abilityName)
-	
+
 	// This would integrate with the existing game state to apply ability effects
 	// For now, just log the resolution
 	logger.LogCard("Ability %s resolved successfully", abilityName)
-	
+
 	return nil
 }
 
@@ -266,7 +266,7 @@ func (gsi *GameStackIntegration) cardToSpell(cardToCast card.Card) (*Spell, erro
 		OracleText: cardToCast.OracleText,
 		Source:     cardToCast,
 	}
-	
+
 	return spell, nil
 }
 
@@ -276,9 +276,9 @@ func (gsi *GameStackIntegration) cardToSpell(cardToCast card.Card) (*Spell, erro
 func (gsi *GameStackIntegration) MainPhaseWithStack(playerName string) error {
 	gsi.SetPhase("Main Phase")
 	gsi.SetActivePlayer(playerName)
-	
+
 	logger.LogCard("Main phase for %s with stack integration", playerName)
-	
+
 	// Process priority until all players pass
 	return gsi.ProcessPriorityRound()
 }
@@ -287,9 +287,9 @@ func (gsi *GameStackIntegration) MainPhaseWithStack(playerName string) error {
 func (gsi *GameStackIntegration) CombatPhaseWithStack(playerName string) error {
 	gsi.SetPhase("Combat Phase")
 	gsi.SetActivePlayer(playerName)
-	
+
 	logger.LogCard("Combat phase for %s with stack integration", playerName)
-	
+
 	// Process priority for combat
 	return gsi.ProcessPriorityRound()
 }
@@ -298,19 +298,19 @@ func (gsi *GameStackIntegration) CombatPhaseWithStack(playerName string) error {
 func (gsi *GameStackIntegration) EndStepWithStack(playerName string) error {
 	gsi.SetPhase("End Step")
 	gsi.SetActivePlayer(playerName)
-	
+
 	logger.LogCard("End step for %s with stack integration", playerName)
-	
+
 	// Process priority and resolve any remaining stack items
 	if err := gsi.ProcessPriorityRound(); err != nil {
 		return err
 	}
-	
+
 	// Ensure stack is empty at end of turn
 	if !gsi.IsStackEmpty() {
 		logger.LogCard("Warning: Stack not empty at end of turn, resolving remaining items")
 		return gsi.ResolveStack()
 	}
-	
+
 	return nil
 }

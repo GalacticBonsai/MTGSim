@@ -15,26 +15,26 @@ import (
 func TestGameSimulation_MultipleGames(t *testing.T) {
 	// Set up random generator for varied results
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	
+
 	const numGames = 10
 	outcomes := make(map[string]int)
 	gameResults := make([]GameResult, 0, numGames)
-	
+
 	for i := 0; i < numGames; i++ {
 		result := runSingleGame(t, i+1, rng)
 		gameResults = append(gameResults, result)
 		outcomes[result.Winner]++
-		
-		t.Logf("Game %d: Winner=%s, Turns=%d, FinalLife=[%d,%d], AbilitiesUsed=%d", 
-			i+1, result.Winner, result.TurnsPlayed, 
+
+		t.Logf("Game %d: Winner=%s, Turns=%d, FinalLife=[%d,%d], AbilitiesUsed=%d",
+			i+1, result.Winner, result.TurnsPlayed,
 			result.Player1FinalLife, result.Player2FinalLife, result.TotalAbilitiesUsed)
 	}
-	
+
 	// Verify we have different outcomes
 	if len(outcomes) < 2 {
 		t.Errorf("Expected different winners across games, but only got: %v", outcomes)
 	}
-	
+
 	// Verify reasonable distribution (no player should win 100% of games)
 	for winner, wins := range outcomes {
 		winRate := float64(wins) / float64(numGames)
@@ -43,38 +43,38 @@ func TestGameSimulation_MultipleGames(t *testing.T) {
 		}
 		t.Logf("Player %s won %d/%d games (%.1f%%)", winner, wins, numGames, winRate*100)
 	}
-	
+
 	// Verify games had different lengths
 	turnCounts := make(map[int]int)
 	for _, result := range gameResults {
 		turnCounts[result.TurnsPlayed]++
 	}
-	
+
 	if len(turnCounts) < 3 {
 		t.Errorf("Expected games of different lengths, but got turn counts: %v", turnCounts)
 	}
-	
+
 	// Verify abilities were actually used
 	totalAbilities := 0
 	for _, result := range gameResults {
 		totalAbilities += result.TotalAbilitiesUsed
 	}
-	
+
 	if totalAbilities == 0 {
 		t.Error("No abilities were used across all games")
 	}
-	
+
 	avgAbilitiesPerGame := float64(totalAbilities) / float64(numGames)
 	t.Logf("Average abilities used per game: %.1f", avgAbilitiesPerGame)
 }
 
 type GameResult struct {
-	Winner              string
-	TurnsPlayed         int
-	Player1FinalLife    int
-	Player2FinalLife    int
-	TotalAbilitiesUsed  int
-	GameEndReason       string
+	Winner             string
+	TurnsPlayed        int
+	Player1FinalLife   int
+	Player2FinalLife   int
+	TotalAbilitiesUsed int
+	GameEndReason      string
 }
 
 func runSingleGame(t *testing.T, gameNum int, rng *rand.Rand) GameResult {
@@ -89,25 +89,25 @@ func runSingleGame(t *testing.T, gameNum int, rng *rand.Rand) GameResult {
 	}
 
 	player1 := &gamePlayer{
-		name:     "Player1",
-		life:     player1Life,
-		strategy: strategies[0],
-		hand:     make([]gameCard, 0),
-		lands:    make([]*gamePermanent, 0),
+		name:      "Player1",
+		life:      player1Life,
+		strategy:  strategies[0],
+		hand:      make([]gameCard, 0),
+		lands:     make([]*gamePermanent, 0),
 		creatures: make([]*gamePermanent, 0),
-		manaPool: make(map[game.ManaType]int),
+		manaPool:  make(map[game.ManaType]int),
 	}
 
 	player2 := &gamePlayer{
-		name:     "Player2",
-		life:     player2Life,
-		strategy: strategies[1],
-		hand:     make([]gameCard, 0),
-		lands:    make([]*gamePermanent, 0),
+		name:      "Player2",
+		life:      player2Life,
+		strategy:  strategies[1],
+		hand:      make([]gameCard, 0),
+		lands:     make([]*gamePermanent, 0),
 		creatures: make([]*gamePermanent, 0),
-		manaPool: make(map[game.ManaType]int),
+		manaPool:  make(map[game.ManaType]int),
 	}
-	
+
 	// Create game state
 	gameState := &gameSimulationState{
 		players:       []AbilityPlayer{player1, player2},
@@ -117,69 +117,69 @@ func runSingleGame(t *testing.T, gameNum int, rng *rand.Rand) GameResult {
 		isMainPhase:   true,
 		random:        rng,
 	}
-	
+
 	// Create execution engine
 	engine := NewExecutionEngine(gameState)
-	
+
 	// Give players some cards with abilities
 	setupPlayerCards(player1, engine)
 	setupPlayerCards(player2, engine)
-	
+
 	// Simulate game
 	maxTurns := 15 // Reduced for faster games
 	abilitiesUsed := 0
-	
+
 	for turn := 1; turn <= maxTurns; turn++ {
 		gameState.turn = turn
-		
+
 		// Alternate current player
 		if turn%2 == 1 {
 			gameState.currentPlayer = player1
 		} else {
 			gameState.currentPlayer = player2
 		}
-		
+
 		// Play turn
 		turnAbilities := playTurn(t, gameState, engine)
 		abilitiesUsed += turnAbilities
-		
+
 		// Check win conditions
 		if player1.GetLifeTotal() <= 0 {
 			return GameResult{
-				Winner:              player2.GetName(),
-				TurnsPlayed:         turn,
-				Player1FinalLife:    player1.GetLifeTotal(),
-				Player2FinalLife:    player2.GetLifeTotal(),
-				TotalAbilitiesUsed:  abilitiesUsed,
-				GameEndReason:       "Player 1 life reached 0",
+				Winner:             player2.GetName(),
+				TurnsPlayed:        turn,
+				Player1FinalLife:   player1.GetLifeTotal(),
+				Player2FinalLife:   player2.GetLifeTotal(),
+				TotalAbilitiesUsed: abilitiesUsed,
+				GameEndReason:      "Player 1 life reached 0",
 			}
 		}
-		
+
 		if player2.GetLifeTotal() <= 0 {
 			return GameResult{
-				Winner:              player1.GetName(),
-				TurnsPlayed:         turn,
-				Player1FinalLife:    player1.GetLifeTotal(),
-				Player2FinalLife:    player2.GetLifeTotal(),
-				TotalAbilitiesUsed:  abilitiesUsed,
-				GameEndReason:       "Player 2 life reached 0",
+				Winner:             player1.GetName(),
+				TurnsPlayed:        turn,
+				Player1FinalLife:   player1.GetLifeTotal(),
+				Player2FinalLife:   player2.GetLifeTotal(),
+				TotalAbilitiesUsed: abilitiesUsed,
+				GameEndReason:      "Player 2 life reached 0",
 			}
 		}
 	}
-	
+
 	// Game went to max turns, determine winner by life total
 	winner := player1.GetName()
 	if player2.GetLifeTotal() > player1.GetLifeTotal() {
 		winner = player2.GetName()
 	}
-	
+
 	return GameResult{
-		Winner:              winner,
-		TurnsPlayed:         maxTurns,
-		Player1FinalLife:    player1.GetLifeTotal(),
-		Player2FinalLife:    player2.GetLifeTotal(),
-		TotalAbilitiesUsed:  abilitiesUsed,
-		GameEndReason:       "Max turns reached",
+		Winner:             winner,
+		TurnsPlayed:        maxTurns,
+		Player1FinalLife:   player1.GetLifeTotal(),
+		Player2FinalLife:   player2.GetLifeTotal(),
+		TotalAbilitiesUsed: abilitiesUsed,
+		GameEndReason:      "Max turns reached",
 	}
 }
 
@@ -276,10 +276,10 @@ func setupPlayerCards(player *gamePlayer, engine *ExecutionEngine) {
 func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEngine) int {
 	abilitiesUsed := 0
 	currentPlayer := gameState.currentPlayer.(*gamePlayer)
-	
+
 	// Reset mana pool
 	currentPlayer.manaPool = make(map[game.ManaType]int)
-	
+
 	// Untap permanents
 	for _, land := range currentPlayer.lands {
 		land.tapped = false
@@ -287,7 +287,7 @@ func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEng
 	for _, creature := range currentPlayer.creatures {
 		creature.tapped = false
 	}
-	
+
 	// Activate mana abilities (tap lands for mana)
 	for _, land := range currentPlayer.lands {
 		if !land.tapped && len(land.abilities) > 0 {
@@ -304,14 +304,14 @@ func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEng
 			}
 		}
 	}
-	
+
 	// Try to activate other abilities based on strategy
 	for _, creature := range currentPlayer.creatures {
 		for _, ability := range creature.abilities {
 			if ability.Type != Mana && engine.canActivateAbility(ability, currentPlayer) {
 				// Decide whether to activate based on strategy and randomness
 				shouldActivate := false
-				
+
 				switch currentPlayer.strategy {
 				case "aggressive":
 					// Aggressive players use damage abilities more often
@@ -330,7 +330,7 @@ func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEng
 						shouldActivate = gameState.random.Float32() < 0.2
 					}
 				}
-				
+
 				if shouldActivate {
 					// Choose targets
 					targets := chooseTargetsForAbility(ability, gameState)
@@ -350,13 +350,13 @@ func playTurn(t *testing.T, gameState *gameSimulationState, engine *ExecutionEng
 			}
 		}
 	}
-	
+
 	return abilitiesUsed
 }
 
 func chooseTargetsForAbility(ability *Ability, gameState *gameSimulationState) []interface{} {
 	var targets []interface{}
-	
+
 	for _, effect := range ability.Effects {
 		for _, targetReq := range effect.Targets {
 			if targetReq.Required {
@@ -389,7 +389,7 @@ func chooseTargetsForAbility(ability *Ability, gameState *gameSimulationState) [
 			}
 		}
 	}
-	
+
 	return targets
 }
 
@@ -728,7 +728,7 @@ func (p *gamePermanent) GetCMC() int {
 // Implement TypeChecker interface
 func (p *gamePermanent) IsCreature() bool {
 	return strings.Contains(strings.ToLower(p.name), "creature") ||
-		   p.power > 0 || p.toughness > 0
+		p.power > 0 || p.toughness > 0
 }
 
 func (p *gamePermanent) IsArtifact() bool {
@@ -741,10 +741,10 @@ func (p *gamePermanent) IsEnchantment() bool {
 
 func (p *gamePermanent) IsLand() bool {
 	return strings.Contains(strings.ToLower(p.name), "forest") ||
-		   strings.Contains(strings.ToLower(p.name), "mountain") ||
-		   strings.Contains(strings.ToLower(p.name), "island") ||
-		   strings.Contains(strings.ToLower(p.name), "plains") ||
-		   strings.Contains(strings.ToLower(p.name), "swamp")
+		strings.Contains(strings.ToLower(p.name), "mountain") ||
+		strings.Contains(strings.ToLower(p.name), "island") ||
+		strings.Contains(strings.ToLower(p.name), "plains") ||
+		strings.Contains(strings.ToLower(p.name), "swamp")
 }
 
 func (p *gamePermanent) IsPlaneswalker() bool {

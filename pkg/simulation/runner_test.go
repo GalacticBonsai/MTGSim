@@ -1,8 +1,8 @@
 package simulation
 
 import (
-	"testing"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"testing"
 )
 
 func TestRunOneTurnAuto_AdvancesAllPhases_NoPanic(t *testing.T) {
@@ -20,4 +20,3 @@ func TestRunOneTurnAuto_AdvancesAllPhases_NoPanic(t *testing.T) {
 		t.Errorf("expected phase to reset to Untap, got %v", g.GetCurrentPhase())
 	}
 }
-

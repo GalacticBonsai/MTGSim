@@ -129,12 +129,12 @@ func (m *mockPlayer) CanPayCost(cost Cost) bool {
 	for _, amount := range m.manaPool {
 		totalMana += amount
 	}
-	
+
 	requiredMana := 0
 	for _, amount := range cost.ManaCost {
 		requiredMana += amount
 	}
-	
+
 	return totalMana >= requiredMana
 }
 
@@ -243,15 +243,15 @@ func TestExecutionEngine_ExecuteManaAbility(t *testing.T) {
 		life:     20,
 		manaPool: make(map[game.ManaType]int),
 	}
-	
+
 	gameState := &mockGameState{
 		players:       []AbilityPlayer{player},
 		currentPlayer: player,
 		isMainPhase:   true,
 	}
-	
+
 	engine := NewExecutionEngine(gameState)
-	
+
 	// Create a mana ability
 	ability := &Ability{
 		ID:   uuid.New(),
@@ -268,19 +268,19 @@ func TestExecutionEngine_ExecuteManaAbility(t *testing.T) {
 		},
 		OracleText: "{T}: Add {G}.",
 	}
-	
+
 	// Execute the ability
 	err := engine.ExecuteAbility(ability, player, nil)
 	if err != nil {
 		t.Errorf("ExecuteAbility() error = %v", err)
 	}
-	
+
 	// Check that mana was added (we can't easily test the exact type without more complex mocking)
 	totalMana := 0
 	for _, amount := range player.manaPool {
 		totalMana += amount
 	}
-	
+
 	if totalMana != 1 {
 		t.Errorf("Expected 1 mana in pool, got %d", totalMana)
 	}
@@ -293,15 +293,15 @@ func TestExecutionEngine_ExecuteDrawAbility(t *testing.T) {
 		hand:     []interface{}{},
 		manaPool: map[game.ManaType]int{game.Any: 3},
 	}
-	
+
 	gameState := &mockGameState{
 		players:       []AbilityPlayer{player},
 		currentPlayer: player,
 		isMainPhase:   true,
 	}
-	
+
 	engine := NewExecutionEngine(gameState)
-	
+
 	// Create a draw ability
 	ability := &Ability{
 		ID:   uuid.New(),
@@ -321,20 +321,20 @@ func TestExecutionEngine_ExecuteDrawAbility(t *testing.T) {
 		},
 		TimingRestriction: SorcerySpeed,
 	}
-	
+
 	initialHandSize := len(player.hand)
-	
+
 	// Execute the ability
 	err := engine.ExecuteAbility(ability, player, nil)
 	if err != nil {
 		t.Errorf("ExecuteAbility() error = %v", err)
 	}
-	
+
 	// Check that cards were drawn
 	if len(player.hand) != initialHandSize+2 {
 		t.Errorf("Expected hand size %d, got %d", initialHandSize+2, len(player.hand))
 	}
-	
+
 	// Check that mana was spent
 	if player.manaPool[game.Any] != 1 {
 		t.Errorf("Expected 1 mana remaining, got %d", player.manaPool[game.Any])
@@ -347,15 +347,15 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 		life:     20,
 		manaPool: map[game.ManaType]int{game.Any: 2},
 	}
-	
+
 	gameState := &mockGameState{
 		players:       []AbilityPlayer{player},
 		currentPlayer: player,
 		isMainPhase:   true,
 	}
-	
+
 	engine := NewExecutionEngine(gameState)
-	
+
 	tests := []struct {
 		name        string
 		ability     *Ability
@@ -366,8 +366,8 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 		{
 			name: "Can activate in main phase",
 			ability: &Ability{
-				Type: Activated,
-				Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
+				Type:              Activated,
+				Cost:              Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
 				TimingRestriction: SorcerySpeed,
 			},
 			gameState: &mockGameState{
@@ -381,8 +381,8 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 		{
 			name: "Cannot activate in combat",
 			ability: &Ability{
-				Type: Activated,
-				Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
+				Type:              Activated,
+				Cost:              Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
 				TimingRestriction: SorcerySpeed,
 			},
 			gameState: &mockGameState{
@@ -397,8 +397,8 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 		{
 			name: "Cannot activate without mana",
 			ability: &Ability{
-				Type: Activated,
-				Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 5}},
+				Type:              Activated,
+				Cost:              Cost{ManaCost: map[game.ManaType]int{game.Any: 5}},
 				TimingRestriction: AnyTime,
 			},
 			gameState: &mockGameState{
@@ -410,7 +410,7 @@ func TestExecutionEngine_CanActivateAbility(t *testing.T) {
 			description: "Should not be able to activate ability without enough mana",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine.gameState = tt.gameState
@@ -426,9 +426,9 @@ func TestExecutionEngine_ParseAndRegisterAbilities(t *testing.T) {
 	gameState := &mockGameState{
 		isMainPhase: true,
 	}
-	
+
 	engine := NewExecutionEngine(gameState)
-	
+
 	tests := []struct {
 		name        string
 		oracleText  string
@@ -455,7 +455,7 @@ func TestExecutionEngine_ParseAndRegisterAbilities(t *testing.T) {
 			expectedLen: 0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			abilities, err := engine.ParseAndRegisterAbilities(tt.oracleText, nil)
@@ -463,11 +463,11 @@ func TestExecutionEngine_ParseAndRegisterAbilities(t *testing.T) {
 				t.Errorf("ParseAndRegisterAbilities() error = %v", err)
 				return
 			}
-			
+
 			if len(abilities) != tt.expectedLen {
 				t.Errorf("ParseAndRegisterAbilities() got %d abilities, want %d", len(abilities), tt.expectedLen)
 			}
-			
+
 			// Check that all abilities have valid IDs and are properly set up
 			for _, ability := range abilities {
 				if ability.ID == uuid.Nil {
@@ -488,7 +488,7 @@ func TestExecutionEngine_ActivateManaAbilities(t *testing.T) {
 		manaPool: make(map[game.ManaType]int),
 		lands:    []interface{}{},
 	}
-	
+
 	land := &mockPermanent{
 		id:         uuid.New(),
 		name:       "Forest",
@@ -517,35 +517,35 @@ func TestExecutionEngine_ActivateManaAbilities(t *testing.T) {
 	}
 
 	land.abilities = []*Ability{manaAbility}
-	
+
 	player.lands = append(player.lands, land)
-	
+
 	gameState := &mockGameState{
 		players:       []AbilityPlayer{player},
 		currentPlayer: player,
 		isMainPhase:   true,
 	}
-	
+
 	engine := NewExecutionEngine(gameState)
-	
+
 	// Activate mana abilities
 	manaAdded := engine.ActivateManaAbilities(player)
-	
+
 	if manaAdded != 1 {
 		t.Errorf("Expected 1 mana added, got %d", manaAdded)
 	}
-	
+
 	// Check that the land is now tapped
 	if !land.tapped {
 		t.Errorf("Expected land to be tapped after activating mana ability")
 	}
-	
+
 	// Check that mana was added to pool
 	totalMana := 0
 	for _, amount := range player.manaPool {
 		totalMana += amount
 	}
-	
+
 	if totalMana != 1 {
 		t.Errorf("Expected 1 mana in pool, got %d", totalMana)
 	}

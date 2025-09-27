@@ -13,7 +13,9 @@ func (g *Game) ensureReplacements() {
 
 // AddWouldDieExileUntilEOT causes the permanent to be exiled if it would die this turn.
 func (g *Game) AddWouldDieExileUntilEOT(p *Permanent) {
-	if p == nil { return }
+	if p == nil {
+		return
+	}
 	g.ensureReplacements()
 	g.replacements.wouldDieExile[p] = true
 }
@@ -30,11 +32,15 @@ func (g *Game) wouldDieExile(p *Permanent) bool {
 
 // handleDies moves a permanent from battlefield to GY (or Exile if replacement) and emits events.
 func (g *Game) handleDies(perm *Permanent) bool {
-	if perm == nil { return false }
+	if perm == nil {
+		return false
+	}
 	snap := snapshotPermanent(perm)
 	g.emit(Event{Type: EventLeavesBattlefield, ZoneChange: &ZoneChange{Permanent: perm, From: Battlefield, LKI: snap}})
 	ctrl := perm.GetController()
-	if ctrl == nil { return false }
+	if ctrl == nil {
+		return false
+	}
 	if g.wouldDieExile(perm) {
 		ok := ctrl.DestroyPermanentToExile(perm)
 		if ok {
@@ -48,4 +54,3 @@ func (g *Game) handleDies(perm *Permanent) bool {
 	}
 	return ok
 }
-

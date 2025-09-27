@@ -137,7 +137,7 @@ func CheckManaProducer(oracleText string) (bool, []game.ManaType) {
 
 	// Check for "any color" or "one mana of any color"
 	if strings.Contains(strings.ToLower(oracleText), "any color") ||
-	   strings.Contains(strings.ToLower(oracleText), "one mana of any color") {
+		strings.Contains(strings.ToLower(oracleText), "one mana of any color") {
 		manaTypes = append(manaTypes, game.Any)
 	}
 

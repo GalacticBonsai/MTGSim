@@ -264,7 +264,7 @@ func TestPriorityManaAbilities(t *testing.T) {
 
 	// Stack size should not change (mana abilities don't use stack)
 	if stack.Size() != initialStackSize {
-		t.Errorf("Mana ability should not use stack, expected size %d, got %d", 
+		t.Errorf("Mana ability should not use stack, expected size %d, got %d",
 			initialStackSize, stack.Size())
 	}
 }

@@ -10,155 +10,155 @@ func TestNonCreatureSpells(t *testing.T) {
 	parser := NewAbilityParser()
 
 	testSpells := []struct {
-		name           string
-		oracleText     string
-		spellType      string
+		name            string
+		oracleText      string
+		spellType       string
 		expectedEffects int
 		expectedTargets int
-		description    string
+		description     string
 	}{
 		// Basic Damage Spells
 		{
-			name:           "Lightning Bolt",
-			oracleText:     "Lightning Bolt deals 3 damage to any target.",
-			spellType:      "Instant",
+			name:            "Lightning Bolt",
+			oracleText:      "Lightning Bolt deals 3 damage to any target.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Classic 3 damage instant",
+			description:     "Classic 3 damage instant",
 		},
 		{
-			name:           "Shock",
-			oracleText:     "Shock deals 2 damage to any target.",
-			spellType:      "Instant",
+			name:            "Shock",
+			oracleText:      "Shock deals 2 damage to any target.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Simple 2 damage instant",
+			description:     "Simple 2 damage instant",
 		},
 		{
-			name:           "Lava Spike",
-			oracleText:     "Lava Spike deals 3 damage to target player or planeswalker.",
-			spellType:      "Sorcery",
+			name:            "Lava Spike",
+			oracleText:      "Lava Spike deals 3 damage to target player or planeswalker.",
+			spellType:       "Sorcery",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Player/planeswalker targeting",
+			description:     "Player/planeswalker targeting",
 		},
 
 		// Card Draw Spells
 		{
-			name:           "Divination",
-			oracleText:     "Draw two cards.",
-			spellType:      "Sorcery",
+			name:            "Divination",
+			oracleText:      "Draw two cards.",
+			spellType:       "Sorcery",
 			expectedEffects: 1,
 			expectedTargets: 0,
-			description:    "Simple card draw",
+			description:     "Simple card draw",
 		},
 		{
-			name:           "Ancestral Recall",
-			oracleText:     "Target player draws three cards.",
-			spellType:      "Instant",
+			name:            "Ancestral Recall",
+			oracleText:      "Target player draws three cards.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Targeted card draw",
+			description:     "Targeted card draw",
 		},
 
 		// Destruction Spells
 		{
-			name:           "Doom Blade",
-			oracleText:     "Destroy target non-artifact creature.",
-			spellType:      "Instant",
+			name:            "Doom Blade",
+			oracleText:      "Destroy target non-artifact creature.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Conditional creature destruction",
+			description:     "Conditional creature destruction",
 		},
 		{
-			name:           "Terror",
-			oracleText:     "Destroy target non-artifact, non-black creature.",
-			spellType:      "Instant",
+			name:            "Terror",
+			oracleText:      "Destroy target non-artifact, non-black creature.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Multiple restriction destruction",
+			description:     "Multiple restriction destruction",
 		},
 
 		// Modal Spells
 		{
-			name:           "Cryptic Command",
-			oracleText:     "Choose two — Counter target spell; or return target permanent to its owner's hand; or tap all creatures your opponents control; or draw a card.",
-			spellType:      "Instant",
+			name:            "Cryptic Command",
+			oracleText:      "Choose two — Counter target spell; or return target permanent to its owner's hand; or tap all creatures your opponents control; or draw a card.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 0, // Modal effects have variable targeting
-			description:    "Four-mode instant",
+			description:     "Four-mode instant",
 		},
 		{
-			name:           "Charm of Choice",
-			oracleText:     "Choose one — Target creature gets +2/+2 until end of turn; or destroy target artifact; or draw a card.",
-			spellType:      "Instant",
+			name:            "Charm of Choice",
+			oracleText:      "Choose one — Target creature gets +2/+2 until end of turn; or destroy target artifact; or draw a card.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 0, // Modal effects have variable targeting
-			description:    "Three-mode charm",
+			description:     "Three-mode charm",
 		},
 
 		// Variable X-Cost Spells
 		{
-			name:           "Fireball",
-			oracleText:     "Fireball deals X damage to any target.",
-			spellType:      "Sorcery",
+			name:            "Fireball",
+			oracleText:      "Fireball deals X damage to any target.",
+			spellType:       "Sorcery",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "X-cost damage spell",
+			description:     "X-cost damage spell",
 		},
 		{
-			name:           "Mind Spring",
-			oracleText:     "Draw X cards.",
-			spellType:      "Sorcery",
+			name:            "Mind Spring",
+			oracleText:      "Draw X cards.",
+			spellType:       "Sorcery",
 			expectedEffects: 1,
 			expectedTargets: 0,
-			description:    "X-cost card draw",
+			description:     "X-cost card draw",
 		},
 
 		// Multi-Target Spells
 		{
-			name:           "Forked Bolt",
-			oracleText:     "Forked Bolt deals 2 damage divided as you choose among one or two targets.",
-			spellType:      "Sorcery",
+			name:            "Forked Bolt",
+			oracleText:      "Forked Bolt deals 2 damage divided as you choose among one or two targets.",
+			spellType:       "Sorcery",
 			expectedEffects: 1,
 			expectedTargets: 1, // One target with Count:2 (up to two targets)
-			description:    "Divided damage spell",
+			description:     "Divided damage spell",
 		},
 
 		// Counterspells
 		{
-			name:           "Counterspell",
-			oracleText:     "Counter target spell.",
-			spellType:      "Instant",
+			name:            "Counterspell",
+			oracleText:      "Counter target spell.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Basic counterspell",
+			description:     "Basic counterspell",
 		},
 		{
-			name:           "Mana Leak",
-			oracleText:     "Counter target spell unless its controller pays {3}.",
-			spellType:      "Instant",
+			name:            "Mana Leak",
+			oracleText:      "Counter target spell unless its controller pays {3}.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 1,
-			description:    "Conditional counterspell",
+			description:     "Conditional counterspell",
 		},
 
 		// Life Gain/Loss Spells
 		{
-			name:           "Healing Salve",
-			oracleText:     "Choose one — Target player gains 3 life; or prevent the next 3 damage that would be dealt to any target this turn.",
-			spellType:      "Instant",
+			name:            "Healing Salve",
+			oracleText:      "Choose one — Target player gains 3 life; or prevent the next 3 damage that would be dealt to any target this turn.",
+			spellType:       "Instant",
 			expectedEffects: 1,
 			expectedTargets: 0, // Modal targeting
-			description:    "Life gain or damage prevention",
+			description:     "Life gain or damage prevention",
 		},
 		{
-			name:           "Drain Life",
-			oracleText:     "Drain Life deals X damage to any target. You gain life equal to the damage dealt.",
-			spellType:      "Sorcery",
+			name:            "Drain Life",
+			oracleText:      "Drain Life deals X damage to any target. You gain life equal to the damage dealt.",
+			spellType:       "Sorcery",
 			expectedEffects: 1, // Currently parsed as single X-cost damage effect
 			expectedTargets: 1,
-			description:    "Damage with life gain",
+			description:     "Damage with life gain",
 		},
 	}
 
@@ -174,7 +174,7 @@ func TestNonCreatureSpells(t *testing.T) {
 			// For spells, we expect the parser to extract the spell's effects
 			// even though they're not permanent abilities
 			if len(abilities) != tc.expectedEffects {
-				t.Errorf("%s: expected %d effects, got %d. Abilities: %+v", 
+				t.Errorf("%s: expected %d effects, got %d. Abilities: %+v",
 					tc.name, tc.expectedEffects, len(abilities), abilities)
 			}
 
@@ -190,7 +190,7 @@ func TestNonCreatureSpells(t *testing.T) {
 				}
 			}
 
-			t.Logf("%s (%s): %s - Parsed %d effects", 
+			t.Logf("%s (%s): %s - Parsed %d effects",
 				tc.name, tc.spellType, tc.description, len(abilities))
 		})
 	}
@@ -220,7 +220,7 @@ func TestSpellEffectTypes(t *testing.T) {
 				t.Errorf("Failed to parse %s: %v", tc.name, err)
 				return
 			}
-			
+
 			if len(abilities) == 0 {
 				t.Errorf("%s: expected to parse at least one ability", tc.name)
 				return
@@ -234,7 +234,7 @@ func TestSpellEffectTypes(t *testing.T) {
 
 			effect := ability.Effects[0]
 			if effect.Type != tc.expectedType {
-				t.Errorf("%s: expected effect type %v, got %v", 
+				t.Errorf("%s: expected effect type %v, got %v",
 					tc.name, tc.expectedType, effect.Type)
 			}
 		})

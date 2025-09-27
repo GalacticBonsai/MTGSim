@@ -12,10 +12,17 @@ func (g *Game) ClearTriggers()        { g.triggers = nil }
 
 func (g *Game) handleTriggers(e Event) {
 	for _, t := range g.triggers {
-		if t == nil { continue }
-		if t.On != e.Type { continue }
-		if t.Condition != nil && !t.Condition(e) { continue }
-		if t.Action != nil { t.Action(g, e) }
+		if t == nil {
+			continue
+		}
+		if t.On != e.Type {
+			continue
+		}
+		if t.Condition != nil && !t.Condition(e) {
+			continue
+		}
+		if t.Action != nil {
+			t.Action(g, e)
+		}
 	}
 }
-

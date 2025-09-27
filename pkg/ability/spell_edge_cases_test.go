@@ -8,11 +8,11 @@ import (
 // TestMultipleTargetSpells tests spells that target multiple objects of different types
 func TestMultipleTargetSpells(t *testing.T) {
 	testCases := []struct {
-		name         string
-		oracleText   string
-		targetCount  int
-		targetTypes  []TargetType
-		description  string
+		name        string
+		oracleText  string
+		targetCount int
+		targetTypes []TargetType
+		description string
 	}{
 		{
 			name:        "Electrolyze",
@@ -236,7 +236,7 @@ func TestSpellInteractionWithPermanents(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			interaction := analyzeSpellPermanentInteraction(tc.spellText)
-			
+
 			if interaction.Type != tc.interactionType {
 				t.Logf("%s: expected interaction %s, got %s (parser may need enhancement)", tc.name, tc.interactionType, interaction.Type)
 			} else {
@@ -307,7 +307,7 @@ func TestProtectionAndHexproofInteractions(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			canTarget := checkTargetingLegality(tc.targetCreature, tc.spellName, tc.spellColor)
-			
+
 			if canTarget != tc.canTarget {
 				t.Errorf("%s: expected canTarget %v, got %v", tc.name, tc.canTarget, canTarget)
 			}
@@ -318,39 +318,39 @@ func TestProtectionAndHexproofInteractions(t *testing.T) {
 // TestXCostSpellsWithComplexEffects tests X-cost spells with variable effects
 func TestXCostSpellsWithComplexEffects(t *testing.T) {
 	testCases := []struct {
-		name        string
-		oracleText  string
-		xValue      int
+		name           string
+		oracleText     string
+		xValue         int
 		expectedEffect string
-		description string
+		description    string
 	}{
 		{
-			name:        "Fireball X=3",
-			oracleText:  "This spell costs {1} more to cast for each target beyond the first. Fireball deals X damage divided as you choose among any number of targets.",
-			xValue:      3,
+			name:           "Fireball X=3",
+			oracleText:     "This spell costs {1} more to cast for each target beyond the first. Fireball deals X damage divided as you choose among any number of targets.",
+			xValue:         3,
 			expectedEffect: "3 damage divided",
-			description: "Variable damage with additional costs",
+			description:    "Variable damage with additional costs",
 		},
 		{
-			name:        "Hydra Broodmaster X=2",
-			oracleText:  "{X}{X}{G}: Monstrosity X. When Hydra Broodmaster becomes monstrous, create X X/X green Hydra creature tokens.",
-			xValue:      2,
+			name:           "Hydra Broodmaster X=2",
+			oracleText:     "{X}{X}{G}: Monstrosity X. When Hydra Broodmaster becomes monstrous, create X X/X green Hydra creature tokens.",
+			xValue:         2,
 			expectedEffect: "2 2/2 tokens",
-			description: "Variable token creation",
+			description:    "Variable token creation",
 		},
 		{
-			name:        "Sphinx's Revelation X=4",
-			oracleText:  "You gain X life and draw X cards.",
-			xValue:      4,
+			name:           "Sphinx's Revelation X=4",
+			oracleText:     "You gain X life and draw X cards.",
+			xValue:         4,
 			expectedEffect: "gain 4 life, draw 4 cards",
-			description: "Variable life gain and card draw",
+			description:    "Variable life gain and card draw",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			effect := calculateXSpellEffect(tc.oracleText, tc.xValue)
-			
+
 			if effect != tc.expectedEffect {
 				t.Errorf("%s: expected effect %s, got %s", tc.name, tc.expectedEffect, effect)
 			}
@@ -398,7 +398,7 @@ type SpellPermanentInteraction struct {
 
 func analyzeSpellPermanentInteraction(spellText string) SpellPermanentInteraction {
 	interaction := SpellPermanentInteraction{}
-	
+
 	if containsAnyText(spellText, []string{"Enchant"}) {
 		interaction.Type = "enchant"
 		if containsAnyText(spellText, []string{"creature"}) {
@@ -415,7 +415,7 @@ func analyzeSpellPermanentInteraction(spellText string) SpellPermanentInteractio
 		interaction.Type = "control"
 		interaction.TargetType = "Creature"
 	}
-	
+
 	return interaction
 }
 
@@ -425,11 +425,11 @@ func checkTargetingLegality(targetCreature, spellName, spellColor string) bool {
 		// Non-targeted spells can still affect these creatures
 		return !isTargetedSpell(spellName)
 	}
-	
+
 	if containsAnyText(targetCreature, []string{"Pro-Red"}) && spellColor == "Red" {
 		return false
 	}
-	
+
 	return true
 }
 

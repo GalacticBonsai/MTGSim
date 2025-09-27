@@ -28,4 +28,3 @@ func TestAutoActivateForPlayer_SpecifiedPhase_NoPanic(t *testing.T) {
 	// Even outside of main, calling with explicit phase should be handled
 	AutoActivateForPlayer(g, "A", "Combat Phase")
 }
-

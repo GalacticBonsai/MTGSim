@@ -17,23 +17,23 @@ type DemoPlayer struct {
 	manaPool  map[game.ManaType]int
 }
 
-func (p *DemoPlayer) GetName() string                                    { return p.name }
-func (p *DemoPlayer) PayCost(cost ability.Cost) error                    { return nil }
-func (p *DemoPlayer) AddCardToHand(card any)                             {}
-func (p *DemoPlayer) RemoveCardFromHand(card any) bool                   { return true }
-func (p *DemoPlayer) GetHandSize() int                                   { return 7 }
-func (p *DemoPlayer) GetLifeTotal() int                                  { return p.lifeTotal }
-func (p *DemoPlayer) SetLifeTotal(life int)                              { p.lifeTotal = life }
-func (p *DemoPlayer) GetManaPool() map[game.ManaType]int                 { return p.manaPool }
-func (p *DemoPlayer) AddMana(manaType game.ManaType, amount int)         {}
-func (p *DemoPlayer) SpendMana(manaType game.ManaType, amount int) bool  { return true }
-func (p *DemoPlayer) CanPayCost(cost ability.Cost) bool                  { return true }
-func (p *DemoPlayer) GetCreatures() []any                                { return []any{} }
-func (p *DemoPlayer) GetPermanents() []any                               { return []any{} }
-func (p *DemoPlayer) AddPermanent(permanent any)                         {}
-func (p *DemoPlayer) RemovePermanent(permanent any) bool                 { return true }
-func (p *DemoPlayer) GetHand() []any                                     { return []any{} }
-func (p *DemoPlayer) GetLands() []any                                    { return []any{} }
+func (p *DemoPlayer) GetName() string                                   { return p.name }
+func (p *DemoPlayer) PayCost(cost ability.Cost) error                   { return nil }
+func (p *DemoPlayer) AddCardToHand(card any)                            {}
+func (p *DemoPlayer) RemoveCardFromHand(card any) bool                  { return true }
+func (p *DemoPlayer) GetHandSize() int                                  { return 7 }
+func (p *DemoPlayer) GetLifeTotal() int                                 { return p.lifeTotal }
+func (p *DemoPlayer) SetLifeTotal(life int)                             { p.lifeTotal = life }
+func (p *DemoPlayer) GetManaPool() map[game.ManaType]int                { return p.manaPool }
+func (p *DemoPlayer) AddMana(manaType game.ManaType, amount int)        {}
+func (p *DemoPlayer) SpendMana(manaType game.ManaType, amount int) bool { return true }
+func (p *DemoPlayer) CanPayCost(cost ability.Cost) bool                 { return true }
+func (p *DemoPlayer) GetCreatures() []any                               { return []any{} }
+func (p *DemoPlayer) GetPermanents() []any                              { return []any{} }
+func (p *DemoPlayer) AddPermanent(permanent any)                        {}
+func (p *DemoPlayer) RemovePermanent(permanent any) bool                { return true }
+func (p *DemoPlayer) GetHand() []any                                    { return []any{} }
+func (p *DemoPlayer) GetLands() []any                                   { return []any{} }
 
 // DemoGameState implements GameState for demonstration
 type DemoGameState struct {
@@ -53,12 +53,12 @@ func (gs *DemoGameState) GetPlayer(name string) ability.AbilityPlayer {
 	return nil
 }
 
-func (gs *DemoGameState) GetAllPlayers() []ability.AbilityPlayer { return gs.players }
+func (gs *DemoGameState) GetAllPlayers() []ability.AbilityPlayer  { return gs.players }
 func (gs *DemoGameState) GetCurrentPlayer() ability.AbilityPlayer { return gs.currentPlayer }
 func (gs *DemoGameState) GetActivePlayer() ability.AbilityPlayer  { return gs.activePlayer }
 func (gs *DemoGameState) IsMainPhase() bool                       { return gs.isMainPhase }
 func (gs *DemoGameState) IsCombatPhase() bool                     { return gs.isCombatPhase }
-func (gs *DemoGameState) CanActivateAbilities() bool             { return true }
+func (gs *DemoGameState) CanActivateAbilities() bool              { return true }
 
 func (gs *DemoGameState) AddManaToPool(player ability.AbilityPlayer, manaType game.ManaType, amount int) {
 	fmt.Printf("  → %s adds %d %v mana to their pool\n", player.GetName(), amount, manaType)
@@ -152,7 +152,7 @@ func main() {
 
 	// Step 3: Bob casts Counterspell
 	fmt.Println("📋 Step 3: Bob casts Counterspell targeting Lightning Bolt")
-	
+
 	// Get Lightning Bolt from stack
 	stackItems := spellCastingEngine.GetStack().GetItems()
 	var lightningBoltItem *ability.StackItem
@@ -186,18 +186,18 @@ func main() {
 
 	// Step 5: Resolve stack
 	fmt.Println("📋 Step 5: Both players pass priority, resolving stack")
-	
+
 	// Simulate both players passing priority
 	currentPriority := spellCastingEngine.GetPriorityPlayer()
 	fmt.Printf("Current priority: %s\n", currentPriority.GetName())
-	
+
 	// Resolve the stack manually for demonstration
 	fmt.Println("\nResolving stack items:")
-	
+
 	for !spellCastingEngine.IsStackEmpty() {
 		topItem := spellCastingEngine.GetStack().Peek()
 		fmt.Printf("Resolving: %s\n", topItem.Description)
-		
+
 		err = spellCastingEngine.GetStack().ResolveTop()
 		if err != nil {
 			log.Fatalf("Failed to resolve stack item: %v", err)
@@ -210,7 +210,7 @@ func main() {
 
 	// Demonstrate sorcery timing
 	fmt.Println("🎯 Scenario: Sorcery Timing Restrictions")
-	
+
 	divination := card.Card{
 		Name:       "Divination",
 		ManaCost:   "{2}{U}",

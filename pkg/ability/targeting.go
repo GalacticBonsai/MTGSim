@@ -176,7 +176,7 @@ func (tv *TargetValidator) checkTargetingLegality(target interface{}, controller
 // checkRestriction checks a specific targeting restriction.
 func (tv *TargetValidator) checkRestriction(target interface{}, restriction TargetRestriction, controller AbilityPlayer) TargetingLegality {
 	result := tv.evaluateRestriction(target, restriction, controller)
-	
+
 	// Apply negation if needed
 	if restriction.Negated {
 		result = !result

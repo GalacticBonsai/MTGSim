@@ -50,11 +50,12 @@ func (m *mockStackGameState) CanActivateAbilities() bool {
 	return true
 }
 
-func (m *mockStackGameState) AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int) {}
-func (m *mockStackGameState) DealDamage(source any, target any, amount int)                {}
-func (m *mockStackGameState) DrawCards(player AbilityPlayer, count int)                   {}
-func (m *mockStackGameState) GainLife(player AbilityPlayer, amount int)                   {}
-func (m *mockStackGameState) LoseLife(player AbilityPlayer, amount int)                   {}
+func (m *mockStackGameState) AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int) {
+}
+func (m *mockStackGameState) DealDamage(source any, target any, amount int) {}
+func (m *mockStackGameState) DrawCards(player AbilityPlayer, count int)     {}
+func (m *mockStackGameState) GainLife(player AbilityPlayer, amount int)     {}
+func (m *mockStackGameState) LoseLife(player AbilityPlayer, amount int)     {}
 
 // MockPlayer for testing
 type mockStackPlayer struct {
@@ -69,21 +70,21 @@ func (m *mockStackPlayer) PayCost(cost Cost) error {
 	return nil
 }
 
-func (m *mockStackPlayer) AddCardToHand(card any) {}
-func (m *mockStackPlayer) RemoveCardFromHand(card any) bool { return true }
-func (m *mockStackPlayer) GetHandSize() int { return 7 }
-func (m *mockStackPlayer) GetLifeTotal() int { return 20 }
-func (m *mockStackPlayer) SetLifeTotal(life int) {}
-func (m *mockStackPlayer) GetManaPool() map[game.ManaType]int { return make(map[game.ManaType]int) }
-func (m *mockStackPlayer) AddMana(manaType game.ManaType, amount int) {}
+func (m *mockStackPlayer) AddCardToHand(card any)                            {}
+func (m *mockStackPlayer) RemoveCardFromHand(card any) bool                  { return true }
+func (m *mockStackPlayer) GetHandSize() int                                  { return 7 }
+func (m *mockStackPlayer) GetLifeTotal() int                                 { return 20 }
+func (m *mockStackPlayer) SetLifeTotal(life int)                             {}
+func (m *mockStackPlayer) GetManaPool() map[game.ManaType]int                { return make(map[game.ManaType]int) }
+func (m *mockStackPlayer) AddMana(manaType game.ManaType, amount int)        {}
 func (m *mockStackPlayer) SpendMana(manaType game.ManaType, amount int) bool { return true }
-func (m *mockStackPlayer) CanPayCost(cost Cost) bool { return true }
-func (m *mockStackPlayer) GetCreatures() []any { return []any{} }
-func (m *mockStackPlayer) GetPermanents() []any { return []any{} }
-func (m *mockStackPlayer) AddPermanent(permanent any) {}
-func (m *mockStackPlayer) RemovePermanent(permanent any) bool { return true }
-func (m *mockStackPlayer) GetHand() []any { return []any{} }
-func (m *mockStackPlayer) GetLands() []any { return []any{} }
+func (m *mockStackPlayer) CanPayCost(cost Cost) bool                         { return true }
+func (m *mockStackPlayer) GetCreatures() []any                               { return []any{} }
+func (m *mockStackPlayer) GetPermanents() []any                              { return []any{} }
+func (m *mockStackPlayer) AddPermanent(permanent any)                        {}
+func (m *mockStackPlayer) RemovePermanent(permanent any) bool                { return true }
+func (m *mockStackPlayer) GetHand() []any                                    { return []any{} }
+func (m *mockStackPlayer) GetLands() []any                                   { return []any{} }
 
 // TestStackBasicOperations tests basic stack operations
 func TestStackBasicOperations(t *testing.T) {

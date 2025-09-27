@@ -68,8 +68,8 @@ type Player struct {
 	Opponents     []*Player
 
 	// Land drop tracking
-	LandDropsThisTurn    int  // Number of lands played this turn
-	LandDropsPerTurn     int  // Maximum lands allowed per turn (default 1)
+	LandDropsThisTurn     int  // Number of lands played this turn
+	LandDropsPerTurn      int  // Maximum lands allowed per turn (default 1)
 	HasPlayedLandThisTurn bool // Simple boolean for basic rule
 }
 
@@ -111,8 +111,8 @@ func (g *Game) AddPlayer(decklistPath string) error {
 		Lands:         make([]*Permanent, 0),
 
 		// Initialize land drop tracking
-		LandDropsThisTurn:    0,
-		LandDropsPerTurn:     1, // Standard MTG rule: one land per turn
+		LandDropsThisTurn:     0,
+		LandDropsPerTurn:      1, // Standard MTG rule: one land per turn
 		HasPlayedLandThisTurn: false,
 	}
 
@@ -512,8 +512,8 @@ func (blocker *Permanent) canBlock(attacker *Permanent) bool {
 
 	// Unblockable: cannot be blocked at all
 	if attacker.hasEvergreenAbility("Unblockable") ||
-	   strings.Contains(strings.ToLower(attacker.source.OracleText), "can't be blocked") ||
-	   strings.Contains(strings.ToLower(attacker.source.OracleText), "unblockable") {
+		strings.Contains(strings.ToLower(attacker.source.OracleText), "can't be blocked") ||
+		strings.Contains(strings.ToLower(attacker.source.OracleText), "unblockable") {
 		return false
 	}
 
@@ -748,7 +748,7 @@ func (g *Game) checkStateBasedActions() {
 				// For simplicity, we'll check if the creature was in combat with a deathtouch creature
 				for _, attacker := range g.getAllAttackers() {
 					if attacker.hasEvergreenAbility("Deathtouch") &&
-					   g.wasInCombatWith(creature, attacker) {
+						g.wasInCombatWith(creature, attacker) {
 						shouldDie = true
 						logger.LogCard("%s dies to deathtouch from %s",
 							creature.source.Name, attacker.source.Name)
@@ -757,7 +757,7 @@ func (g *Game) checkStateBasedActions() {
 				}
 				for _, blocker := range g.getAllBlockers() {
 					if blocker.hasEvergreenAbility("Deathtouch") &&
-					   g.wasInCombatWith(creature, blocker) {
+						g.wasInCombatWith(creature, blocker) {
 						shouldDie = true
 						logger.LogCard("%s dies to deathtouch from %s",
 							creature.source.Name, blocker.source.Name)

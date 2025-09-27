@@ -11,21 +11,21 @@ import (
 // Mock implementations for targeting tests
 
 type mockTargetPermanent struct {
-	id           uuid.UUID
-	name         string
-	controller   AbilityPlayer
-	tapped       bool
-	isCreature   bool
-	isArtifact   bool
-	isEnchantment bool
-	isLand       bool
+	id             uuid.UUID
+	name           string
+	controller     AbilityPlayer
+	tapped         bool
+	isCreature     bool
+	isArtifact     bool
+	isEnchantment  bool
+	isLand         bool
 	isPlaneswalker bool
-	power        int
-	toughness    int
-	cmc          int
-	abilities    []string
-	hasHexproof  bool
-	hasShroud    bool
+	power          int
+	toughness      int
+	cmc            int
+	abilities      []string
+	hasHexproof    bool
+	hasShroud      bool
 }
 
 func (m *mockTargetPermanent) GetID() uuid.UUID {
@@ -150,45 +150,45 @@ func TestTargetParser_ParseBasicTargets(t *testing.T) {
 	parser := NewTargetParser()
 
 	tests := []struct {
-		name           string
-		oracleText     string
-		expectedCount  int
-		expectedType   TargetType
+		name             string
+		oracleText       string
+		expectedCount    int
+		expectedType     TargetType
 		expectedRequired bool
 	}{
 		{
-			name:           "Target creature",
-			oracleText:     "Target creature gets +2/+2 until end of turn.",
-			expectedCount:  1,
-			expectedType:   CreatureTarget,
+			name:             "Target creature",
+			oracleText:       "Target creature gets +2/+2 until end of turn.",
+			expectedCount:    1,
+			expectedType:     CreatureTarget,
 			expectedRequired: true,
 		},
 		{
-			name:           "Target player",
-			oracleText:     "Target player draws a card.",
-			expectedCount:  1,
-			expectedType:   PlayerTarget,
+			name:             "Target player",
+			oracleText:       "Target player draws a card.",
+			expectedCount:    1,
+			expectedType:     PlayerTarget,
 			expectedRequired: true,
 		},
 		{
-			name:           "Target permanent",
-			oracleText:     "Destroy target permanent.",
-			expectedCount:  1,
-			expectedType:   PermanentTarget,
+			name:             "Target permanent",
+			oracleText:       "Destroy target permanent.",
+			expectedCount:    1,
+			expectedType:     PermanentTarget,
 			expectedRequired: true,
 		},
 		{
-			name:           "Any target",
-			oracleText:     "Deal 3 damage to any target.",
-			expectedCount:  1,
-			expectedType:   AnyTarget,
+			name:             "Any target",
+			oracleText:       "Deal 3 damage to any target.",
+			expectedCount:    1,
+			expectedType:     AnyTarget,
 			expectedRequired: true,
 		},
 		{
-			name:           "Each creature (non-targeting)",
-			oracleText:     "Each creature gets +1/+1 until end of turn.",
-			expectedCount:  1,
-			expectedType:   CreatureTarget,
+			name:             "Each creature (non-targeting)",
+			oracleText:       "Each creature gets +1/+1 until end of turn.",
+			expectedCount:    1,
+			expectedType:     CreatureTarget,
 			expectedRequired: false,
 		},
 	}
@@ -228,14 +228,14 @@ func TestTargetParser_ParseComplexRestrictions(t *testing.T) {
 	parser := NewTargetParser()
 
 	tests := []struct {
-		name                string
-		oracleText          string
+		name                 string
+		oracleText           string
 		expectedRestrictions int
-		checkRestriction    func(restrictions []TargetRestriction) bool
+		checkRestriction     func(restrictions []TargetRestriction) bool
 	}{
 		{
-			name:                "Non-artifact creature",
-			oracleText:          "Target non-artifact creature gets +3/+3.",
+			name:                 "Non-artifact creature",
+			oracleText:           "Target non-artifact creature gets +3/+3.",
 			expectedRestrictions: 2,
 			checkRestriction: func(restrictions []TargetRestriction) bool {
 				hasCreature := false
@@ -252,8 +252,8 @@ func TestTargetParser_ParseComplexRestrictions(t *testing.T) {
 			},
 		},
 		{
-			name:                "Creature with flying",
-			oracleText:          "Target creature with flying gains vigilance.",
+			name:                 "Creature with flying",
+			oracleText:           "Target creature with flying gains vigilance.",
 			expectedRestrictions: 2,
 			checkRestriction: func(restrictions []TargetRestriction) bool {
 				hasCreature := false
@@ -270,8 +270,8 @@ func TestTargetParser_ParseComplexRestrictions(t *testing.T) {
 			},
 		},
 		{
-			name:                "Creature with power 2 or less",
-			oracleText:          "Destroy target creature with power 2 or less.",
+			name:                 "Creature with power 2 or less",
+			oracleText:           "Destroy target creature with power 2 or less.",
 			expectedRestrictions: 2,
 			checkRestriction: func(restrictions []TargetRestriction) bool {
 				hasCreature := false
@@ -290,8 +290,8 @@ func TestTargetParser_ParseComplexRestrictions(t *testing.T) {
 			},
 		},
 		{
-			name:                "Creature you control",
-			oracleText:          "Target creature you control gains trample.",
+			name:                 "Creature you control",
+			oracleText:           "Target creature you control gains trample.",
 			expectedRestrictions: 2,
 			checkRestriction: func(restrictions []TargetRestriction) bool {
 				hasCreature := false
@@ -495,12 +495,12 @@ func TestTargetValidator_ValidateComplexRestrictions(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		target         interface{}
-		restrictions   []TargetRestriction
-		controller     AbilityPlayer
-		expectedLegal  bool
-		description    string
+		name          string
+		target        interface{}
+		restrictions  []TargetRestriction
+		controller    AbilityPlayer
+		expectedLegal bool
+		description   string
 	}{
 		{
 			name:   "Power restriction - valid",

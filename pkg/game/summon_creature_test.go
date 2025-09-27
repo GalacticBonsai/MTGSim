@@ -52,9 +52,9 @@ func TestSummonCreatureWorkflow(t *testing.T) {
 	g := NewGame(p1, p2)
 
 	bear := SimpleCard{
-		Name:      "Grizzly Bears",
-		TypeLine:  "Creature — Bear",
-		Power:     "2",
+		Name:       "Grizzly Bears",
+		TypeLine:   "Creature — Bear",
+		Power:      "2",
 		Toughness:  "2",
 		OracleText: "",
 	}
@@ -116,4 +116,3 @@ func TestSummonCreatureWorkflow(t *testing.T) {
 		t.Fatalf("expected colorless to be 0 after paying generic, got %d", pool[Colorless])
 	}
 }
-

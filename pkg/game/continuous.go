@@ -15,7 +15,9 @@ func (g *Game) ensureContinuous() {
 // ApplySetPTUntilEOT sets a creature's base power/toughness until end of turn.
 // Later calls overwrite earlier ones (last-wins). On EOT, original base is restored.
 func (g *Game) ApplySetPTUntilEOT(p *Permanent, power, toughness int) {
-	if p == nil { return }
+	if p == nil {
+		return
+	}
 	g.ensureContinuous()
 	// Save original base if first time
 	if _, ok := g.continuous.setBase[p]; !ok {
@@ -25,4 +27,3 @@ func (g *Game) ApplySetPTUntilEOT(p *Permanent, power, toughness int) {
 	p.power = power
 	p.toughness = toughness
 }
-

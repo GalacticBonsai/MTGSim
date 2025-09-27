@@ -60,49 +60,49 @@ func createComprehensiveMockCardDB() *MockCardDB {
 		"Forest":   {Name: "Forest", CMC: 0, TypeLine: "Basic Land — Forest"},
 
 		// Common Spells
-		"Lightning Bolt":     {Name: "Lightning Bolt", CMC: 1, ManaCost: "{R}", TypeLine: "Instant"},
-		"Fireball":           {Name: "Fireball", CMC: 1, ManaCost: "{X}{R}", TypeLine: "Sorcery"},
-		"Counterspell":       {Name: "Counterspell", CMC: 2, ManaCost: "{U}{U}", TypeLine: "Instant"},
-		"Dark Ritual":        {Name: "Dark Ritual", CMC: 1, ManaCost: "{B}", TypeLine: "Instant"},
-		"Giant Growth":       {Name: "Giant Growth", CMC: 1, ManaCost: "{G}", TypeLine: "Instant"},
+		"Lightning Bolt":       {Name: "Lightning Bolt", CMC: 1, ManaCost: "{R}", TypeLine: "Instant"},
+		"Fireball":             {Name: "Fireball", CMC: 1, ManaCost: "{X}{R}", TypeLine: "Sorcery"},
+		"Counterspell":         {Name: "Counterspell", CMC: 2, ManaCost: "{U}{U}", TypeLine: "Instant"},
+		"Dark Ritual":          {Name: "Dark Ritual", CMC: 1, ManaCost: "{B}", TypeLine: "Instant"},
+		"Giant Growth":         {Name: "Giant Growth", CMC: 1, ManaCost: "{G}", TypeLine: "Instant"},
 		"Swords to Plowshares": {Name: "Swords to Plowshares", CMC: 1, ManaCost: "{W}", TypeLine: "Instant"},
 
 		// Common Creatures
-		"Llanowar Elves":     {Name: "Llanowar Elves", CMC: 1, ManaCost: "{G}", TypeLine: "Creature — Elf Druid", Power: "1", Toughness: "1"},
-		"Birds of Paradise":  {Name: "Birds of Paradise", CMC: 1, ManaCost: "{G}", TypeLine: "Creature — Bird", Power: "0", Toughness: "1", Keywords: []string{"Flying"}},
-		"Serra Angel":        {Name: "Serra Angel", CMC: 5, ManaCost: "{3}{W}{W}", TypeLine: "Creature — Angel", Power: "4", Toughness: "4", Keywords: []string{"Flying", "Vigilance"}},
-		"Shivan Dragon":      {Name: "Shivan Dragon", CMC: 6, ManaCost: "{4}{R}{R}", TypeLine: "Creature — Dragon", Power: "5", Toughness: "5", Keywords: []string{"Flying"}},
-		"Lord of Atlantis":   {Name: "Lord of Atlantis", CMC: 2, ManaCost: "{U}{U}", TypeLine: "Creature — Merfolk", Power: "2", Toughness: "2"},
+		"Llanowar Elves":    {Name: "Llanowar Elves", CMC: 1, ManaCost: "{G}", TypeLine: "Creature — Elf Druid", Power: "1", Toughness: "1"},
+		"Birds of Paradise": {Name: "Birds of Paradise", CMC: 1, ManaCost: "{G}", TypeLine: "Creature — Bird", Power: "0", Toughness: "1", Keywords: []string{"Flying"}},
+		"Serra Angel":       {Name: "Serra Angel", CMC: 5, ManaCost: "{3}{W}{W}", TypeLine: "Creature — Angel", Power: "4", Toughness: "4", Keywords: []string{"Flying", "Vigilance"}},
+		"Shivan Dragon":     {Name: "Shivan Dragon", CMC: 6, ManaCost: "{4}{R}{R}", TypeLine: "Creature — Dragon", Power: "5", Toughness: "5", Keywords: []string{"Flying"}},
+		"Lord of Atlantis":  {Name: "Lord of Atlantis", CMC: 2, ManaCost: "{U}{U}", TypeLine: "Creature — Merfolk", Power: "2", Toughness: "2"},
 
 		// Artifacts
-		"Sol Ring":           {Name: "Sol Ring", CMC: 1, ManaCost: "{1}", TypeLine: "Artifact"},
-		"Mox Pearl":          {Name: "Mox Pearl", CMC: 0, ManaCost: "{0}", TypeLine: "Artifact"},
-		"Black Lotus":        {Name: "Black Lotus", CMC: 0, ManaCost: "{0}", TypeLine: "Artifact"},
-		"Nevinyrral's Disk":  {Name: "Nevinyrral's Disk", CMC: 4, ManaCost: "{4}", TypeLine: "Artifact"},
+		"Sol Ring":          {Name: "Sol Ring", CMC: 1, ManaCost: "{1}", TypeLine: "Artifact"},
+		"Mox Pearl":         {Name: "Mox Pearl", CMC: 0, ManaCost: "{0}", TypeLine: "Artifact"},
+		"Black Lotus":       {Name: "Black Lotus", CMC: 0, ManaCost: "{0}", TypeLine: "Artifact"},
+		"Nevinyrral's Disk": {Name: "Nevinyrral's Disk", CMC: 4, ManaCost: "{4}", TypeLine: "Artifact"},
 
 		// Dual Lands
-		"Tundra":             {Name: "Tundra", CMC: 0, TypeLine: "Land — Plains Island"},
-		"Underground Sea":    {Name: "Underground Sea", CMC: 0, TypeLine: "Land — Island Swamp"},
-		"Badlands":           {Name: "Badlands", CMC: 0, TypeLine: "Land — Swamp Mountain"},
-		"Taiga":              {Name: "Taiga", CMC: 0, TypeLine: "Land — Mountain Forest"},
-		"Savannah":           {Name: "Savannah", CMC: 0, TypeLine: "Land — Forest Plains"},
-		"Scrubland":          {Name: "Scrubland", CMC: 0, TypeLine: "Land — Plains Swamp"},
-		"Volcanic Island":    {Name: "Volcanic Island", CMC: 0, TypeLine: "Land — Island Mountain"},
-		"Bayou":              {Name: "Bayou", CMC: 0, TypeLine: "Land — Swamp Forest"},
-		"Plateau":            {Name: "Plateau", CMC: 0, TypeLine: "Land — Mountain Plains"},
-		"Tropical Island":    {Name: "Tropical Island", CMC: 0, TypeLine: "Land — Forest Island"},
+		"Tundra":          {Name: "Tundra", CMC: 0, TypeLine: "Land — Plains Island"},
+		"Underground Sea": {Name: "Underground Sea", CMC: 0, TypeLine: "Land — Island Swamp"},
+		"Badlands":        {Name: "Badlands", CMC: 0, TypeLine: "Land — Swamp Mountain"},
+		"Taiga":           {Name: "Taiga", CMC: 0, TypeLine: "Land — Mountain Forest"},
+		"Savannah":        {Name: "Savannah", CMC: 0, TypeLine: "Land — Forest Plains"},
+		"Scrubland":       {Name: "Scrubland", CMC: 0, TypeLine: "Land — Plains Swamp"},
+		"Volcanic Island": {Name: "Volcanic Island", CMC: 0, TypeLine: "Land — Island Mountain"},
+		"Bayou":           {Name: "Bayou", CMC: 0, TypeLine: "Land — Swamp Forest"},
+		"Plateau":         {Name: "Plateau", CMC: 0, TypeLine: "Land — Mountain Plains"},
+		"Tropical Island": {Name: "Tropical Island", CMC: 0, TypeLine: "Land — Forest Island"},
 
 		// Shock Lands
-		"Sacred Foundry":     {Name: "Sacred Foundry", CMC: 0, TypeLine: "Land — Mountain Plains"},
-		"Steam Vents":        {Name: "Steam Vents", CMC: 0, TypeLine: "Land — Island Mountain"},
-		"Overgrown Tomb":     {Name: "Overgrown Tomb", CMC: 0, TypeLine: "Land — Swamp Forest"},
-		"Temple Garden":      {Name: "Temple Garden", CMC: 0, TypeLine: "Land — Forest Plains"},
-		"Hallowed Fountain":  {Name: "Hallowed Fountain", CMC: 0, TypeLine: "Land — Plains Island"},
-		"Watery Grave":       {Name: "Watery Grave", CMC: 0, TypeLine: "Land — Island Swamp"},
-		"Blood Crypt":        {Name: "Blood Crypt", CMC: 0, TypeLine: "Land — Swamp Mountain"},
-		"Stomping Ground":    {Name: "Stomping Ground", CMC: 0, TypeLine: "Land — Mountain Forest"},
-		"Breeding Pool":      {Name: "Breeding Pool", CMC: 0, TypeLine: "Land — Forest Island"},
-		"Godless Shrine":     {Name: "Godless Shrine", CMC: 0, TypeLine: "Land — Plains Swamp"},
+		"Sacred Foundry":    {Name: "Sacred Foundry", CMC: 0, TypeLine: "Land — Mountain Plains"},
+		"Steam Vents":       {Name: "Steam Vents", CMC: 0, TypeLine: "Land — Island Mountain"},
+		"Overgrown Tomb":    {Name: "Overgrown Tomb", CMC: 0, TypeLine: "Land — Swamp Forest"},
+		"Temple Garden":     {Name: "Temple Garden", CMC: 0, TypeLine: "Land — Forest Plains"},
+		"Hallowed Fountain": {Name: "Hallowed Fountain", CMC: 0, TypeLine: "Land — Plains Island"},
+		"Watery Grave":      {Name: "Watery Grave", CMC: 0, TypeLine: "Land — Island Swamp"},
+		"Blood Crypt":       {Name: "Blood Crypt", CMC: 0, TypeLine: "Land — Swamp Mountain"},
+		"Stomping Ground":   {Name: "Stomping Ground", CMC: 0, TypeLine: "Land — Mountain Forest"},
+		"Breeding Pool":     {Name: "Breeding Pool", CMC: 0, TypeLine: "Land — Forest Island"},
+		"Godless Shrine":    {Name: "Godless Shrine", CMC: 0, TypeLine: "Land — Plains Swamp"},
 
 		// Check Lands
 		"Clifftop Retreat":   {Name: "Clifftop Retreat", CMC: 0, TypeLine: "Land"},
@@ -112,32 +112,32 @@ func createComprehensiveMockCardDB() *MockCardDB {
 		"Woodland Cemetery":  {Name: "Woodland Cemetery", CMC: 0, TypeLine: "Land"},
 
 		// Popular Modern/Standard Cards
-		"Tarmogoyf":          {Name: "Tarmogoyf", CMC: 2, ManaCost: "{1}{G}", TypeLine: "Creature — Lhurgoyf", Power: "*", Toughness: "*+1"},
-		"Dark Confidant":     {Name: "Dark Confidant", CMC: 2, ManaCost: "{1}{B}", TypeLine: "Creature — Human Wizard", Power: "2", Toughness: "1"},
-		"Snapcaster Mage":    {Name: "Snapcaster Mage", CMC: 2, ManaCost: "{1}{U}", TypeLine: "Creature — Human Wizard", Power: "2", Toughness: "1"},
-		"Stoneforge Mystic":  {Name: "Stoneforge Mystic", CMC: 2, ManaCost: "{1}{W}", TypeLine: "Creature — Kor Artificer", Power: "1", Toughness: "2"},
+		"Tarmogoyf":         {Name: "Tarmogoyf", CMC: 2, ManaCost: "{1}{G}", TypeLine: "Creature — Lhurgoyf", Power: "*", Toughness: "*+1"},
+		"Dark Confidant":    {Name: "Dark Confidant", CMC: 2, ManaCost: "{1}{B}", TypeLine: "Creature — Human Wizard", Power: "2", Toughness: "1"},
+		"Snapcaster Mage":   {Name: "Snapcaster Mage", CMC: 2, ManaCost: "{1}{U}", TypeLine: "Creature — Human Wizard", Power: "2", Toughness: "1"},
+		"Stoneforge Mystic": {Name: "Stoneforge Mystic", CMC: 2, ManaCost: "{1}{W}", TypeLine: "Creature — Kor Artificer", Power: "1", Toughness: "2"},
 
 		// Planeswalkers
-		"Jace, the Mind Sculptor": {Name: "Jace, the Mind Sculptor", CMC: 4, ManaCost: "{2}{U}{U}", TypeLine: "Legendary Planeswalker — Jace"},
-		"Liliana of the Veil":     {Name: "Liliana of the Veil", CMC: 3, ManaCost: "{1}{B}{B}", TypeLine: "Legendary Planeswalker — Liliana"},
+		"Jace, the Mind Sculptor":    {Name: "Jace, the Mind Sculptor", CMC: 4, ManaCost: "{2}{U}{U}", TypeLine: "Legendary Planeswalker — Jace"},
+		"Liliana of the Veil":        {Name: "Liliana of the Veil", CMC: 3, ManaCost: "{1}{B}{B}", TypeLine: "Legendary Planeswalker — Liliana"},
 		"Chandra, Torch of Defiance": {Name: "Chandra, Torch of Defiance", CMC: 4, ManaCost: "{2}{R}{R}", TypeLine: "Legendary Planeswalker — Chandra"},
 
 		// Common deck archetype cards
-		"Wrath of God":       {Name: "Wrath of God", CMC: 4, ManaCost: "{2}{W}{W}", TypeLine: "Sorcery"},
-		"Damnation":          {Name: "Damnation", CMC: 4, ManaCost: "{2}{B}{B}", TypeLine: "Sorcery"},
-		"Pyroclasm":          {Name: "Pyroclasm", CMC: 2, ManaCost: "{1}{R}", TypeLine: "Sorcery"},
-		"Brainstorm":         {Name: "Brainstorm", CMC: 1, ManaCost: "{U}", TypeLine: "Instant"},
-		"Ponder":             {Name: "Ponder", CMC: 1, ManaCost: "{U}", TypeLine: "Sorcery"},
-		"Preordain":          {Name: "Preordain", CMC: 1, ManaCost: "{U}", TypeLine: "Sorcery"},
+		"Wrath of God": {Name: "Wrath of God", CMC: 4, ManaCost: "{2}{W}{W}", TypeLine: "Sorcery"},
+		"Damnation":    {Name: "Damnation", CMC: 4, ManaCost: "{2}{B}{B}", TypeLine: "Sorcery"},
+		"Pyroclasm":    {Name: "Pyroclasm", CMC: 2, ManaCost: "{1}{R}", TypeLine: "Sorcery"},
+		"Brainstorm":   {Name: "Brainstorm", CMC: 1, ManaCost: "{U}", TypeLine: "Instant"},
+		"Ponder":       {Name: "Ponder", CMC: 1, ManaCost: "{U}", TypeLine: "Sorcery"},
+		"Preordain":    {Name: "Preordain", CMC: 1, ManaCost: "{U}", TypeLine: "Sorcery"},
 
 		// Equipment
 		"Sword of Fire and Ice": {Name: "Sword of Fire and Ice", CMC: 3, ManaCost: "{3}", TypeLine: "Artifact — Equipment"},
 		"Umezawa's Jitte":       {Name: "Umezawa's Jitte", CMC: 2, ManaCost: "{2}", TypeLine: "Legendary Artifact — Equipment"},
 
 		// Enchantments
-		"Necropotence":       {Name: "Necropotence", CMC: 3, ManaCost: "{B}{B}{B}", TypeLine: "Enchantment"},
-		"Sylvan Library":     {Name: "Sylvan Library", CMC: 2, ManaCost: "{1}{G}", TypeLine: "Enchantment"},
-		"Rhystic Study":      {Name: "Rhystic Study", CMC: 3, ManaCost: "{2}{U}", TypeLine: "Enchantment"},
+		"Necropotence":   {Name: "Necropotence", CMC: 3, ManaCost: "{B}{B}{B}", TypeLine: "Enchantment"},
+		"Sylvan Library": {Name: "Sylvan Library", CMC: 2, ManaCost: "{1}{G}", TypeLine: "Enchantment"},
+		"Rhystic Study":  {Name: "Rhystic Study", CMC: 3, ManaCost: "{2}{U}", TypeLine: "Enchantment"},
 	}
 
 	return &MockCardDB{cards: cards}
@@ -151,7 +151,7 @@ func TestDeckOperations(t *testing.T) {
 		{Name: "Forest"},
 		{Name: "Llanowar Elves"},
 	}
-	
+
 	deck := Deck{
 		Cards: testCards,
 		Name:  "Test Deck",
@@ -202,7 +202,7 @@ func TestDeckShuffle(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		testCards = append(testCards, card.Card{Name: "Card " + string(rune('A'+i))})
 	}
-	
+
 	deck := Deck{Cards: testCards}
 	originalOrder := make([]string, len(deck.Cards))
 	for i, c := range deck.Cards {
@@ -235,7 +235,7 @@ func TestImportDeckfile(t *testing.T) {
 	// Create a temporary deck file
 	tempDir := t.TempDir()
 	deckFile := filepath.Join(tempDir, "test.deck")
-	
+
 	deckContent := `About
 Name Test Deck
 
@@ -300,7 +300,7 @@ func TestImportSimpleDeckFormat(t *testing.T) {
 	// Create a temporary deck file with simple format
 	tempDir := t.TempDir()
 	deckFile := filepath.Join(tempDir, "simple.deck")
-	
+
 	deckContent := `4 Lightning Bolt
 20 Mountain
 4 Llanowar Elves

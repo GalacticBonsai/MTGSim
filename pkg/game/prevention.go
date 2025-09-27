@@ -13,7 +13,9 @@ func (g *Game) ensurePrevention() {
 }
 
 func keyFor(target any) uintptr {
-	if target == nil { return 0 }
+	if target == nil {
+		return 0
+	}
 	v := reflect.ValueOf(target)
 	if v.Kind() != reflect.Ptr {
 		return 0
@@ -23,7 +25,9 @@ func keyFor(target any) uintptr {
 
 // AddDamagePrevention adds a prevention shield for the target until EOT.
 func (g *Game) AddDamagePrevention(target any, amount int) {
-	if amount <= 0 || target == nil { return }
+	if amount <= 0 || target == nil {
+		return
+	}
 	g.ensurePrevention()
 	k := keyFor(target)
 	g.prevention.pool[k] = g.prevention.pool[k] + amount
@@ -38,7 +42,9 @@ func (g *Game) clearPreventionEOT() {
 
 // ApplyDamageToPlayer applies damage to a player after prevention.
 func (g *Game) ApplyDamageToPlayer(p *Player, amount int) {
-	if p == nil || amount <= 0 { return }
+	if p == nil || amount <= 0 {
+		return
+	}
 	rem := g.consumePrevention(p, amount)
 	if rem > 0 {
 		p.SetLifeTotal(p.GetLifeTotal() - rem)
@@ -47,7 +53,9 @@ func (g *Game) ApplyDamageToPlayer(p *Player, amount int) {
 
 // ApplyDamageToPermanent applies damage to a permanent after prevention.
 func (g *Game) ApplyDamageToPermanent(per *Permanent, amount int) {
-	if per == nil || amount <= 0 { return }
+	if per == nil || amount <= 0 {
+		return
+	}
 	rem := g.consumePrevention(per, amount)
 	if rem > 0 {
 		per.AddDamage(rem)
@@ -55,10 +63,14 @@ func (g *Game) ApplyDamageToPermanent(per *Permanent, amount int) {
 }
 
 func (g *Game) consumePrevention(target any, amount int) int {
-	if g.prevention == nil || amount <= 0 { return amount }
+	if g.prevention == nil || amount <= 0 {
+		return amount
+	}
 	k := keyFor(target)
 	shield := g.prevention.pool[k]
-	if shield <= 0 { return amount }
+	if shield <= 0 {
+		return amount
+	}
 	if shield >= amount {
 		g.prevention.pool[k] = shield - amount
 		return 0
@@ -67,4 +79,3 @@ func (g *Game) consumePrevention(target any, amount int) int {
 	g.prevention.pool[k] = 0
 	return amount - shield
 }
-

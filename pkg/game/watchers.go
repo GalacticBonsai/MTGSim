@@ -11,13 +11,17 @@ func (g *Game) ClearWatchers()       { g.watchers = nil }
 
 func (g *Game) handleWatchers(e Event) {
 	for _, w := range g.watchers {
-		if w != nil { w.OnEvent(e) }
+		if w != nil {
+			w.OnEvent(e)
+		}
 	}
 }
 
 func (g *Game) resetWatchersEOT() {
 	for _, w := range g.watchers {
-		if w != nil { w.ResetEOT() }
+		if w != nil {
+			w.ResetEOT()
+		}
 	}
 }
 
@@ -33,4 +37,3 @@ func (w *CreatureETBWatcher) OnEvent(e Event) {
 }
 
 func (w *CreatureETBWatcher) ResetEOT() { w.Count = 0 }
-

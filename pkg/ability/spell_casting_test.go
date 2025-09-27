@@ -45,11 +45,11 @@ func TestFixedManaCosts(t *testing.T) {
 			description: "Mixed generic and colored mana cost",
 		},
 		{
-			name:        "Mox Ruby",
-			manaCost:    "{0}",
-			expectedCMC: 0,
+			name:         "Mox Ruby",
+			manaCost:     "{0}",
+			expectedCMC:  0,
 			expectedCost: map[game.ManaType]int{},
-			description: "Zero mana cost",
+			description:  "Zero mana cost",
 		},
 		{
 			name:        "Force of Will",
@@ -66,7 +66,7 @@ func TestFixedManaCosts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cost := parseManaCostToMap(tc.manaCost)
-			
+
 			// Verify total CMC
 			totalCMC := calculateCMC(cost)
 			if totalCMC != tc.expectedCMC {
@@ -86,11 +86,11 @@ func TestFixedManaCosts(t *testing.T) {
 // TestVariableManaCosts tests spells with X in their mana cost
 func TestVariableManaCosts(t *testing.T) {
 	testCases := []struct {
-		name         string
-		manaCost     string
-		xValue       int
-		expectedCMC  int
-		description  string
+		name        string
+		manaCost    string
+		xValue      int
+		expectedCMC int
+		description string
 	}{
 		{
 			name:        "Fireball",
@@ -126,7 +126,7 @@ func TestVariableManaCosts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cost := parseVariableManaCost(tc.manaCost, tc.xValue)
 			totalCMC := calculateCMC(cost)
-			
+
 			if totalCMC != tc.expectedCMC {
 				t.Errorf("%s: expected CMC %d with X=%d, got %d", tc.name, tc.expectedCMC, tc.xValue, totalCMC)
 			}
@@ -169,7 +169,7 @@ func TestAlternativeCastingCosts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			normalCostMap := parseManaCostToMap(tc.normalCost)
-			
+
 			// Test that both costs are valid options
 			if len(normalCostMap) == 0 && tc.normalCost != "{0}" {
 				t.Errorf("%s: failed to parse normal cost %s", tc.name, tc.normalCost)
@@ -221,7 +221,7 @@ func TestAdditionalCosts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cost := parseManaCostToMap(tc.manaCost)
-			
+
 			// Verify base mana cost is parsed
 			if len(cost) == 0 && tc.manaCost != "{0}" {
 				t.Errorf("%s: failed to parse mana cost %s", tc.name, tc.manaCost)
@@ -239,11 +239,11 @@ func TestAdditionalCosts(t *testing.T) {
 // TestCostReductionEffects tests interactions with cost reduction
 func TestCostReductionEffects(t *testing.T) {
 	testCases := []struct {
-		name           string
-		originalCost   string
-		reduction      int
-		expectedCost   int
-		description    string
+		name         string
+		originalCost string
+		reduction    int
+		expectedCost int
+		description  string
 	}{
 		{
 			name:         "Goblin Electromancer Effect",
@@ -273,7 +273,7 @@ func TestCostReductionEffects(t *testing.T) {
 			originalCostMap := parseManaCostToMap(tc.originalCost)
 			reducedCost := applyCostReduction(originalCostMap, tc.reduction)
 			totalCost := calculateCMC(reducedCost)
-			
+
 			if totalCost != tc.expectedCost {
 				t.Errorf("%s: expected reduced cost %d, got %d", tc.name, tc.expectedCost, totalCost)
 			}
@@ -296,7 +296,7 @@ func parseManaCostToMap(manaCost string) map[game.ManaType]int {
 				j++
 			}
 			if j < len(manaCost) {
-				symbol := manaCost[i+1:j]
+				symbol := manaCost[i+1 : j]
 				switch symbol {
 				case "W":
 					cost[game.White]++
@@ -399,7 +399,7 @@ func applyCostReduction(originalCost map[game.ManaType]int, reduction int) map[g
 	for manaType, amount := range originalCost {
 		reducedCost[manaType] = amount
 	}
-	
+
 	// Apply reduction to generic mana first
 	if reducedCost[game.Any] > 0 {
 		if reducedCost[game.Any] >= reduction {
@@ -408,6 +408,6 @@ func applyCostReduction(originalCost map[game.ManaType]int, reduction int) map[g
 			reducedCost[game.Any] = 0
 		}
 	}
-	
+
 	return reducedCost
 }

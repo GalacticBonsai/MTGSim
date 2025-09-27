@@ -400,12 +400,12 @@ func TestSummoningSickness(t *testing.T) {
 
 	// Create a creature that just entered the battlefield
 	creature := &mockPermanent{
-		id:         uuid.New(),
-		name:       "Fresh Creature",
-		owner:      player,
-		controller: player,
-		tapped:     false,
-		abilities:  []*Ability{},
+		id:            uuid.New(),
+		name:          "Fresh Creature",
+		owner:         player,
+		controller:    player,
+		tapped:        false,
+		abilities:     []*Ability{},
 		summoningSick: true, // Just entered this turn
 	}
 

@@ -29,4 +29,3 @@ func AutoActivateForPlayer(g *game.Game, playerName, phase string) {
 	}
 	ai.ActivateAbilitiesForPlayer(p, phase)
 }
-

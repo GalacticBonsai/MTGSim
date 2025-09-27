@@ -1,9 +1,9 @@
 package main
 
 import (
-	"testing"
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/pkg/card"
+	"testing"
 )
 
 func TestPermanentTapUntap(t *testing.T) {
