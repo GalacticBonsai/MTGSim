@@ -102,52 +102,52 @@ func TestSpellTypeClassification(t *testing.T) {
 // TestPermanentSpellTypes tests that permanent spells create appropriate permanents
 func TestPermanentSpellTypes(t *testing.T) {
 	testCases := []struct {
-		name         string
-		cardType     string
-		oracleText   string
-		isPermanent  bool
+		name          string
+		cardType      string
+		oracleText    string
+		isPermanent   bool
 		permanentType string
 	}{
 		{
-			name:         "Lightning Bolt",
-			cardType:     "Instant",
-			oracleText:   "Lightning Bolt deals 3 damage to any target.",
-			isPermanent:  false,
+			name:          "Lightning Bolt",
+			cardType:      "Instant",
+			oracleText:    "Lightning Bolt deals 3 damage to any target.",
+			isPermanent:   false,
 			permanentType: "",
 		},
 		{
-			name:         "Divination", 
-			cardType:     "Sorcery",
-			oracleText:   "Draw two cards.",
-			isPermanent:  false,
+			name:          "Divination",
+			cardType:      "Sorcery",
+			oracleText:    "Draw two cards.",
+			isPermanent:   false,
 			permanentType: "",
 		},
 		{
-			name:         "Pacifism",
-			cardType:     "Enchantment — Aura",
-			oracleText:   "Enchant creature. Enchanted creature can't attack or block.",
-			isPermanent:  true,
+			name:          "Pacifism",
+			cardType:      "Enchantment — Aura",
+			oracleText:    "Enchant creature. Enchanted creature can't attack or block.",
+			isPermanent:   true,
 			permanentType: "Enchantment",
 		},
 		{
-			name:         "Sol Ring",
-			cardType:     "Artifact",
-			oracleText:   "{T}: Add {C}{C}.",
-			isPermanent:  true,
+			name:          "Sol Ring",
+			cardType:      "Artifact",
+			oracleText:    "{T}: Add {C}{C}.",
+			isPermanent:   true,
 			permanentType: "Artifact",
 		},
 		{
-			name:         "Grizzly Bears",
-			cardType:     "Creature — Bear",
-			oracleText:   "",
-			isPermanent:  true,
+			name:          "Grizzly Bears",
+			cardType:      "Creature — Bear",
+			oracleText:    "",
+			isPermanent:   true,
 			permanentType: "Creature",
 		},
 		{
-			name:         "Jace Beleren",
-			cardType:     "Legendary Planeswalker — Jace",
-			oracleText:   "+2: Each player draws a card. -1: Target player draws a card. -10: Target player mills twenty cards.",
-			isPermanent:  true,
+			name:          "Jace Beleren",
+			cardType:      "Legendary Planeswalker — Jace",
+			oracleText:    "+2: Each player draws a card. -1: Target player draws a card. -10: Target player mills twenty cards.",
+			isPermanent:   true,
 			permanentType: "Planeswalker",
 		},
 	}
@@ -235,7 +235,7 @@ func containsType(cardType, targetType string) bool {
 		if cardType[i:i+len(targetType)] == targetType {
 			// Check if it's a word boundary
 			if (i == 0 || cardType[i-1] == ' ') &&
-			   (i+len(targetType) == len(cardType) || cardType[i+len(targetType)] == ' ') {
+				(i+len(targetType) == len(cardType) || cardType[i+len(targetType)] == ' ') {
 				return true
 			}
 		}

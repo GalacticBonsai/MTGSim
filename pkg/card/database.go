@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
-
-	"github.com/mtgsim/mtgsim/internal/logger"
 )
 
 const (
@@ -48,37 +47,37 @@ func (db *CardDB) Size() int {
 // LoadCardDatabase loads the card database from file or downloads it if not present.
 func LoadCardDatabase() (*CardDB, error) {
 	var cards []Card
-	
+
 	// Try to load from file first
 	if file, err := os.ReadFile(CardDBFile); err == nil {
 		err = json.Unmarshal(file, &cards)
 		if err != nil {
-			logger.LogGame("Error parsing cardDB.json: %v", err)
+			log.Printf("GAME: Error parsing cardDB.json: %v", err)
 			return nil, err
 		}
-		logger.LogMeta("Loaded %d cards from local database", len(cards))
+		log.Printf("META: Loaded %d cards from local database", len(cards))
 	} else {
 		// Download from URL if file doesn't exist
-		logger.LogMeta("Local card database not found, downloading...")
+		log.Printf("META: Local card database not found, downloading...")
 		cards, err = downloadAndParseJSON(CardDBURL)
 		if err != nil {
-			logger.LogGame("Error downloading card database: %v", err)
+			log.Printf("GAME: Error downloading card database: %v", err)
 			return nil, err
 		}
 
 		// Save to file for future use
 		content, err := json.MarshalIndent(cards, "", "  ")
 		if err != nil {
-			logger.LogGame("Error marshalling JSON: %v", err)
+			log.Printf("GAME: Error marshalling JSON: %v", err)
 			return nil, err
 		}
 
 		err = os.WriteFile(CardDBFile, content, 0644)
 		if err != nil {
-			logger.LogGame("Error writing to file: %v", err)
+			log.Printf("GAME: Error writing to file: %v", err)
 			return nil, err
 		}
-		logger.LogMeta("Downloaded and saved %d cards to local database", len(cards))
+		log.Printf("META: Downloaded and saved %d cards to local database", len(cards))
 	}
 
 	cardDB := NewCardDB(cards)
@@ -91,7 +90,7 @@ func LoadCardDatabase() (*CardDB, error) {
 
 // downloadAndParseJSON downloads card data from the given URL and parses it.
 func downloadAndParseJSON(url string) ([]Card, error) {
-	logger.LogMeta("Downloading JSON from %s", url)
+	log.Printf("META: Downloading JSON from %s", url)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -99,7 +98,7 @@ func downloadAndParseJSON(url string) ([]Card, error) {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			logger.LogMeta("Error closing response body: %v", err)
+			log.Printf("META: Error closing response body: %v", err)
 		}
 	}()
 

@@ -9,12 +9,12 @@ import (
 
 // GameAdapter adapts the existing game structures to work with the ability system.
 type GameAdapter struct {
-	game           GameInterface
-	abilityEngine  *AbilityEngine
+	game            GameInterface
+	abilityEngine   *AbilityEngine
 	executionEngine *ExecutionEngine
 	aiDecisionMaker *AIDecisionMaker
-	parser         *AbilityParser
-	currentPhase   string
+	parser          *AbilityParser
+	currentPhase    string
 }
 
 // GameInterface represents the interface to the existing game engine.
@@ -67,20 +67,20 @@ type PermanentInterface interface {
 // NewGameAdapter creates a new game adapter.
 func NewGameAdapter(game GameInterface) *GameAdapter {
 	abilityEngine := NewAbilityEngine()
-	
+
 	adapter := &GameAdapter{
 		game:          game,
 		abilityEngine: abilityEngine,
 		parser:        NewAbilityParser(),
 		currentPhase:  "Main",
 	}
-	
+
 	// Create execution engine with adapter as game state
 	adapter.executionEngine = NewExecutionEngine(adapter)
-	
+
 	// Create AI decision maker
 	adapter.aiDecisionMaker = NewAIDecisionMaker(adapter.executionEngine)
-	
+
 	return adapter
 }
 
@@ -304,16 +304,16 @@ func (pa *PermanentAdapter) RemoveAbility(abilityID uuid.UUID) {
 // ParseAndAddAbilities parses abilities from a card's oracle text and adds them to a permanent.
 func (ga *GameAdapter) ParseAndAddAbilities(permanent PermanentInterface, oracleText string) error {
 	permAdapter := &PermanentAdapter{permanent: permanent, adapter: ga}
-	
+
 	abilities, err := ga.parser.ParseAbilities(oracleText, permAdapter)
 	if err != nil {
 		return err
 	}
-	
+
 	for _, ability := range abilities {
 		permAdapter.AddAbility(ability)
 	}
-	
+
 	return nil
 }
 

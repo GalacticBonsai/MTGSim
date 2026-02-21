@@ -41,8 +41,8 @@ func TestOneLandPerTurnRule(t *testing.T) {
 		Lands:         make([]*Permanent, 0),
 
 		// Initialize land drop tracking
-		LandDropsThisTurn:    0,
-		LandDropsPerTurn:     1,
+		LandDropsThisTurn:     0,
+		LandDropsPerTurn:      1,
 		HasPlayedLandThisTurn: false,
 	}
 
@@ -152,8 +152,8 @@ func TestAdditionalLandDrops(t *testing.T) {
 		Lands:         make([]*Permanent, 0),
 
 		// Initialize land drop tracking
-		LandDropsThisTurn:    0,
-		LandDropsPerTurn:     1,
+		LandDropsThisTurn:     0,
+		LandDropsPerTurn:      1,
 		HasPlayedLandThisTurn: false,
 	}
 
@@ -229,8 +229,8 @@ func TestLandDropReset(t *testing.T) {
 		Lands:         make([]*Permanent, 0),
 
 		// Initialize land drop tracking
-		LandDropsThisTurn:    0,
-		LandDropsPerTurn:     1,
+		LandDropsThisTurn:     0,
+		LandDropsPerTurn:      1,
 		HasPlayedLandThisTurn: false,
 	}
 
@@ -292,8 +292,8 @@ func TestHasLandDropAvailable(t *testing.T) {
 		Lands:         make([]*Permanent, 0),
 
 		// Initialize land drop tracking
-		LandDropsThisTurn:    0,
-		LandDropsPerTurn:     1,
+		LandDropsThisTurn:     0,
+		LandDropsPerTurn:      1,
 		HasPlayedLandThisTurn: false,
 	}
 

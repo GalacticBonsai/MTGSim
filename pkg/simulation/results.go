@@ -63,7 +63,7 @@ func (r *Results) PrintTopResults() {
 	for _, result := range r.results {
 		if result.Wins+result.Losses > 0 {
 			winPercent := float64(result.Wins) / float64(result.Wins+result.Losses) * 100
-			logger.LogMeta("Deck: %s Wins: %d, Losses: %d, Win Rate: %.2f%%", 
+			logger.LogMeta("Deck: %s Wins: %d, Losses: %d, Win Rate: %.2f%%",
 				result.Name, result.Wins, result.Losses, winPercent)
 		}
 	}

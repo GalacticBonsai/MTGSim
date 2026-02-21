@@ -1,8 +1,8 @@
 package main
 
 import (
-	"testing"
 	"github.com/mtgsim/mtgsim/pkg/card"
+	"testing"
 )
 
 func TestCardHasEvergreenAbility(t *testing.T) {

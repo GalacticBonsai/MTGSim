@@ -10,38 +10,38 @@ func TestAbilityParser_ParseManaAbilities(t *testing.T) {
 	parser := NewAbilityParser()
 
 	tests := []struct {
-		name        string
-		oracleText  string
-		expectedLen int
-		expectedType AbilityType
+		name           string
+		oracleText     string
+		expectedLen    int
+		expectedType   AbilityType
 		expectedEffect EffectType
 	}{
 		{
-			name:        "Basic mana ability",
-			oracleText:  "{T}: Add {G}.",
-			expectedLen: 1,
-			expectedType: Mana,
+			name:           "Basic mana ability",
+			oracleText:     "{T}: Add {G}.",
+			expectedLen:    1,
+			expectedType:   Mana,
 			expectedEffect: AddMana,
 		},
 		{
-			name:        "Any color mana",
-			oracleText:  "{T}: Add one mana of any color.",
-			expectedLen: 1,
-			expectedType: Mana,
+			name:           "Any color mana",
+			oracleText:     "{T}: Add one mana of any color.",
+			expectedLen:    1,
+			expectedType:   Mana,
 			expectedEffect: AddMana,
 		},
 		{
-			name:        "Colorless mana",
-			oracleText:  "{T}: Add {C}{C}.",
-			expectedLen: 1,
-			expectedType: Mana,
+			name:           "Colorless mana",
+			oracleText:     "{T}: Add {C}{C}.",
+			expectedLen:    1,
+			expectedType:   Mana,
 			expectedEffect: AddMana,
 		},
 		{
-			name:        "Multiple abilities",
-			oracleText:  "{T}: Add {R}. {T}: Add {G}.",
-			expectedLen: 2,
-			expectedType: Mana,
+			name:           "Multiple abilities",
+			oracleText:     "{T}: Add {R}. {T}: Add {G}.",
+			expectedLen:    2,
+			expectedType:   Mana,
 			expectedEffect: AddMana,
 		},
 	}
@@ -81,52 +81,52 @@ func TestAbilityParser_ParseTriggeredAbilities(t *testing.T) {
 	parser := NewAbilityParser()
 
 	tests := []struct {
-		name        string
-		oracleText  string
-		expectedLen int
+		name            string
+		oracleText      string
+		expectedLen     int
 		expectedTrigger TriggerCondition
-		expectedEffect EffectType
-		expectedValue int
+		expectedEffect  EffectType
+		expectedValue   int
 	}{
 		{
-			name:        "ETB draw card",
-			oracleText:  "When this creature enters the battlefield, draw a card.",
-			expectedLen: 1,
+			name:            "ETB draw card",
+			oracleText:      "When this creature enters the battlefield, draw a card.",
+			expectedLen:     1,
 			expectedTrigger: EntersTheBattlefield,
-			expectedEffect: DrawCards,
-			expectedValue: 1,
+			expectedEffect:  DrawCards,
+			expectedValue:   1,
 		},
 		{
-			name:        "ETB draw multiple cards",
-			oracleText:  "When this creature enters the battlefield, draw 2 cards.",
-			expectedLen: 2, // ETB trigger + spell draw pattern
+			name:            "ETB draw multiple cards",
+			oracleText:      "When this creature enters the battlefield, draw 2 cards.",
+			expectedLen:     2, // ETB trigger + spell draw pattern
 			expectedTrigger: EntersTheBattlefield,
-			expectedEffect: DrawCards,
-			expectedValue: 2,
+			expectedEffect:  DrawCards,
+			expectedValue:   2,
 		},
 		{
-			name:        "ETB deal damage",
-			oracleText:  "When this creature enters the battlefield, it deals 3 damage to any target.",
-			expectedLen: 2, // ETB trigger + spell damage pattern
+			name:            "ETB deal damage",
+			oracleText:      "When this creature enters the battlefield, it deals 3 damage to any target.",
+			expectedLen:     2, // ETB trigger + spell damage pattern
 			expectedTrigger: EntersTheBattlefield,
-			expectedEffect: DealDamage,
-			expectedValue: 3,
+			expectedEffect:  DealDamage,
+			expectedValue:   3,
 		},
 		{
-			name:        "ETB gain life",
-			oracleText:  "When this creature enters the battlefield, you gain 4 life.",
-			expectedLen: 1,
+			name:            "ETB gain life",
+			oracleText:      "When this creature enters the battlefield, you gain 4 life.",
+			expectedLen:     1,
 			expectedTrigger: EntersTheBattlefield,
-			expectedEffect: GainLife,
-			expectedValue: 4,
+			expectedEffect:  GainLife,
+			expectedValue:   4,
 		},
 		{
-			name:        "Death trigger",
-			oracleText:  "When this creature dies, draw a card.",
-			expectedLen: 1,
+			name:            "Death trigger",
+			oracleText:      "When this creature dies, draw a card.",
+			expectedLen:     1,
 			expectedTrigger: Dies,
-			expectedEffect: DrawCards,
-			expectedValue: 1,
+			expectedEffect:  DrawCards,
+			expectedValue:   1,
 		},
 	}
 
@@ -179,36 +179,36 @@ func TestAbilityParser_ParseActivatedAbilities(t *testing.T) {
 	parser := NewAbilityParser()
 
 	tests := []struct {
-		name        string
-		oracleText  string
-		expectedLen int
-		expectedEffect EffectType
+		name             string
+		oracleText       string
+		expectedLen      int
+		expectedEffect   EffectType
 		expectedManaCost int
-		expectedTapCost bool
+		expectedTapCost  bool
 	}{
 		{
-			name:        "Activated draw ability",
-			oracleText:  "{2}, {T}: Draw 1 card.",
-			expectedLen: 1,
-			expectedEffect: DrawCards,
+			name:             "Activated draw ability",
+			oracleText:       "{2}, {T}: Draw 1 card.",
+			expectedLen:      1,
+			expectedEffect:   DrawCards,
 			expectedManaCost: 2,
-			expectedTapCost: true,
+			expectedTapCost:  true,
 		},
 		{
-			name:        "Activated damage ability",
-			oracleText:  "{1}, {T}: This creature deals 2 damage to any target.",
-			expectedLen: 1,
-			expectedEffect: DealDamage,
+			name:             "Activated damage ability",
+			oracleText:       "{1}, {T}: This creature deals 2 damage to any target.",
+			expectedLen:      1,
+			expectedEffect:   DealDamage,
 			expectedManaCost: 1,
-			expectedTapCost: true,
+			expectedTapCost:  true,
 		},
 		{
-			name:        "Pump ability",
-			oracleText:  "{T}: Target creature gets +1/+1 until end of turn.",
-			expectedLen: 1,
-			expectedEffect: PumpCreature,
+			name:             "Pump ability",
+			oracleText:       "{T}: Target creature gets +1/+1 until end of turn.",
+			expectedLen:      1,
+			expectedEffect:   PumpCreature,
 			expectedManaCost: 0,
-			expectedTapCost: true,
+			expectedTapCost:  true,
 		},
 	}
 
@@ -253,27 +253,27 @@ func TestAbilityParser_ParseStaticAbilities(t *testing.T) {
 	parser := NewAbilityParser()
 
 	tests := []struct {
-		name        string
-		oracleText  string
-		expectedLen int
-		expectedEffect EffectType
-		expectedPower int
+		name              string
+		oracleText        string
+		expectedLen       int
+		expectedEffect    EffectType
+		expectedPower     int
 		expectedToughness int
 	}{
 		{
-			name:        "Static pump all",
-			oracleText:  "Creatures you control get +1/+1.",
-			expectedLen: 1,
-			expectedEffect: PumpCreature,
-			expectedPower: 1,
+			name:              "Static pump all",
+			oracleText:        "Creatures you control get +1/+1.",
+			expectedLen:       1,
+			expectedEffect:    PumpCreature,
+			expectedPower:     1,
 			expectedToughness: 1,
 		},
 		{
-			name:        "Static pump others",
-			oracleText:  "Other creatures you control get +2/+2.",
-			expectedLen: 1,
-			expectedEffect: PumpCreature,
-			expectedPower: 2,
+			name:              "Static pump others",
+			oracleText:        "Other creatures you control get +2/+2.",
+			expectedLen:       1,
+			expectedEffect:    PumpCreature,
+			expectedPower:     2,
 			expectedToughness: 2,
 		},
 	}

@@ -3,9 +3,11 @@ package ability
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
+	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
@@ -57,6 +59,19 @@ type AbilityPermanent interface {
 type SummoningSickness interface {
 	HasSummoningSickness() bool
 }
+
+// Track cards that failed to implement correctly (parsed but not supported, or no effects for spell types)
+var unimplementedCards = map[string]string{}
+
+func markUnimplementedCard(name, reason string) {
+	if _, exists := unimplementedCards[name]; !exists {
+		unimplementedCards[name] = reason
+		logger.LogMeta("Unimplemented card: %s (%s)", name, reason)
+	}
+}
+
+// GetUnimplementedCards returns a map[name]reason of unimplemented cards encountered.
+func GetUnimplementedCards() map[string]string { return unimplementedCards }
 
 // ExecutionEngine handles the execution of abilities and their effects.
 type ExecutionEngine struct {
@@ -191,6 +206,13 @@ func (ee *ExecutionEngine) resolveManaAbility(ability *Ability, controller Abili
 func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPlayer, targets []any) error {
 	for _, effect := range ability.Effects {
 		if err := ee.applyEffect(effect, controller, targets); err != nil {
+			// Mark card as unimplemented if we can identify the source card
+			if ability != nil && ability.Source != nil {
+				if cc, ok := ability.Source.(card.Card); ok {
+					markUnimplementedCard(cc.Name, fmt.Sprintf("unimplemented effect: %v", effect.Type))
+				}
+			}
+			logger.LogCard("Unimplemented effect during resolution for %s: %v", ability.Name, err)
 			return err
 		}
 	}
@@ -210,6 +232,16 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			logger.LogCard("Deal %d damage to target", effect.Value)
 		}
 
+	case SourcePowerDamage:
+		// Expect two targets: [0] source creature, [1] target creature
+		if len(targets) >= 2 {
+			if src, ok := targets[0].(*game.Permanent); ok {
+				amount := src.GetPower()
+				ee.gameState.DealDamage(src, targets[1], amount)
+				logger.LogCard("%s deals %d damage equal to its power", src.GetName(), amount)
+			}
+		}
+
 	case GainLife:
 		ee.gameState.GainLife(controller, effect.Value)
 		logger.LogCard("%s gains %d life", controller.GetName(), effect.Value)
@@ -223,12 +255,42 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			power := effect.Value / 100
 			toughness := effect.Value % 100
 			ee.applyPumpEffect(targets[0], power, toughness, effect.Duration)
-			logger.LogCard("Target creature gets +%d/+%d", power, toughness)
+			logger.LogCard("Target creature gets %+d/%+d", power, toughness)
 		}
 
 	case TapUntap:
 		if len(targets) > 0 {
 			ee.applyTapEffect(targets[0], effect.Value > 0)
+		}
+
+	case ChangeControl:
+		// Simplified: permanently change controller to the activating player
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				// Find the actual player object in the underlying game if available
+				for _, p := range ee.gameState.GetAllPlayers() {
+					if p.GetName() == controller.GetName() {
+						// Best-effort: try to downcast to *game.Player via known adapter shapes
+						// This depends on the bridge returning *game.Permanent targets.
+						if gp, ok2 := any(p).(interface{ Underlying() *game.Player }); ok2 {
+							perm.SetController(gp.Underlying())
+							break
+						}
+					}
+				}
+				logger.LogCard("Change control of %s", perm.GetName())
+			}
+		}
+
+	case ReturnToHand:
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				owner := perm.GetOwner()
+				if owner != nil {
+					owner.ReturnPermanentToHand(perm)
+					logger.LogCard("Returned %s to its owner's hand", perm.GetName())
+				}
+			}
 		}
 
 	case CounterSpell:
@@ -264,7 +326,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 func (ee *ExecutionEngine) determineManaType(ability *Ability, _ Effect) game.ManaType {
 	// Parse from ability description or oracle text
 	text := ability.OracleText
-	
+
 	if contains(text, "{W}") {
 		return game.White
 	}
@@ -450,9 +512,22 @@ func (ee *ExecutionEngine) isValidBasicTarget(target any, targetReq Target) bool
 }
 
 // applyPumpEffect applies a pump effect to a creature.
-func (ee *ExecutionEngine) applyPumpEffect(_ any, power, toughness int, duration EffectDuration) {
-	// This would need to be implemented based on how creatures are represented
-	// For now, just log the effect
+func (ee *ExecutionEngine) applyPumpEffect(target any, power, toughness int, duration EffectDuration) {
+	// Apply temporary P/T changes until end of turn where applicable
+	if gp, ok := target.(*game.Permanent); ok {
+		if duration == UntilEndOfTurn || duration == Instant || duration == UntilEndOfCombat {
+			gp.AddTempBuff(power, toughness)
+			logger.LogCard("Applying temporary +%d/+%d to %s (duration: %v)", power, toughness, gp.GetName(), duration)
+			return
+		}
+		// For permanent duration, adjust base stats (simplified)
+		if duration == Permanent {
+			gp.SetPower(gp.GetPower() + power)
+			gp.SetToughness(gp.GetToughness() + toughness)
+			logger.LogCard("Applying permanent +%d/+%d to %s", power, toughness, gp.GetName())
+			return
+		}
+	}
 	logger.LogCard("Applying +%d/+%d effect (duration: %v)", power, toughness, duration)
 }
 
@@ -473,7 +548,20 @@ func (ee *ExecutionEngine) applyTapEffect(target any, shouldTap bool) {
 func (ee *ExecutionEngine) ParseAndRegisterAbilities(oracleText string, source any) ([]*Ability, error) {
 	abilities, err := ee.parser.ParseAbilities(oracleText, source)
 	if err != nil {
+		if cc, ok := source.(card.Card); ok {
+			markUnimplementedCard(cc.Name, fmt.Sprintf("parse error: %v", err))
+		}
 		return nil, err
+	}
+
+	// If no abilities parsed for spell cards with non-empty text, mark as unimplemented
+	if len(abilities) == 0 {
+		if cc, ok := source.(card.Card); ok {
+			typeLine := cc.TypeLine
+			if (strings.Contains(typeLine, "Instant") || strings.Contains(typeLine, "Sorcery")) && strings.TrimSpace(cc.OracleText) != "" {
+				markUnimplementedCard(cc.Name, "no parsed effects")
+			}
+		}
 	}
 
 	logger.LogCard("Parsed %d abilities from oracle text", len(abilities))
@@ -492,7 +580,7 @@ func (ee *ExecutionEngine) ApplyEffect(effect Effect, controller AbilityPlayer, 
 // ActivateManaAbilities activates all available mana abilities for a player.
 func (ee *ExecutionEngine) ActivateManaAbilities(player AbilityPlayer) int {
 	totalManaAdded := 0
-	
+
 	// Get all lands controlled by the player
 	for _, land := range player.GetLands() {
 		if permanent, ok := land.(AbilityPermanent); ok {
@@ -509,14 +597,14 @@ func (ee *ExecutionEngine) ActivateManaAbilities(player AbilityPlayer) int {
 			}
 		}
 	}
-	
+
 	return totalManaAdded
 }
 
 // GetActivatableAbilities returns all abilities that can be activated by a player.
 func (ee *ExecutionEngine) GetActivatableAbilities(player AbilityPlayer) []*Ability {
 	var activatable []*Ability
-	
+
 	// Check creatures for activated abilities
 	for _, creature := range player.GetCreatures() {
 		if permanent, ok := creature.(AbilityPermanent); ok {
@@ -538,18 +626,18 @@ func (ee *ExecutionEngine) GetActivatableAbilities(player AbilityPlayer) []*Abil
 			}
 		}
 	}
-	
+
 	return activatable
 }
 
 // Helper function to check if a string contains a substring (case-insensitive).
 func contains(text, substr string) bool {
-	return len(text) >= len(substr) && 
-		   (text == substr || 
-		    (len(text) > len(substr) && 
-		     (text[:len(substr)] == substr || 
-		      text[len(text)-len(substr):] == substr ||
-		      containsSubstring(text, substr))))
+	return len(text) >= len(substr) &&
+		(text == substr ||
+			(len(text) > len(substr) &&
+				(text[:len(substr)] == substr ||
+					text[len(text)-len(substr):] == substr ||
+					containsSubstring(text, substr))))
 }
 
 func containsSubstring(text, substr string) bool {

@@ -106,8 +106,8 @@ func TestCanCastCard(t *testing.T) {
 		{"Lightning Bolt", "{R}", 1, true},
 		{"Giant Growth", "{G}", 1, true},
 		{"Healing Salve", "{W}", 1, true},
-		{"Counterspell", "{U}{U}", 2, false}, // No blue mana
-		{"Fireball", "{X}{R}", 1, true},      // X can be 0
+		{"Counterspell", "{U}{U}", 2, false},     // No blue mana
+		{"Fireball", "{X}{R}", 1, true},          // X can be 0
 		{"Shivan Dragon", "{4}{R}{R}", 6, false}, // Not enough mana
 	}
 
@@ -117,7 +117,7 @@ func TestCanCastCard(t *testing.T) {
 			ManaCost: test.manaCost,
 			CMC:      float32(test.cmc),
 		}
-		
+
 		canCast := canCastCard(player, testCard)
 		if canCast != test.canCast {
 			t.Errorf("canCastCard(%s) = %v; expected %v", test.cardName, canCast, test.canCast)
@@ -147,7 +147,7 @@ func TestSimulateBoardState(t *testing.T) {
 		totalToughness += creature.toughness
 	}
 
-	expectedPower := 6  // 2 + 4
+	expectedPower := 6     // 2 + 4
 	expectedToughness := 3 // 2 + 1
 
 	if totalPower != expectedPower {
@@ -169,7 +169,7 @@ func TestSimulateBoardState(t *testing.T) {
 func TestManaPool(t *testing.T) {
 	// Test mana pool operations (simplified)
 	manaPool := make(map[game.ManaType]int)
-	
+
 	// Add mana
 	manaPool[game.Red] = 2
 	manaPool[game.Green] = 1
@@ -207,7 +207,7 @@ func parseManaCost(manaCost string) int {
 	if manaCost == "" {
 		return 0
 	}
-	
+
 	cost := 0
 	i := 0
 	for i < len(manaCost) {

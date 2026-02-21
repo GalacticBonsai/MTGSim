@@ -9,7 +9,7 @@ import (
 // TestTargetedEffects tests spells with targeted effects and proper target validation
 func TestTargetedEffects(t *testing.T) {
 	parser := NewAbilityParser()
-	
+
 	testCases := []struct {
 		name           string
 		oracleText     string
@@ -105,7 +105,7 @@ func TestTargetedEffects(t *testing.T) {
 // TestNonTargetedEffects tests spells with non-targeted effects
 func TestNonTargetedEffects(t *testing.T) {
 	parser := NewAbilityParser()
-	
+
 	testCases := []struct {
 		name        string
 		oracleText  string
@@ -186,11 +186,11 @@ func TestNonTargetedEffects(t *testing.T) {
 // TestModalSpells tests spells with modal effects (choose one, choose two, etc.)
 func TestModalSpells(t *testing.T) {
 	testCases := []struct {
-		name         string
-		oracleText   string
-		modalType    string
-		optionCount  int
-		description  string
+		name        string
+		oracleText  string
+		modalType   string
+		optionCount int
+		description string
 	}{
 		{
 			name:        "Cryptic Command",
@@ -285,7 +285,7 @@ func TestConditionalEffects(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			conditionInfo := parseConditionalEffect(tc.oracleText)
-			
+
 			if conditionInfo.HasCondition != tc.hasCondition {
 				t.Errorf("%s: expected hasCondition %v, got %v", tc.name, tc.hasCondition, conditionInfo.HasCondition)
 			}
@@ -377,7 +377,7 @@ type ConditionalInfo struct {
 func parseModalSpell(oracleText string) ModalInfo {
 	// Simplified modal parsing - would need more sophisticated logic
 	info := ModalInfo{}
-	
+
 	if containsText(oracleText, "Choose one") {
 		info.Type = "choose one"
 	} else if containsText(oracleText, "Choose two") {
@@ -385,16 +385,16 @@ func parseModalSpell(oracleText string) ModalInfo {
 	} else if containsText(oracleText, "Choose three") {
 		info.Type = "choose three"
 	}
-	
+
 	// Count bullet points for options
 	info.Options = extractModalOptions(oracleText)
-	
+
 	return info
 }
 
 func parseConditionalEffect(oracleText string) ConditionalInfo {
 	info := ConditionalInfo{}
-	
+
 	if containsText(oracleText, "If ") {
 		info.HasCondition = true
 		info.Type = "if"
@@ -405,7 +405,7 @@ func parseConditionalEffect(oracleText string) ConditionalInfo {
 		info.HasCondition = true
 		info.Type = "when"
 	}
-	
+
 	return info
 }
 

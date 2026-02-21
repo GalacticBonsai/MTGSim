@@ -12,82 +12,82 @@ func TestRealMagicCards(t *testing.T) {
 	parser := NewAbilityParser()
 
 	testCards := []struct {
-		name        string
-		oracleText  string
+		name              string
+		oracleText        string
 		expectedAbilities int
-		description string
+		description       string
 	}{
 		{
-			name:        "Llanowar Elves",
-			oracleText:  "{T}: Add {G}.",
+			name:              "Llanowar Elves",
+			oracleText:        "{T}: Add {G}.",
 			expectedAbilities: 1,
-			description: "Basic mana dork",
+			description:       "Basic mana dork",
 		},
 		{
-			name:        "Lightning Bolt",
-			oracleText:  "Lightning Bolt deals 3 damage to any target.",
+			name:              "Lightning Bolt",
+			oracleText:        "Lightning Bolt deals 3 damage to any target.",
 			expectedAbilities: 1, // Now parsed as spell effect
-			description: "Instant spell with damage effect",
+			description:       "Instant spell with damage effect",
 		},
 		{
-			name:        "Wall of Omens",
-			oracleText:  "Defender. When Wall of Omens enters the battlefield, draw a card.",
+			name:              "Wall of Omens",
+			oracleText:        "Defender. When Wall of Omens enters the battlefield, draw a card.",
 			expectedAbilities: 1, // ETB draw ability (defender is a keyword)
-			description: "ETB card draw",
+			description:       "ETB card draw",
 		},
 		{
-			name:        "Prodigal Pyromancer",
-			oracleText:  "{T}: Prodigal Pyromancer deals 1 damage to any target.",
+			name:              "Prodigal Pyromancer",
+			oracleText:        "{T}: Prodigal Pyromancer deals 1 damage to any target.",
 			expectedAbilities: 1,
-			description: "Tim ability",
+			description:       "Tim ability",
 		},
 		{
-			name:        "Birds of Paradise",
-			oracleText:  "Flying. {T}: Add one mana of any color.",
+			name:              "Birds of Paradise",
+			oracleText:        "Flying. {T}: Add one mana of any color.",
 			expectedAbilities: 1, // Mana ability (flying is a keyword)
-			description: "Any color mana",
+			description:       "Any color mana",
 		},
 		{
-			name:        "Mulldrifter",
-			oracleText:  "Flying. When Mulldrifter enters the battlefield, draw two cards.",
+			name:              "Mulldrifter",
+			oracleText:        "Flying. When Mulldrifter enters the battlefield, draw two cards.",
 			expectedAbilities: 2, // ETB draw + spell draw pattern match
-			description: "ETB draw multiple cards",
+			description:       "ETB draw multiple cards",
 		},
 		{
-			name:        "Sakura-Tribe Elder",
-			oracleText:  "Sacrifice Sakura-Tribe Elder: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle your library.",
+			name:              "Sakura-Tribe Elder",
+			oracleText:        "Sacrifice Sakura-Tribe Elder: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle your library.",
 			expectedAbilities: 0, // Complex ability not yet supported
-			description: "Complex sacrifice ability",
+			description:       "Complex sacrifice ability",
 		},
 		{
-			name:        "Elvish Archdruid",
-			oracleText:  "Other Elf creatures you control get +1/+1. {T}: Add {G} for each Elf you control.",
+			name:              "Elvish Archdruid",
+			oracleText:        "Other Elf creatures you control get +1/+1. {T}: Add {G} for each Elf you control.",
 			expectedAbilities: 2, // Static pump ability + mana ability (both now supported)
-			description: "Lord effect with complex mana ability",
+			description:       "Lord effect with complex mana ability",
 		},
 		{
-			name:        "Grizzly Bears",
-			oracleText:  "",
+			name:              "Grizzly Bears",
+			oracleText:        "",
 			expectedAbilities: 0,
-			description: "Vanilla creature",
+			description:       "Vanilla creature",
 		},
 		{
-			name:        "Shock",
-			oracleText:  "Shock deals 2 damage to any target.",
+			name:              "Shock",
+			oracleText:        "Shock deals 2 damage to any target.",
 			expectedAbilities: 1, // Now parsed as spell effect
-			description: "Simple damage spell",
+			description:       "Simple damage spell",
 		},
 		{
-			name:        "Cryptic Command",
-			oracleText:  "Choose two — Counter target spell; or return target permanent to its owner's hand; or tap all creatures your opponents control; or draw a card.",
+			name:              "Cryptic Command",
+			oracleText:        "Choose two — Counter target spell; or return target permanent to its owner's hand; or tap all creatures your opponents control; or draw a card.",
 			expectedAbilities: 1, // Modal spell
-			description: "Modal spell - choose two",
+			description:       "Modal spell - choose two",
 		},
 		{
-			name:        "Fireball",
-			oracleText:  "{X}{R}: Fireball deals X damage to any target.",
+			name:              "Fireball",
+			oracleText:        "{X}{R}: Fireball deals X damage to any target.",
 			expectedAbilities: 1, // X-cost damage
-			description: "Variable X-cost damage spell",
+			description:       "Variable X-cost damage spell",
 		},
 	}
 
@@ -100,9 +100,9 @@ func TestRealMagicCards(t *testing.T) {
 			}
 
 			if len(abilities) != tc.expectedAbilities {
-				t.Errorf("%s: got %d abilities, want %d (%s)", 
+				t.Errorf("%s: got %d abilities, want %d (%s)",
 					tc.name, len(abilities), tc.expectedAbilities, tc.description)
-				
+
 				// Log what abilities were found for debugging
 				for i, ability := range abilities {
 					t.Logf("  Ability %d: %s (%s)", i+1, ability.Name, ability.Effects[0].Description)
@@ -129,12 +129,12 @@ func TestRealMagicCards(t *testing.T) {
 func TestAbilityExecution(t *testing.T) {
 	// Create mock game state
 	player := &mockPlayer{
-		name:     "Test Player",
-		life:     20,
-		hand:     []interface{}{},
-		manaPool: map[game.ManaType]int{game.Green: 1},
+		name:      "Test Player",
+		life:      20,
+		hand:      []interface{}{},
+		manaPool:  map[game.ManaType]int{game.Green: 1},
 		creatures: []interface{}{},
-		lands:    []interface{}{},
+		lands:     []interface{}{},
 	}
 
 	gameState := &mockGameState{
@@ -260,12 +260,12 @@ func TestAbilityExecution(t *testing.T) {
 func TestAIDecisionMaking(t *testing.T) {
 	// Create a more complex game state
 	player := &mockPlayer{
-		name:     "AI Player",
-		life:     15, // Lower life to test life gain priorities
-		hand:     []interface{}{"Card1", "Card2"}, // Few cards to test draw priorities
-		manaPool: map[game.ManaType]int{game.Any: 4}, // Some mana available
+		name:      "AI Player",
+		life:      15,                                 // Lower life to test life gain priorities
+		hand:      []interface{}{"Card1", "Card2"},    // Few cards to test draw priorities
+		manaPool:  map[game.ManaType]int{game.Any: 4}, // Some mana available
 		creatures: []interface{}{},
-		lands:    []interface{}{},
+		lands:     []interface{}{},
 	}
 
 	gameState := &mockGameState{
@@ -339,7 +339,7 @@ func TestAIDecisionMaking(t *testing.T) {
 
 	t.Run("Choose abilities to activate", func(t *testing.T) {
 		chosen := ai.ChooseAbilitiesToActivate(abilities, context)
-		
+
 		if len(chosen) == 0 {
 			t.Error("AI should choose some abilities to activate")
 		}
@@ -348,7 +348,7 @@ func TestAIDecisionMaking(t *testing.T) {
 		for _, ability := range chosen {
 			cost := ai.calculateManaCost(ability)
 			if cost > context.AvailableMana {
-				t.Errorf("AI chose ability %s with cost %d when only %d mana available", 
+				t.Errorf("AI chose ability %s with cost %d when only %d mana available",
 					ability.Name, cost, context.AvailableMana)
 			}
 		}
@@ -366,7 +366,7 @@ func TestAIDecisionMaking(t *testing.T) {
 		lowHandContext.HandSize = 1
 
 		drawAbility := abilities[1] // Draw ability
-		lifeAbility := abilities[2]  // Life gain ability
+		lifeAbility := abilities[2] // Life gain ability
 
 		drawScore := ai.scoreAbility(drawAbility, lowHandContext)
 		lifeScore := ai.scoreAbility(lifeAbility, lowHandContext)
@@ -400,7 +400,7 @@ func TestComplexAbilityInteractions(t *testing.T) {
 				if len(abilities) < 1 {
 					t.Error("Should parse at least the static pump ability")
 				}
-				
+
 				// Check for static pump ability
 				hasStaticPump := false
 				for _, ability := range abilities {
@@ -409,7 +409,7 @@ func TestComplexAbilityInteractions(t *testing.T) {
 						break
 					}
 				}
-				
+
 				if !hasStaticPump {
 					t.Error("Should have static pump ability")
 				}

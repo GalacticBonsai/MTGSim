@@ -11,7 +11,7 @@ func TestResults(t *testing.T) {
 	results.AddWin("Deck A")
 	results.AddWin("Deck A")
 	results.AddLoss("Deck A")
-	
+
 	results.AddWin("Deck B")
 	results.AddLoss("Deck B")
 	results.AddLoss("Deck B")

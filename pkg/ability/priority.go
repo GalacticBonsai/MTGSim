@@ -30,11 +30,11 @@ const (
 
 // PriorityDecision represents a player's decision when they have priority
 type PriorityDecision struct {
-	Action   PriorityAction
-	Spell    *Spell
-	Ability  *Ability
-	Targets  []interface{}
-	Player   AbilityPlayer
+	Action  PriorityAction
+	Spell   *Spell
+	Ability *Ability
+	Targets []interface{}
+	Player  AbilityPlayer
 }
 
 // NewPriorityManager creates a new priority manager
@@ -73,15 +73,15 @@ func (pm *PriorityManager) PassPriority(player AbilityPlayer) error {
 	if pm.currentPlayer.GetName() != player.GetName() {
 		return fmt.Errorf("player %s does not have priority", player.GetName())
 	}
-	
+
 	pm.priorityPassed[player.GetName()] = true
 	logger.LogCard("%s passes priority", player.GetName())
-	
+
 	// Check if all players have passed priority
 	if pm.allPlayersPassedPriority() {
 		return pm.handleAllPlayersPassed()
 	}
-	
+
 	// Pass priority to next player
 	pm.passPriorityToNextPlayer()
 	return nil
@@ -92,19 +92,19 @@ func (pm *PriorityManager) CastSpell(player AbilityPlayer, spell *Spell, targets
 	if pm.currentPlayer.GetName() != player.GetName() {
 		return fmt.Errorf("player %s does not have priority", player.GetName())
 	}
-	
+
 	// Check timing restrictions
 	if err := pm.checkSpellTiming(spell); err != nil {
 		return err
 	}
-	
+
 	// Add spell to stack
 	pm.stack.AddSpell(spell, player, targets)
-	
+
 	// Reset priority passing and give priority to active player
 	pm.resetPriorityPassing()
 	pm.currentPlayer = pm.activePlayer
-	
+
 	return nil
 }
 
@@ -113,31 +113,31 @@ func (pm *PriorityManager) ActivateAbility(player AbilityPlayer, ability *Abilit
 	if pm.currentPlayer.GetName() != player.GetName() {
 		return fmt.Errorf("player %s does not have priority", player.GetName())
 	}
-	
+
 	// Check timing restrictions
 	if err := pm.checkAbilityTiming(ability); err != nil {
 		return err
 	}
-	
+
 	// Mana abilities don't use the stack
 	if ability.Type == Mana {
 		return pm.resolveManaAbility(ability, player, targets)
 	}
-	
+
 	// Add ability to stack
 	pm.stack.AddAbility(ability, player, targets)
-	
+
 	// Reset priority passing and give priority to active player
 	pm.resetPriorityPassing()
 	pm.currentPlayer = pm.activePlayer
-	
+
 	return nil
 }
 
 // ProcessPriorityRound processes a complete round of priority
 func (pm *PriorityManager) ProcessPriorityRound() error {
 	logger.LogCard("Starting priority round in %s", pm.phase)
-	
+
 	// Continue until all players pass priority or stack is resolved
 	for {
 		// If stack is empty and all players passed, we're done
@@ -145,7 +145,7 @@ func (pm *PriorityManager) ProcessPriorityRound() error {
 			logger.LogCard("Priority round complete - stack empty and all passed")
 			break
 		}
-		
+
 		// If all players passed with items on stack, resolve top item
 		if pm.allPlayersPassedPriority() && !pm.stack.IsEmpty() {
 			if err := pm.stack.ResolveTop(); err != nil {
@@ -155,16 +155,16 @@ func (pm *PriorityManager) ProcessPriorityRound() error {
 			pm.currentPlayer = pm.activePlayer
 			continue
 		}
-		
+
 		// Get decision from current player
 		decision := pm.getPlayerDecision(pm.currentPlayer)
-		
+
 		// Process the decision
 		if err := pm.processDecision(decision); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -174,7 +174,7 @@ func (pm *PriorityManager) CanCastSpell(spell *Spell, player AbilityPlayer) bool
 	if pm.currentPlayer.GetName() != player.GetName() {
 		return false
 	}
-	
+
 	// Check timing restrictions
 	return pm.checkSpellTiming(spell) == nil
 }
@@ -185,7 +185,7 @@ func (pm *PriorityManager) CanActivateAbility(ability *Ability, player AbilityPl
 	if pm.currentPlayer.GetName() != player.GetName() {
 		return false
 	}
-	
+
 	// Check timing restrictions
 	return pm.checkAbilityTiming(ability) == nil
 }
@@ -209,7 +209,7 @@ func (pm *PriorityManager) passPriorityToNextPlayer() {
 	if len(pm.allPlayers) == 0 {
 		return
 	}
-	
+
 	// Find current player index
 	currentIndex := -1
 	for i, player := range pm.allPlayers {
@@ -218,7 +218,7 @@ func (pm *PriorityManager) passPriorityToNextPlayer() {
 			break
 		}
 	}
-	
+
 	// Move to next player
 	if currentIndex >= 0 {
 		nextIndex := (currentIndex + 1) % len(pm.allPlayers)
@@ -253,12 +253,12 @@ func (pm *PriorityManager) checkSpellTiming(spell *Spell) error {
 	if isInstantSpeed(spell) {
 		return nil
 	}
-	
+
 	// Sorcery speed spells can only be cast during main phases with empty stack
 	if pm.phase == "Main Phase" && pm.stack.IsEmpty() {
 		return nil
 	}
-	
+
 	return fmt.Errorf("cannot cast %s at this time", spell.Name)
 }
 
@@ -316,9 +316,9 @@ func (pm *PriorityManager) processDecision(decision *PriorityDecision) error {
 }
 
 func isInstantSpeed(spell *Spell) bool {
-	return spell.TypeLine == "Instant" || 
-		   (spell.TypeLine == "Creature" && hasFlash(spell)) ||
-		   hasInstantSpeedKeyword(spell)
+	return spell.TypeLine == "Instant" ||
+		(spell.TypeLine == "Creature" && hasFlash(spell)) ||
+		hasInstantSpeedKeyword(spell)
 }
 
 func hasFlash(spell *Spell) bool {

@@ -24,7 +24,7 @@ go.sum
 
 # env file
 .env
-*.json
 
 # generated decks
 decks/Generated
+cardDB.json

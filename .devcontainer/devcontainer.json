@@ -1,0 +1,26 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/go
+{
+	"name": "Go",
+	"image": "mcr.microsoft.com/devcontainers/go",
+
+	"postCreateCommand": "go version && go mod download",
+
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"go.toolsManagement.autoUpdate": true,
+				"go.useLanguageServer": true,
+				"go.testOnSave": false,
+				"go.formatTool": "gofmt"
+			},
+			"extensions": [
+				"golang.go",
+				"ms-azuretools.vscode-docker",
+				"eamodio.gitlens"
+			]
+		}
+	},
+
+	"remoteUser": "vscode"
+}

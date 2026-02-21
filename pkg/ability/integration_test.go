@@ -11,12 +11,12 @@ import (
 // Mock implementations for integration testing
 
 type mockGame struct {
-	players      []PlayerInterface
+	players       []PlayerInterface
 	currentPlayer PlayerInterface
 	activePlayer  PlayerInterface
-	currentPhase string
-	isMain       bool
-	isCombat     bool
+	currentPhase  string
+	isMain        bool
+	isCombat      bool
 }
 
 func (m *mockGame) GetPlayers() []PlayerInterface {
@@ -44,15 +44,15 @@ func (m *mockGame) IsCombatPhase() bool {
 }
 
 type mockPlayerInterface struct {
-	name         string
-	life         int
-	hand         []card.Card
-	creatures    []PermanentInterface
-	lands        []PermanentInterface
-	artifacts    []PermanentInterface
-	enchantments []PermanentInterface
+	name          string
+	life          int
+	hand          []card.Card
+	creatures     []PermanentInterface
+	lands         []PermanentInterface
+	artifacts     []PermanentInterface
+	enchantments  []PermanentInterface
 	planeswalkers []PermanentInterface
-	manaPool     map[game.ManaType]int
+	manaPool      map[game.ManaType]int
 }
 
 func (m *mockPlayerInterface) GetName() string {

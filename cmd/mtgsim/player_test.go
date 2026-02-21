@@ -50,10 +50,10 @@ func TestScryAbility(t *testing.T) {
 	// Test scry 2
 	scryAmount := 2
 	initialDeckSize := len(player.Deck.Cards)
-	
+
 	// Simulate scry by looking at top cards and putting some on bottom
 	topCards := player.Deck.Cards[:scryAmount]
-	
+
 	// For test, put first card on bottom, keep second on top
 	player.Deck.Cards = append(player.Deck.Cards[1:scryAmount], player.Deck.Cards[scryAmount:]...)
 	player.Deck.Cards = append(player.Deck.Cards, topCards[0])
@@ -185,8 +185,8 @@ func TestGoadAbility(t *testing.T) {
 func TestEquipAbility(t *testing.T) {
 	// Test equipment attachment (simplified)
 	equipment := card.Card{
-		Name:     "Lightning Greaves",
-		TypeLine: "Artifact — Equipment",
+		Name:       "Lightning Greaves",
+		TypeLine:   "Artifact — Equipment",
 		OracleText: "Equipped creature has haste and shroud. Equip {0}",
 	}
 
@@ -212,15 +212,15 @@ func TestEquipAbility(t *testing.T) {
 func TestEnchantAbility(t *testing.T) {
 	// Test aura attachment (simplified)
 	aura := card.Card{
-		Name:     "Giant Growth",
-		TypeLine: "Enchantment — Aura",
+		Name:       "Giant Growth",
+		TypeLine:   "Enchantment — Aura",
 		OracleText: "Enchant creature. Enchanted creature gets +3/+3.",
 	}
 
 	creature := card.Card{
-		Name:     "Grizzly Bears",
-		TypeLine: "Creature — Bear",
-		Power:    "2",
+		Name:      "Grizzly Bears",
+		TypeLine:  "Creature — Bear",
+		Power:     "2",
 		Toughness: "2",
 	}
 
@@ -237,7 +237,7 @@ func TestEnchantAbility(t *testing.T) {
 		// This would modify the creature's power/toughness in a real implementation
 		expectedPower := creaturePerm.power + 3
 		expectedToughness := creaturePerm.toughness + 3
-		
+
 		if expectedPower != 5 || expectedToughness != 5 {
 			t.Errorf("Expected enchanted creature to be 5/5, calculated %d/%d", expectedPower, expectedToughness)
 		}

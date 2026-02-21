@@ -92,7 +92,7 @@ func TestLoggingFunctions(t *testing.T) {
 	LogCard("Card message 2")
 
 	output = buf.String()
-	
+
 	if !strings.Contains(output, "META: Meta message 2") {
 		t.Errorf("Expected META message to be logged at GAME level")
 	}
@@ -115,7 +115,7 @@ func TestLoggingFunctions(t *testing.T) {
 	LogPlayer("Player message 3")
 
 	output = buf.String()
-	
+
 	if !strings.Contains(output, "META: Meta message 3") {
 		t.Errorf("Expected META message to be logged at META level")
 	}
@@ -143,7 +143,7 @@ func TestLoggingWithFormatting(t *testing.T) {
 	LogCard("Drawing card: %s", "Lightning Bolt")
 
 	output := buf.String()
-	
+
 	if !strings.Contains(output, "GAME: Player Alice has 20 life") {
 		t.Errorf("Expected formatted GAME message, got: %s", output)
 	}

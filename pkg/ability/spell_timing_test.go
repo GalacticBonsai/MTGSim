@@ -9,14 +9,14 @@ import (
 
 // MockGameState for timing tests
 type mockTimingGameState struct {
-	currentPhase    string
-	stackEmpty      bool
-	hasPriority     bool
-	activePlayer    string
-	priorityPlayer  string
-	isMainPhase     bool
-	isCombatPhase   bool
-	isEndStep       bool
+	currentPhase   string
+	stackEmpty     bool
+	hasPriority    bool
+	activePlayer   string
+	priorityPlayer string
+	isMainPhase    bool
+	isCombatPhase  bool
+	isEndStep      bool
 }
 
 func (m *mockTimingGameState) GetCurrentPhase() string {
@@ -174,7 +174,7 @@ func TestSorcerySpellTiming(t *testing.T) {
 // TestStackInteraction tests spell casting and stack resolution order
 func TestStackInteraction(t *testing.T) {
 	stack := NewSpellStack()
-	
+
 	// Create test spells
 	lightningBolt := &SpellOnStack{
 		ID:         uuid.New(),
@@ -182,34 +182,34 @@ func TestStackInteraction(t *testing.T) {
 		Controller: "Player1",
 		Targets:    []interface{}{"Player2"},
 	}
-	
+
 	counterspell := &SpellOnStack{
 		ID:         uuid.New(),
 		Name:       "Counterspell",
 		Controller: "Player2",
 		Targets:    []interface{}{lightningBolt},
 	}
-	
+
 	// Test stack operations
 	t.Run("Add Spells to Stack", func(t *testing.T) {
 		stack.Push(lightningBolt)
 		if stack.Size() != 1 {
 			t.Errorf("Expected stack size 1, got %d", stack.Size())
 		}
-		
+
 		stack.Push(counterspell)
 		if stack.Size() != 2 {
 			t.Errorf("Expected stack size 2, got %d", stack.Size())
 		}
 	})
-	
+
 	t.Run("Stack Resolution Order (LIFO)", func(t *testing.T) {
 		// Counterspell should resolve first (last in, first out)
 		topSpell := stack.Peek()
 		if topSpell.Name != "Counterspell" {
 			t.Errorf("Expected Counterspell on top, got %s", topSpell.Name)
 		}
-		
+
 		// Resolve counterspell
 		resolved := stack.Pop()
 		if resolved.Name != "Counterspell" {
@@ -277,11 +277,11 @@ func TestPriorityPassing(t *testing.T) {
 // TestCounterspellInteractions tests counter-spell mechanics
 func TestCounterspellInteractions(t *testing.T) {
 	testCases := []struct {
-		name            string
-		targetSpell     string
-		counterSpell    string
-		canCounter      bool
-		description     string
+		name         string
+		targetSpell  string
+		counterSpell string
+		canCounter   bool
+		description  string
 	}{
 		{
 			name:         "Counter Lightning Bolt",
@@ -369,9 +369,9 @@ func canCastInstantSpell(gameState *mockTimingGameState, player string) bool {
 }
 
 func canCastSorcerySpell(gameState *mockTimingGameState, player string) bool {
-	return gameState.HasPriority(player) && 
-		   gameState.IsMainPhase() && 
-		   gameState.IsStackEmpty()
+	return gameState.HasPriority(player) &&
+		gameState.IsMainPhase() &&
+		gameState.IsStackEmpty()
 }
 
 func determinePriorityAction(currentPlayer, priorityPlayer, action string) string {

@@ -265,7 +265,7 @@ func TestStackIntegrationSorceryTiming(t *testing.T) {
 
 	// Test 3: Cannot cast sorcery with non-empty stack
 	t.Log("Test 3: Cannot cast sorcery with non-empty stack")
-	
+
 	// First cast an instant
 	err = spellCastingEngine.CastSpell(lightningBolt, player1, []interface{}{player1})
 	if err != nil {
@@ -346,7 +346,7 @@ func TestStackIntegrationAbilityActivation(t *testing.T) {
 	// Test 2: Activate mana ability (doesn't use stack)
 	t.Log("Test 2: Activate mana ability (doesn't use stack)")
 	initialStackSize := spellCastingEngine.GetStack().Size()
-	
+
 	err = spellCastingEngine.ActivateAbility(manaAbility, player1, []interface{}{})
 	if err != nil {
 		t.Fatalf("Failed to activate mana ability: %v", err)
@@ -354,7 +354,7 @@ func TestStackIntegrationAbilityActivation(t *testing.T) {
 
 	// Stack size should not change
 	if spellCastingEngine.GetStack().Size() != initialStackSize {
-		t.Errorf("Mana ability should not use stack, expected size %d, got %d", 
+		t.Errorf("Mana ability should not use stack, expected size %d, got %d",
 			initialStackSize, spellCastingEngine.GetStack().Size())
 	}
 
