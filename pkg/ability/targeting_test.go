@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // Mock implementations for targeting tests
@@ -142,8 +142,8 @@ func (m *mockTargetPlayer) PayCost(cost Cost) error {
 	return nil
 }
 
-func (m *mockTargetPlayer) GetManaPool() map[game.ManaType]int {
-	return make(map[game.ManaType]int)
+func (m *mockTargetPlayer) GetManaPool() map[types.ManaType]int {
+	return make(map[types.ManaType]int)
 }
 
 func TestTargetParser_ParseBasicTargets(t *testing.T) {

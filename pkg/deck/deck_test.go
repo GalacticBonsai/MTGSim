@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mtgsim/mtgsim/pkg/card"
-	"github.com/mtgsim/mtgsim/pkg/simulation"
 )
 
 // MockCardDB implements the CardDatabase interface for testing
@@ -141,6 +140,25 @@ func createComprehensiveMockCardDB() *MockCardDB {
 	}
 
 	return &MockCardDB{cards: cards}
+}
+
+// getDeckFiles recursively finds all deck files in a directory
+func getDeckFiles(dir string) ([]string, error) {
+	var deckFiles []string
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() && (strings.HasSuffix(path, ".deck") || strings.HasSuffix(path, ".txt")) {
+			deckFiles = append(deckFiles, path)
+		}
+
+		return nil
+	})
+
+	return deckFiles, err
 }
 
 func TestDeckOperations(t *testing.T) {
@@ -346,7 +364,7 @@ func TestParseAllDecksInRepository(t *testing.T) {
 	mockDB := createComprehensiveMockCardDB()
 
 	// Get all deck files recursively
-	deckFiles, err := simulation.GetDecks(projectRoot)
+	deckFiles, err := getDeckFiles(projectRoot)
 	if err != nil {
 		t.Fatalf("Failed to get deck files: %v", err)
 	}

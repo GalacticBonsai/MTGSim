@@ -128,10 +128,16 @@ func TestGameBasicFlow(t *testing.T) {
 		Artifacts:     make([]*Permanent, 0),
 		Planeswalkers: make([]*Permanent, 0),
 		Lands:         make([]*Permanent, 0),
+		ManaPool:      card.NewManaPool(),
 	}
-	player1.Deck.Cards = []card.Card{
-		{Name: "Mountain"}, {Name: "Mountain"}, {Name: "Lightning Bolt"},
+	// Create a large deck to prevent decking out (100 cards each)
+	player1Deck := make([]card.Card, 100)
+	// Add 50 Mountains and 50 Lightning Bolts
+	for i := 0; i < 50; i++ {
+		player1Deck[i] = card.Card{Name: "Mountain", CMC: 0, TypeLine: "Basic Land — Mountain"}
+		player1Deck[i+50] = card.Card{Name: "Lightning Bolt", CMC: 1, ManaCost: "{R}", TypeLine: "Instant"}
 	}
+	player1.Deck.Cards = player1Deck
 	player1.Deck.Name = "Player 1 Deck"
 
 	player2 := &Player{
@@ -145,32 +151,52 @@ func TestGameBasicFlow(t *testing.T) {
 		Artifacts:     make([]*Permanent, 0),
 		Planeswalkers: make([]*Permanent, 0),
 		Lands:         make([]*Permanent, 0),
+		ManaPool:      card.NewManaPool(),
 	}
-	player2.Deck.Cards = []card.Card{
-		{Name: "Mountain"}, {Name: "Mountain"}, {Name: "Lightning Bolt"},
+	// Create a large deck to prevent decking out (100 cards each)
+	player2Deck := make([]card.Card, 100)
+	// Add 50 Mountains and 50 Lightning Bolts
+	for i := 0; i < 50; i++ {
+		player2Deck[i] = card.Card{Name: "Mountain", CMC: 0, TypeLine: "Basic Land — Mountain"}
+		player2Deck[i+50] = card.Card{Name: "Lightning Bolt", CMC: 1, ManaCost: "{R}", TypeLine: "Instant"}
 	}
+	player2.Deck.Cards = player2Deck
 	player2.Deck.Name = "Player 2 Deck"
 
 	game.Players = []*Player{player1, player2}
 
 	// Test that the game can start and finish without crashing
 	winner, loser := game.Start()
-	
+
 	if winner == nil || loser == nil {
 		t.Errorf("Expected both winner and loser to be non-nil")
+		return // Exit early to avoid nil pointer dereference
 	}
-	
+
 	if winner == loser {
 		t.Errorf("Winner and loser should be different players")
 	}
-	
-	// One of the players should have 0 or negative life
+
+	// Winner should always have positive life
 	if winner.LifeTotal <= 0 {
 		t.Errorf("Winner should have positive life, got %d", winner.LifeTotal)
 	}
-	
-	if loser.LifeTotal > 0 {
-		t.Errorf("Loser should have 0 or negative life, got %d", loser.LifeTotal)
+
+	// Loser should either have 0 or negative life (damage win) OR have run out of cards (deck out win)
+	// Check if loser lost by life or by decking out
+	loserDeckEmpty := len(loser.Deck.Cards) == 0
+	loserLifeLow := loser.LifeTotal <= 0
+
+	if !loserDeckEmpty && !loserLifeLow {
+		t.Errorf("Loser should have either 0 or negative life (%d) OR empty deck (%d cards remaining)",
+			loser.LifeTotal, len(loser.Deck.Cards))
+	}
+
+	// Log the win condition for debugging
+	if loserDeckEmpty {
+		t.Logf("Game ended by decking out - Loser ran out of cards")
+	} else if loserLifeLow {
+		t.Logf("Game ended by damage - Loser has %d life", loser.LifeTotal)
 	}
 }
 

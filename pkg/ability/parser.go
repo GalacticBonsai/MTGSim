@@ -2,13 +2,14 @@
 package ability
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // AbilityParser parses oracle text to extract abilities.
@@ -106,6 +107,57 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `.*\s+deals\s+(\d+)\s+damage\s+divided\s+as\s+you\s+choose\s+among\s+(.*)`, DealDamage, "Divided damage", ap.parseDividedDamage)
 	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\.\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life", ap.parseDrainLife)
 	ap.addPattern(Activated, `.*\s+deals\s+X\s+damage\s+to\s+(.*)\s+You\s+gain\s+life\s+equal\s+to\s+the\s+damage\s+dealt`, DealDamage, "Drain life no period", ap.parseDrainLife)
+
+	// Enhanced patterns for common failing cases
+
+	// Simple keyword abilities (these often fail because they're just the keyword)
+	ap.addPattern(Static, `^Flying$`, EvergreenAbility, "Flying keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Deathtouch$`, EvergreenAbility, "Deathtouch keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Haste$`, EvergreenAbility, "Haste keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Trample$`, EvergreenAbility, "Trample keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Reach$`, EvergreenAbility, "Reach keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Defender$`, EvergreenAbility, "Defender keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Vigilance$`, EvergreenAbility, "Vigilance keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Lifelink$`, EvergreenAbility, "Lifelink keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^First\s+strike$`, EvergreenAbility, "First strike keyword", ap.parseSimpleKeyword)
+	ap.addPattern(Static, `^Double\s+strike$`, EvergreenAbility, "Double strike keyword", ap.parseSimpleKeyword)
+
+	// Multi-keyword patterns
+	ap.addPattern(Static, `^Flying,\s*haste$`, EvergreenAbility, "Flying, haste", ap.parseMultiKeyword)
+	ap.addPattern(Static, `^Flying,\s*vigilance$`, EvergreenAbility, "Flying, vigilance", ap.parseMultiKeyword)
+	ap.addPattern(Static, `^Flying,\s*lifelink$`, EvergreenAbility, "Flying, lifelink", ap.parseMultiKeyword)
+
+	// ETB abilities that are failing
+	ap.addPattern(Triggered, `When\s+.*\s+enters,\s+draw\s+a\s+card`, DrawCards, "ETB draw simplified", ap.parseETBDrawCard)
+	ap.addPattern(Triggered, `When\s+.*\s+enters,\s+you\s+gain\s+(\d+)\s+life`, GainLife, "ETB gain life simplified", ap.parseETBGainLife)
+	ap.addPattern(Triggered, `When\s+.*\s+enters,\s+target\s+creature\s+you\s+control\s+gets\s+\+(\d+)/\+(\d+)\s+until\s+end\s+of\s+turn`, PumpCreature, "ETB pump", ap.parseETBPump)
+	ap.addPattern(Triggered, `When\s+.*\s+enters,\s+tap\s+target\s+creature`, TapUntap, "ETB tap", ap.parseETBTap)
+
+	// Activated abilities that are failing
+	ap.addPattern(Activated, `\{(\d+)\}\{([WUBRGC])\}:\s*.*\s+gets\s+\+(\d+)/\+(\d+)\s+until\s+end\s+of\s+turn`, PumpCreature, "Activated pump", ap.parseActivatedPump)
+	ap.addPattern(Activated, `\{([WUBRGC])\}:\s*.*\s+gets\s+\+(\d+)/\+(\d+)\s+until\s+end\s+of\s+turn`, PumpCreature, "Single mana pump", ap.parseSingleManaPump)
+
+	// Enchant abilities
+	ap.addPattern(Static, `Enchant\s+creature`, EvergreenAbility, "Enchant creature", ap.parseEnchantCreature)
+	ap.addPattern(Static, `Enchanted\s+creature\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Enchanted pump", ap.parseEnchantedPump)
+	ap.addPattern(Static, `Enchanted\s+creature\s+can't\s+attack\s+or\s+block`, EvergreenAbility, "Enchanted restriction", ap.parseEnchantedRestriction)
+
+	// Unblockable and evasion abilities
+	ap.addPattern(Static, `.*\s+can't\s+be\s+blocked`, EvergreenAbility, "Unblockable", ap.parseUnblockable)
+	ap.addPattern(Static, `.*\s+can't\s+be\s+blocked\s+by\s+more\s+than\s+one\s+creature`, EvergreenAbility, "Limited blocking", ap.parseLimitedBlocking)
+
+	// Spell effects that are failing
+	ap.addPattern(Activated, `Target\s+creature\s+gets\s+\-(\d+)/\-(\d+)\s+until\s+end\s+of\s+turn`, PumpCreature, "Negative pump", ap.parseNegativePump)
+	ap.addPattern(Activated, `Return\s+target\s+creature\s+to\s+its\s+owner's\s+hand`, ReturnToHand, "Bounce creature", ap.parseBounceCreature)
+	ap.addPattern(Activated, `Return\s+up\s+to\s+(\d+)\s+target\s+creatures\s+to\s+their\s+owners'\s+hands`, ReturnToHand, "Bounce multiple", ap.parseBounceMultiple)
+	ap.addPattern(Activated, `Return\s+target\s+creature\s+card\s+from\s+your\s+graveyard\s+to\s+your\s+hand`, ReturnToHand, "Reanimate to hand", ap.parseReanimateToHand)
+
+	// Combat abilities
+	ap.addPattern(Static, `.*\s+attacks\s+each\s+combat\s+if\s+able`, EvergreenAbility, "Must attack", ap.parseMustAttack)
+	ap.addPattern(Static, `.*\s+can't\s+attack\s+or\s+block\s+alone`, EvergreenAbility, "Can't act alone", ap.parseCantActAlone)
+
+	// Conditional abilities
+	ap.addPattern(Static, `During\s+your\s+turn,\s+.*\s+has\s+flying`, EvergreenAbility, "Conditional flying", ap.parseConditionalFlying)
 }
 
 // addPattern adds a new pattern to the parser.
@@ -124,12 +176,24 @@ func (ap *AbilityParser) addPattern(abilityType AbilityType, pattern string, eff
 // ParseAbilities parses oracle text and returns a list of abilities.
 func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) ([]*Ability, error) {
 	var abilities []*Ability
+	var unparsedSentences []string
 
 	// Split oracle text by sentences/lines for better parsing
 	sentences := ap.splitOracleText(oracleText)
 
 	for _, sentence := range sentences {
-		for abilityType, patterns := range ap.patterns {
+		found := false
+		parseMethod := "none"
+
+		// Try ability types in priority order: Triggered, Mana, Static, Activated
+		priorityOrder := []AbilityType{Triggered, Mana, Static, Activated}
+
+		for _, abilityType := range priorityOrder {
+			patterns, exists := ap.patterns[abilityType]
+			if !exists {
+				continue
+			}
+
 			for _, pattern := range patterns {
 				if matches := pattern.Regex.FindStringSubmatch(sentence); matches != nil {
 					ability, err := pattern.Parser(matches, sentence)
@@ -150,10 +214,57 @@ func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) (
 					}
 
 					abilities = append(abilities, ability)
+					found = true
+					parseMethod = "full_parsing"
 					break // Found a match, don't try other patterns for this sentence
 				}
 			}
+			if found {
+				break
+			}
 		}
+
+		// If full parsing failed, try keyword-based fallback parsing
+		if !found {
+			keywordAbilities := ap.parseKeywordFallback(sentence, source)
+			if len(keywordAbilities) > 0 {
+				abilities = append(abilities, keywordAbilities...)
+				found = true
+				parseMethod = "keyword_fallback"
+			}
+		}
+
+		// Track unparsed sentences for logging
+		if !found && strings.TrimSpace(sentence) != "" {
+			unparsedSentences = append(unparsedSentences, sentence)
+		} else if found {
+			// Log successful parsing method for debugging
+			logger.LogCard("Parsed '%s' using %s", strings.TrimSpace(sentence), parseMethod)
+		}
+	}
+
+	// Try to extract keywords from card's official Keywords field if available
+	if source != nil {
+		officialKeywords := ap.extractOfficialKeywords(source)
+		keywordAbilities := ap.parseOfficialKeywords(officialKeywords, source)
+		abilities = append(abilities, keywordAbilities...)
+	}
+
+	// Log parsing failures for cards with unparsed abilities
+	if len(unparsedSentences) > 0 {
+		cardName := "Unknown Card"
+		if source != nil {
+			// Try to extract card name from source
+			if card, ok := source.(interface{ GetName() string }); ok {
+				cardName = card.GetName()
+			} else if hasName := fmt.Sprintf("%v", source); hasName != "" {
+				cardName = hasName
+			}
+		}
+
+		errorDetails := fmt.Sprintf("Failed to parse %d sentences: %v",
+			len(unparsedSentences), unparsedSentences)
+		logger.LogParsingFailure(cardName, oracleText, errorDetails)
 	}
 
 	return abilities, nil
@@ -204,7 +315,7 @@ func (ap *AbilityParser) parseManaAbility(matches []string, fullText string) (*A
 		return nil, ErrParsingFailed
 	}
 
-	manaType := game.ManaType(matches[1])
+	manaType := types.ManaType(matches[1])
 	
 	return &Ability{
 		Name: "Mana Ability",
@@ -499,7 +610,7 @@ func (ap *AbilityParser) parseActivatedDraw(matches []string, fullText string) (
 		Name: "Activated Draw",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: manaCost},
+			ManaCost: map[types.ManaType]int{types.Any: manaCost},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -528,7 +639,7 @@ func (ap *AbilityParser) parseActivatedDrawCard(matches []string, fullText strin
 		Name: "Activated Draw",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: manaCost},
+			ManaCost: map[types.ManaType]int{types.Any: manaCost},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -564,7 +675,7 @@ func (ap *AbilityParser) parseActivatedDamage(matches []string, fullText string)
 		Name: "Activated Damage",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: manaCost},
+			ManaCost: map[types.ManaType]int{types.Any: manaCost},
 			TapCost:  true,
 		},
 		Effects: []Effect{
@@ -847,7 +958,7 @@ func (ap *AbilityParser) parseXCostDraw(matches []string, fullText string) (*Abi
 		Name: "X-Cost Draw",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+			ManaCost: map[types.ManaType]int{types.Any: -1}, // -1 indicates X cost
 		},
 		Effects: []Effect{
 			{
@@ -868,7 +979,7 @@ func (ap *AbilityParser) parseXCostDamage(matches []string, fullText string) (*A
 		Name: "X-Cost Damage",
 		Type: Activated,
 		Cost: Cost{
-			ManaCost: map[game.ManaType]int{game.Any: -1}, // -1 indicates X cost
+			ManaCost: map[types.ManaType]int{types.Any: -1}, // -1 indicates X cost
 		},
 		Effects: []Effect{
 			{
@@ -1392,5 +1503,915 @@ func (ap *AbilityParser) parseXCostDividedDamage(matches []string, fullText stri
 			},
 		},
 		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// parseKeywordFallback attempts to parse abilities using keyword recognition
+func (ap *AbilityParser) parseKeywordFallback(sentence string, source interface{}) []*Ability {
+	var abilities []*Ability
+
+	// Define known MTG keywords and their patterns
+	keywordPatterns := map[string]func() *Ability{
+		"flying": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Flying",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Flying",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"deathtouch": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Deathtouch",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Deathtouch",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"haste": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Haste",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Haste",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"trample": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Trample",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Trample",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"reach": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Reach",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Reach",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"defender": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Defender",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Defender",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"vigilance": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Vigilance",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Vigilance",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"lifelink": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Lifelink",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Lifelink",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"first strike": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "First Strike",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "First Strike",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+		"double strike": func() *Ability {
+			return &Ability{
+				ID:   uuid.New(),
+				Name: "Double Strike",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Double Strike",
+						Duration:    Permanent,
+					},
+				},
+				Source:          source,
+				OracleText:      sentence,
+				ParsedFromText:  true,
+				TimingRestriction: AnyTime,
+			}
+		},
+	}
+
+	// Check for keywords in the sentence (case insensitive)
+	lowerSentence := strings.ToLower(sentence)
+
+	// Handle comma-separated keywords like "Flying, haste"
+	if strings.Contains(lowerSentence, ",") {
+		parts := strings.Split(lowerSentence, ",")
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if creator, exists := keywordPatterns[trimmed]; exists {
+				abilities = append(abilities, creator())
+			}
+		}
+	} else {
+		// Check for single keywords
+		for keyword, creator := range keywordPatterns {
+			if strings.Contains(lowerSentence, keyword) {
+				// Make sure it's a whole word match, not part of another word
+				if ap.isWholeWordMatch(lowerSentence, keyword) {
+					abilities = append(abilities, creator())
+				}
+			}
+		}
+	}
+
+	return abilities
+}
+
+// isWholeWordMatch checks if a keyword appears as a whole word in the text
+func (ap *AbilityParser) isWholeWordMatch(text, keyword string) bool {
+	// Simple word boundary check
+	keywordLen := len(keyword)
+	index := strings.Index(text, keyword)
+
+	if index == -1 {
+		return false
+	}
+
+	// Check character before keyword
+	if index > 0 {
+		prevChar := text[index-1]
+		if (prevChar >= 'a' && prevChar <= 'z') || (prevChar >= 'A' && prevChar <= 'Z') {
+			return false
+		}
+	}
+
+	// Check character after keyword
+	if index+keywordLen < len(text) {
+		nextChar := text[index+keywordLen]
+		if (nextChar >= 'a' && nextChar <= 'z') || (nextChar >= 'A' && nextChar <= 'Z') {
+			return false
+		}
+	}
+
+	return true
+}
+
+// extractOfficialKeywords extracts keywords from the card's official Keywords field
+func (ap *AbilityParser) extractOfficialKeywords(source interface{}) []string {
+	var keywords []string
+
+	// Try to extract keywords from different possible source types
+	if card, ok := source.(interface{ GetKeywords() []string }); ok {
+		keywords = card.GetKeywords()
+	} else if hasKeywords := fmt.Sprintf("%v", source); hasKeywords != "" {
+		// Try to extract from string representation if it contains keyword info
+		// This is a fallback for when the source doesn't have a GetKeywords method
+		// We'll look for common patterns in the string representation
+	}
+
+	return keywords
+}
+
+// parseOfficialKeywords creates abilities from official keyword list
+func (ap *AbilityParser) parseOfficialKeywords(keywords []string, source interface{}) []*Ability {
+	var abilities []*Ability
+
+	for _, keyword := range keywords {
+		// Clean up the keyword (remove extra spaces, convert to lowercase)
+		cleanKeyword := strings.ToLower(strings.TrimSpace(keyword))
+
+		// Create ability based on keyword
+		var ability *Ability
+
+		switch cleanKeyword {
+		case "flying":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Flying",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Flying",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false, // This came from official keywords, not oracle text
+				TimingRestriction: AnyTime,
+			}
+		case "deathtouch":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Deathtouch",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Deathtouch",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "haste":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Haste",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Haste",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "trample":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Trample",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Trample",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "reach":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Reach",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Reach",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "defender":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Defender",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Defender",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "vigilance":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Vigilance",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Vigilance",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "lifelink":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Lifelink",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Lifelink",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "first strike":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "First Strike",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "First Strike",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		case "double strike":
+			ability = &Ability{
+				ID:   uuid.New(),
+				Name: "Double Strike",
+				Type: Static,
+				Effects: []Effect{
+					{
+						Type:        EvergreenAbility,
+						Description: "Double Strike",
+						Duration:    Permanent,
+					},
+				},
+				Source:            source,
+				OracleText:        keyword,
+				ParsedFromText:    false,
+				TimingRestriction: AnyTime,
+			}
+		}
+
+		if ability != nil {
+			abilities = append(abilities, ability)
+		}
+	}
+
+	return abilities
+}
+
+// parseSimpleKeyword parses simple keyword abilities like "Flying", "Haste", etc.
+func (ap *AbilityParser) parseSimpleKeyword(matches []string, fullText string) (*Ability, error) {
+	keyword := strings.ToLower(strings.TrimSpace(fullText))
+
+	// Capitalize first letter manually
+	capitalizedKeyword := ""
+	if len(keyword) > 0 {
+		capitalizedKeyword = strings.ToUpper(string(keyword[0])) + keyword[1:]
+	}
+
+	return &Ability{
+		Name: capitalizedKeyword,
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: capitalizedKeyword,
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseMultiKeyword parses multiple keywords like "Flying, haste"
+func (ap *AbilityParser) parseMultiKeyword(matches []string, fullText string) (*Ability, error) {
+	// This is a simplified approach - in reality we'd want to create separate abilities
+	// For now, we'll create one ability with a combined description
+	return &Ability{
+		Name: "Multiple Keywords",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: fullText,
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseETBPump parses ETB abilities that pump creatures
+func (ap *AbilityParser) parseETBPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+
+	power, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	toughness, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "ETB Pump",
+		Type: Triggered,
+		TriggerCondition: EntersTheBattlefield,
+		Effects: []Effect{
+			{
+				Type:  PumpCreature,
+				Value: power*100 + toughness, // Encode both values
+				Duration: UntilEndOfTurn,
+				Targets: []Target{
+					{
+						Type: CreatureTarget,
+						Required: true,
+						Count: 1,
+						Restrictions: []string{"you control"},
+					},
+				},
+				Description: fmt.Sprintf("Target creature you control gets +%d/+%d until end of turn", power, toughness),
+			},
+		},
+		IsOptional: false,
+	}, nil
+}
+
+// parseETBTap parses ETB abilities that tap creatures
+func (ap *AbilityParser) parseETBTap(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "ETB Tap",
+		Type: Triggered,
+		TriggerCondition: EntersTheBattlefield,
+		Effects: []Effect{
+			{
+				Type:  TapUntap,
+				Value: 1, // 1 for tap, 0 for untap
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type: CreatureTarget,
+						Required: true,
+						Count: 1,
+					},
+				},
+				Description: "Tap target creature",
+			},
+		},
+		IsOptional: false,
+	}, nil
+}
+
+// parseActivatedPump parses activated abilities that pump creatures
+func (ap *AbilityParser) parseActivatedPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 4 {
+		return nil, ErrParsingFailed
+	}
+
+	genericCost, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	manaType := types.ManaType(matches[2])
+	power, err := strconv.Atoi(matches[3])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	toughness, err := strconv.Atoi(matches[4])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Activated Pump",
+		Type: Activated,
+		Cost: Cost{
+			ManaCost: map[types.ManaType]int{
+				types.Any: genericCost,
+				manaType:  1,
+			},
+		},
+		Effects: []Effect{
+			{
+				Type:  PumpCreature,
+				Value: power*100 + toughness,
+				Duration: UntilEndOfTurn,
+				Targets: []Target{
+					{
+						Type: CreatureTarget,
+						Required: true,
+						Count: 1,
+					},
+				},
+				Description: fmt.Sprintf("Target creature gets +%d/+%d until end of turn", power, toughness),
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseSingleManaPump parses single mana activated pump abilities
+func (ap *AbilityParser) parseSingleManaPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 4 {
+		return nil, ErrParsingFailed
+	}
+
+	manaType := types.ManaType(matches[1])
+	power, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	toughness, err := strconv.Atoi(matches[3])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Single Mana Pump",
+		Type: Activated,
+		Cost: Cost{
+			ManaCost: map[types.ManaType]int{
+				manaType: 1,
+			},
+		},
+		Effects: []Effect{
+			{
+				Type:  PumpCreature,
+				Value: power*100 + toughness,
+				Duration: UntilEndOfTurn,
+				Description: fmt.Sprintf("This creature gets +%d/+%d until end of turn", power, toughness),
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseEnchantCreature parses "Enchant creature" abilities
+func (ap *AbilityParser) parseEnchantCreature(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Enchant Creature",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "Enchant creature",
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseEnchantedPump parses "Enchanted creature gets +X/+X" abilities
+func (ap *AbilityParser) parseEnchantedPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+
+	power, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	toughness, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Enchanted Pump",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:  PumpCreature,
+				Value: power*100 + toughness,
+				Duration: Permanent,
+				Description: fmt.Sprintf("Enchanted creature gets +%d/+%d", power, toughness),
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseEnchantedRestriction parses "Enchanted creature can't attack or block" abilities
+func (ap *AbilityParser) parseEnchantedRestriction(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Enchanted Restriction",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "Enchanted creature can't attack or block",
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseUnblockable parses "can't be blocked" abilities
+func (ap *AbilityParser) parseUnblockable(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Unblockable",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "Can't be blocked",
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseLimitedBlocking parses "can't be blocked by more than one creature" abilities
+func (ap *AbilityParser) parseLimitedBlocking(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Limited Blocking",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "Can't be blocked by more than one creature",
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseNegativePump parses "Target creature gets -X/-X" abilities
+func (ap *AbilityParser) parseNegativePump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+
+	power, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	toughness, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Negative Pump",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:  PumpCreature,
+				Value: -power*100 - toughness, // Negative values
+				Duration: UntilEndOfTurn,
+				Targets: []Target{
+					{
+						Type: CreatureTarget,
+						Required: true,
+						Count: 1,
+					},
+				},
+				Description: fmt.Sprintf("Target creature gets -%d/-%d until end of turn", power, toughness),
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// parseBounceCreature parses "Return target creature to its owner's hand" abilities
+func (ap *AbilityParser) parseBounceCreature(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Bounce Creature",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:  ReturnToHand,
+				Value: 1,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type: CreatureTarget,
+						Required: true,
+						Count: 1,
+					},
+				},
+				Description: "Return target creature to its owner's hand",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// parseBounceMultiple parses "Return up to X target creatures to their owners' hands" abilities
+func (ap *AbilityParser) parseBounceMultiple(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+
+	count, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Bounce Multiple",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:  ReturnToHand,
+				Value: count,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type: CreatureTarget,
+						Required: false, // "up to" means optional
+						Count: count,
+					},
+				},
+				Description: fmt.Sprintf("Return up to %d target creatures to their owners' hands", count),
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// parseReanimateToHand parses "Return target creature card from your graveyard to your hand" abilities
+func (ap *AbilityParser) parseReanimateToHand(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Reanimate to Hand",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:  ReturnToHand,
+				Value: 1,
+				Duration: Instant,
+				Targets: []Target{
+					{
+						Type: CardInGraveyardTarget,
+						Required: true,
+						Count: 1,
+						Restrictions: []string{"creature card", "your graveyard"},
+					},
+				},
+				Description: "Return target creature card from your graveyard to your hand",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+// parseMustAttack parses "attacks each combat if able" abilities
+func (ap *AbilityParser) parseMustAttack(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Must Attack",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "Attacks each combat if able",
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseCantActAlone parses "can't attack or block alone" abilities
+func (ap *AbilityParser) parseCantActAlone(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Can't Act Alone",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "Can't attack or block alone",
+				Duration:    Permanent,
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// parseConditionalFlying parses "During your turn, X has flying" abilities
+func (ap *AbilityParser) parseConditionalFlying(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Conditional Flying",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        EvergreenAbility,
+				Description: "During your turn, this creature has flying",
+				Duration:    Permanent,
+				Conditions:  []string{"during your turn"},
+			},
+		},
+		TimingRestriction: AnyTime,
 	}, nil
 }

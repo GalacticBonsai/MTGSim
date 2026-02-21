@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 var testCardDB *CardDB
@@ -46,18 +46,18 @@ func TestMountainManaProducer(t *testing.T) {
 	if !isProducer {
 		t.Errorf("Expected 'Mountain' to be a mana producer")
 	}
-	if len(manaTypes) != 1 || manaTypes[0] != game.Red {
+	if len(manaTypes) != 1 || manaTypes[0] != types.Red {
 		t.Errorf("Expected 'Mountain' to produce {R}, got %v", manaTypes)
 	}
 }
 
 func TestBasicLandsManaProducer(t *testing.T) {
-	basicLands := map[string]game.ManaType{
-		"Plains":   game.White,
-		"Island":   game.Blue,
-		"Swamp":    game.Black,
-		"Mountain": game.Red,
-		"Forest":   game.Green,
+	basicLands := map[string]types.ManaType{
+		"Plains":   types.White,
+		"Island":   types.Blue,
+		"Swamp":    types.Black,
+		"Mountain": types.Red,
+		"Forest":   types.Green,
 	}
 
 	for name, manaType := range basicLands {
@@ -77,17 +77,17 @@ func TestBasicLandsManaProducer(t *testing.T) {
 }
 
 func TestBasicDualLandsManaProducer(t *testing.T) {
-	dualLands := map[string][]game.ManaType{
-		"Badlands":        {game.Black, game.Red},
-		"Bayou":           {game.Black, game.Green},
-		"Plateau":         {game.White, game.Red},
-		"Scrubland":       {game.White, game.Black},
-		"Taiga":           {game.Red, game.Green},
-		"Tropical Island": {game.Blue, game.Green},
-		"Tundra":          {game.White, game.Blue},
-		"Underground Sea": {game.Blue, game.Black},
-		"Volcanic Island": {game.Blue, game.Red},
-		"Savannah":        {game.White, game.Green},
+	dualLands := map[string][]types.ManaType{
+		"Badlands":        {types.Black, types.Red},
+		"Bayou":           {types.Black, types.Green},
+		"Plateau":         {types.White, types.Red},
+		"Scrubland":       {types.White, types.Black},
+		"Taiga":           {types.Red, types.Green},
+		"Tropical Island": {types.Blue, types.Green},
+		"Tundra":          {types.White, types.Blue},
+		"Underground Sea": {types.Blue, types.Black},
+		"Volcanic Island": {types.Blue, types.Red},
+		"Savannah":        {types.White, types.Green},
 	}
 
 	for name, manaTypes := range dualLands {
@@ -104,7 +104,7 @@ func TestBasicDualLandsManaProducer(t *testing.T) {
 			t.Errorf("Expected '%s' to produce %v, got %v", name, manaTypes, producedManaTypes)
 			continue
 		}
-		manaTypeMap := make(map[game.ManaType]bool)
+		manaTypeMap := make(map[types.ManaType]bool)
 		for _, manaType := range manaTypes {
 			manaTypeMap[manaType] = true
 		}
@@ -119,14 +119,14 @@ func TestBasicDualLandsManaProducer(t *testing.T) {
 
 func TestManaCreaturesAndArtifacts(t *testing.T) {
 	manaProducers := map[string]struct {
-		manaTypes []game.ManaType
+		manaTypes []types.ManaType
 		power     string
 		toughness string
 	}{
-		"Llanowar Elves":    {manaTypes: []game.ManaType{game.Green}, power: "1", toughness: "1"},
-		"Birds of Paradise": {manaTypes: []game.ManaType{game.Any}, power: "0", toughness: "1"},
-		"Sol Ring":          {manaTypes: []game.ManaType{game.Colorless, game.Colorless}},
-		"Ashnod's Altar":    {manaTypes: []game.ManaType{game.Colorless, game.Colorless}},
+		"Llanowar Elves":    {manaTypes: []types.ManaType{types.Green}, power: "1", toughness: "1"},
+		"Birds of Paradise": {manaTypes: []types.ManaType{types.Any}, power: "0", toughness: "1"},
+		"Sol Ring":          {manaTypes: []types.ManaType{types.Colorless, types.Colorless}},
+		"Ashnod's Altar":    {manaTypes: []types.ManaType{types.Colorless, types.Colorless}},
 	}
 
 	for name, attributes := range manaProducers {
@@ -143,7 +143,7 @@ func TestManaCreaturesAndArtifacts(t *testing.T) {
 			t.Errorf("Expected '%s' to produce %v, got %v", name, attributes.manaTypes, producedManaTypes)
 			continue
 		}
-		manaTypeMap := make(map[game.ManaType]bool)
+		manaTypeMap := make(map[types.ManaType]bool)
 		for _, manaType := range attributes.manaTypes {
 			manaTypeMap[manaType] = true
 		}

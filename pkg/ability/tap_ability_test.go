@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // TestTapStateValidation tests that tapped permanents cannot activate tap abilities
@@ -12,7 +12,7 @@ func TestTapStateValidation(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	gameState := &mockGameState{
@@ -107,7 +107,7 @@ func TestMultipleTapAbilities(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	gameState := &mockGameState{
@@ -215,7 +215,7 @@ func TestTapAbilitiesWithAdditionalCosts(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: map[game.ManaType]int{game.Any: 3}, // Give player some mana
+		manaPool: map[types.ManaType]int{types.Any: 3}, // Give player some mana
 	}
 
 	gameState := &mockGameState{
@@ -242,7 +242,7 @@ func TestTapAbilitiesWithAdditionalCosts(t *testing.T) {
 		Type: Activated,
 		Cost: Cost{
 			TapCost:  true,
-			ManaCost: map[game.ManaType]int{game.Any: 2},
+			ManaCost: map[types.ManaType]int{types.Any: 2},
 		},
 		Effects: []Effect{
 			{
@@ -263,14 +263,14 @@ func TestTapAbilitiesWithAdditionalCosts(t *testing.T) {
 	t.Run("Can activate with sufficient mana and untapped", func(t *testing.T) {
 		// Ensure permanent is untapped and player has mana
 		permanent.tapped = false
-		player.manaPool[game.Any] = 3
+		player.manaPool[types.Any] = 3
 
 		canActivate := engine.canActivateAbility(expensiveAbility, player)
 		if !canActivate {
 			t.Error("Should be able to activate expensive tap ability with sufficient mana")
 		}
 
-		initialMana := player.manaPool[game.Any]
+		initialMana := player.manaPool[types.Any]
 		err := engine.ExecuteAbility(expensiveAbility, player, []interface{}{player})
 		if err != nil {
 			t.Errorf("ExecuteAbility() error = %v", err)
@@ -281,7 +281,7 @@ func TestTapAbilitiesWithAdditionalCosts(t *testing.T) {
 			t.Error("Permanent should be tapped after activating ability")
 		}
 
-		if player.manaPool[game.Any] >= initialMana {
+		if player.manaPool[types.Any] >= initialMana {
 			t.Error("Mana should have been spent")
 		}
 	})
@@ -289,7 +289,7 @@ func TestTapAbilitiesWithAdditionalCosts(t *testing.T) {
 	t.Run("Cannot activate without sufficient mana", func(t *testing.T) {
 		// Reset permanent to untapped but remove mana
 		permanent.tapped = false
-		player.manaPool[game.Any] = 1 // Not enough mana
+		player.manaPool[types.Any] = 1 // Not enough mana
 
 		canActivate := engine.canActivateAbility(expensiveAbility, player)
 		if canActivate {
@@ -300,7 +300,7 @@ func TestTapAbilitiesWithAdditionalCosts(t *testing.T) {
 	t.Run("Cannot activate when tapped even with mana", func(t *testing.T) {
 		// Give player mana but keep permanent tapped
 		permanent.tapped = true
-		player.manaPool[game.Any] = 5
+		player.manaPool[types.Any] = 5
 
 		canActivate := engine.canActivateAbility(expensiveAbility, player)
 		if canActivate {
@@ -314,7 +314,7 @@ func TestTapAbilityTiming(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	// Create a permanent with a sorcery-speed tap ability
@@ -387,7 +387,7 @@ func TestSummoningSickness(t *testing.T) {
 	player := &mockPlayer{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	gameState := &mockGameState{

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -71,22 +72,32 @@ type Player struct {
 	LandDropsThisTurn    int  // Number of lands played this turn
 	LandDropsPerTurn     int  // Maximum lands allowed per turn (default 1)
 	HasPlayedLandThisTurn bool // Simple boolean for basic rule
+
+	// Mana pool
+	ManaPool *card.ManaPool
 }
 
 // Game represents a Magic: The Gathering game.
 type Game struct {
-	Players    []*Player
-	turnNumber int
-	cardDB     *card.CardDB
-	winner     *Player
-	loser      *Player
+	Players         []*Player
+	turnNumber      int
+	cardDB          *card.CardDB
+	winner          *Player
+	loser           *Player
+	currentPhase    string
+	activePlayer    *Player
+	// TODO: Add full stack system later
+	// stack           *ability.Stack
+	// priorityManager *ability.PriorityManager
+	// spellEngine     *ability.SpellCastingEngine
 }
 
 // NewGame creates a new game instance.
 func NewGame(cardDB *card.CardDB) *Game {
 	return &Game{
-		turnNumber: 1,
-		cardDB:     cardDB,
+		turnNumber:   1,
+		cardDB:       cardDB,
+		currentPhase: "Beginning",
 	}
 }
 
@@ -95,6 +106,16 @@ func (g *Game) AddPlayer(decklistPath string) error {
 	mainDeck, _, err := deck.ImportDeckfile(decklistPath, g.cardDB)
 	if err != nil {
 		return err
+	}
+
+	// Validate deck size (Rule 2 compliance) - skip for welcome decks
+	if mainDeck.Size() >= 40 { // Only validate if deck is reasonably sized
+		if err := g.validateDeckSize(mainDeck); err != nil {
+			logger.LogDeck("Deck validation warning for %s: %v", mainDeck.Name, err)
+			// Don't fail for welcome decks, just log warning
+		}
+	} else {
+		logger.LogDeck("Skipping validation for small deck %s (%d cards)", mainDeck.Name, mainDeck.Size())
 	}
 
 	player := &Player{
@@ -114,6 +135,9 @@ func (g *Game) AddPlayer(decklistPath string) error {
 		LandDropsThisTurn:    0,
 		LandDropsPerTurn:     1, // Standard MTG rule: one land per turn
 		HasPlayedLandThisTurn: false,
+
+		// Initialize mana pool
+		ManaPool: card.NewManaPool(),
 	}
 
 	g.Players = append(g.Players, player)
@@ -138,8 +162,8 @@ func (g *Game) Start() (*Player, *Player) {
 				p.Opponents = append(p.Opponents, opponent)
 			}
 		}
-		// Draw opening hand
-		p.Hand = append(p.Hand, p.Deck.DrawCards(7)...)
+		// Handle mulligan process
+		g.handleMulligan(p)
 	}
 
 	logger.LogGame("Starting game between %s and %s", g.Players[0].Name, g.Players[1].Name)
@@ -174,8 +198,14 @@ func (g *Game) Start() (*Player, *Player) {
 
 // executeTurn executes a complete turn for the given player
 func (g *Game) executeTurn(player *Player) {
+	// Set active player for the turn
+	g.activePlayer = player
+
 	// Reset land drops for the new turn
 	g.resetLandDrops(player)
+
+	// Beginning phase
+	g.currentPhase = "Beginning"
 
 	// Untap step
 	g.untapStep(player)
@@ -183,19 +213,25 @@ func (g *Game) executeTurn(player *Player) {
 	// Upkeep step
 	g.upkeepStep(player)
 
-	// Draw step
-	g.drawStep(player)
+	// Draw step (skip on first turn for first player)
+	if !(g.turnNumber == 1 && player == g.Players[0]) {
+		g.drawStep(player)
+	}
 
 	// Main phase 1
+	g.currentPhase = "Main1"
 	g.mainPhase(player)
 
 	// Combat phase
+	g.currentPhase = "Combat"
 	g.combatPhase(player)
 
 	// Main phase 2
+	g.currentPhase = "Main2"
 	g.mainPhase(player)
 
-	// End step
+	// End phase
+	g.currentPhase = "End"
 	g.endStep(player)
 }
 
@@ -286,6 +322,10 @@ func (g *Game) endStep(player *Player) {
 		creature.damage_counters = 0
 	}
 
+	// Clear mana pool (mana burn no longer exists in modern MTG)
+	player.ManaPool = card.NewManaPool()
+	logger.LogPlayer("%s: Mana pool cleared", player.Name)
+
 	// Reset land drops per turn to default (in case it was modified by effects)
 	if player.LandDropsPerTurn != 1 {
 		logger.LogPlayer("%s: Land drops per turn reset to 1 (was %d)", player.Name, player.LandDropsPerTurn)
@@ -314,11 +354,18 @@ func (g *Game) endStep(player *Player) {
 func (g *Game) mainPhase(player *Player) {
 	logger.LogPlayer("%s: Main phase", player.Name)
 
+	// Set current phase for timing restrictions
+	g.currentPhase = "Main"
+	g.activePlayer = player
+
+	// Generate mana from lands
+	g.generateMana(player)
+
 	// Simple AI: play a land if possible
 	g.playLand(player)
 
-	// Simple AI: cast creatures if possible
-	g.castCreatures(player)
+	// Simple AI: cast spells if possible
+	g.castSpells(player)
 }
 
 // playLand attempts to play a land from hand
@@ -335,6 +382,21 @@ func (g *Game) playLand(player *Player) {
 
 			// Create permanent
 			permanent := g.createPermanent(cardInHand, player, Land)
+
+			// Handle shock lands (enter tapped unless 2 life is paid)
+			if g.isShockLand(cardInHand) {
+				// Simple AI: pay 2 life if we have enough life and need the mana immediately
+				if player.LifeTotal > 4 { // Conservative: only pay if we have more than 4 life
+					player.LifeTotal -= 2
+					permanent.tapped = false
+					logger.LogCard("%s pays 2 life for %s to enter untapped (Life: %d)",
+						player.Name, cardInHand.Name, player.LifeTotal)
+				} else {
+					permanent.tapped = true
+					logger.LogCard("%s enters tapped (shock land, insufficient life to pay)", cardInHand.Name)
+				}
+			}
+
 			player.Lands = append(player.Lands, permanent)
 
 			// Update land drop tracking
@@ -377,24 +439,307 @@ func (g *Game) hasLandDropAvailable(player *Player) bool {
 	return player.LandDropsThisTurn < player.LandDropsPerTurn
 }
 
-// castCreatures attempts to cast creature spells
-func (g *Game) castCreatures(player *Player) {
+// isShockLand checks if a land is a shock land (enters tapped unless 2 life is paid)
+func (g *Game) isShockLand(land card.Card) bool {
+	// Check for shock land names
+	shockLands := []string{
+		"Godless Shrine", "Blood Crypt", "Sacred Foundry", "Temple Garden",
+		"Watery Grave", "Overgrown Tomb", "Steam Vents", "Hallowed Fountain",
+		"Stomping Ground", "Breeding Pool",
+	}
+
+	for _, shockName := range shockLands {
+		if strings.Contains(land.Name, shockName) {
+			return true
+		}
+	}
+
+	// Also check oracle text for the shock land pattern
+	oracleText := strings.ToLower(land.OracleText)
+	return strings.Contains(oracleText, "enters the battlefield tapped unless you pay 2 life") ||
+		   strings.Contains(oracleText, "enters tapped unless you pay 2 life")
+}
+
+// generateMana taps all untapped mana-producing permanents (lands, creatures, artifacts) to generate mana
+func (g *Game) generateMana(player *Player) {
+	logger.LogPlayer("%s: Generating mana from all sources", player.Name)
+
+	manaGenerated := 0
+
+	// Generate mana from lands
+	for _, land := range player.Lands {
+		if !land.tapped && land.manaProducer {
+			// Tap the land
+			land.tapped = true
+
+			// For dual lands, choose one mana type (simple AI: choose first available)
+			// In a real game, the player would choose which color to tap for
+			if len(land.manaTypes) > 0 {
+				chosenManaType := land.manaTypes[0] // Simple AI: always choose first color
+				player.ManaPool.Add(chosenManaType, 1)
+				manaGenerated++
+				logger.LogCard("%s taps %s (land) for %s mana", player.Name, land.source.Name, chosenManaType)
+			}
+		}
+	}
+
+	// Generate mana from creatures (prioritize mana production over attacking)
+	for _, creature := range player.Creatures {
+		if !creature.tapped && creature.manaProducer && !creature.summoningSickness {
+			// Tap the creature for mana
+			creature.tapped = true
+
+			// Choose mana type (simple AI: choose first available)
+			if len(creature.manaTypes) > 0 {
+				chosenManaType := creature.manaTypes[0] // Simple AI: always choose first color
+				player.ManaPool.Add(chosenManaType, 1)
+				manaGenerated++
+				logger.LogCard("%s taps %s (creature) for %s mana", player.Name, creature.source.Name, chosenManaType)
+			}
+		}
+	}
+
+	// Generate mana from artifacts
+	for _, artifact := range player.Artifacts {
+		if !artifact.tapped && artifact.manaProducer {
+			// Tap the artifact for mana
+			artifact.tapped = true
+
+			// Choose mana type (simple AI: choose first available)
+			if len(artifact.manaTypes) > 0 {
+				chosenManaType := artifact.manaTypes[0] // Simple AI: always choose first color
+				player.ManaPool.Add(chosenManaType, 1)
+				manaGenerated++
+				logger.LogCard("%s taps %s (artifact) for %s mana", player.Name, artifact.source.Name, chosenManaType)
+			}
+		}
+	}
+
+	if manaGenerated > 0 {
+		logger.LogPlayer("%s: Mana pool now contains: %s", player.Name, player.ManaPool.String())
+	} else {
+		logger.LogPlayer("%s: No mana sources available to tap", player.Name)
+	}
+}
+
+// castSpells attempts to cast spells from hand
+func (g *Game) castSpells(player *Player) {
+	logger.LogPlayer("%s: Attempting to cast spells (Hand: %d cards, Mana: %s)",
+		player.Name, len(player.Hand), player.ManaPool.String())
+
+	spellsCast := 0
 	for i := len(player.Hand) - 1; i >= 0; i-- {
 		cardInHand := player.Hand[i]
-		if cardInHand.IsCreature() {
-			// Simple mana check - just check if we have enough lands
-			availableMana := len(player.Lands)
-			if availableMana >= int(cardInHand.CMC) {
-				// Remove from hand
-				player.Hand = append(player.Hand[:i], player.Hand[i+1:]...)
 
-				// Create permanent
-				permanent := g.createPermanent(cardInHand, player, Creature)
-				permanent.summoningSickness = true
-				player.Creatures = append(player.Creatures, permanent)
+		// Skip lands - they should be played via playLand(), not cast as spells
+		if cardInHand.IsLand() {
+			continue
+		}
 
-				logger.LogCard("%s casts %s", player.Name, cardInHand.Name)
+		// Check if we can cast this spell
+		if g.canCastSpell(player, cardInHand) {
+			// Parse mana cost and pay for it
+			manaCost := card.ParseManaCost(cardInHand.ManaCost)
+			logger.LogCard("%s attempting to cast %s (cost: %s, available: %s)",
+				player.Name, cardInHand.Name, cardInHand.ManaCost, player.ManaPool.String())
+
+			if err := player.ManaPool.Pay(manaCost); err != nil {
+				logger.LogCard("%s cannot pay mana cost for %s: %v", player.Name, cardInHand.Name, err)
+				continue
 			}
+
+			// Remove from hand
+			player.Hand = append(player.Hand[:i], player.Hand[i+1:]...)
+
+			// Cast the spell based on its type
+			g.resolveSpell(player, cardInHand)
+			spellsCast++
+
+			logger.LogPlayer("%s: Mana pool after casting: %s", player.Name, player.ManaPool.String())
+		} else {
+			logger.LogCard("%s cannot cast %s (timing or mana restrictions)", player.Name, cardInHand.Name)
+		}
+	}
+
+	if spellsCast == 0 {
+		logger.LogPlayer("%s: No spells cast this turn", player.Name)
+	}
+}
+
+// canCastSpell checks if a player can cast a specific spell
+func (g *Game) canCastSpell(player *Player, spell card.Card) bool {
+	// Check timing restrictions
+	if !g.canCastAtThisTime(spell) {
+		return false
+	}
+
+	// Check mana cost
+	manaCost := card.ParseManaCost(spell.ManaCost)
+	if !player.ManaPool.CanPay(manaCost) {
+		return false
+	}
+
+	return true
+}
+
+// canCastAtThisTime checks timing restrictions for spells (Rule 8 compliance)
+func (g *Game) canCastAtThisTime(spell card.Card) bool {
+	// Check spell type and timing restrictions
+	if spell.IsInstant() {
+		// Instants can be cast at any time (instant speed)
+		return true
+	}
+
+	if spell.IsSorcery() {
+		// Sorceries can only be cast during main phase (sorcery speed)
+		return g.isMainPhase() && g.isStackEmpty()
+	}
+
+	if spell.IsCreature() || spell.IsArtifact() || spell.IsEnchantment() || spell.IsPlaneswalker() {
+		// Permanents can only be cast during main phase (sorcery speed)
+		return g.isMainPhase() && g.isStackEmpty()
+	}
+
+	// Default: allow casting (for unknown types)
+	return true
+}
+
+// isMainPhase checks if we're currently in a main phase
+func (g *Game) isMainPhase() bool {
+	return g.currentPhase == "Main" || g.currentPhase == "Main1" || g.currentPhase == "Main2"
+}
+
+// isStackEmpty checks if the stack is empty (simplified for now)
+func (g *Game) isStackEmpty() bool {
+	// TODO: Implement actual stack checking when full stack system is added
+	return true // For now, assume stack is always empty
+}
+
+// resolveSpell resolves a spell based on its type
+func (g *Game) resolveSpell(player *Player, spell card.Card) {
+	logger.LogCard("%s casts %s", player.Name, spell.Name)
+
+	if spell.IsCreature() {
+		g.resolveCreatureSpell(player, spell)
+	} else if spell.IsInstant() {
+		g.resolveInstantSpell(player, spell)
+	} else if spell.IsSorcery() {
+		g.resolveSorcerySpell(player, spell)
+	} else if spell.IsEnchantment() {
+		g.resolveEnchantmentSpell(player, spell)
+	} else if spell.IsArtifact() {
+		g.resolveArtifactSpell(player, spell)
+	} else if spell.IsPlaneswalker() {
+		g.resolvePlaneswalkerSpell(player, spell)
+	} else {
+		// Unknown spell type, put in graveyard
+		logger.LogCard("Unknown spell type for %s, putting in graveyard", spell.Name)
+		player.Graveyard = append(player.Graveyard, spell)
+	}
+}
+
+// resolveCreatureSpell resolves a creature spell
+func (g *Game) resolveCreatureSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Creature)
+	permanent.summoningSickness = true
+	player.Creatures = append(player.Creatures, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// resolveInstantSpell resolves an instant spell
+func (g *Game) resolveInstantSpell(player *Player, spell card.Card) {
+	// Apply instant effects and put in graveyard
+	g.applySpellEffects(player, spell)
+	player.Graveyard = append(player.Graveyard, spell)
+	logger.LogCard("%s resolves and goes to graveyard", spell.Name)
+}
+
+// resolveSorcerySpell resolves a sorcery spell
+func (g *Game) resolveSorcerySpell(player *Player, spell card.Card) {
+	// Apply sorcery effects and put in graveyard
+	g.applySpellEffects(player, spell)
+	player.Graveyard = append(player.Graveyard, spell)
+	logger.LogCard("%s resolves and goes to graveyard", spell.Name)
+}
+
+// resolveEnchantmentSpell resolves an enchantment spell
+func (g *Game) resolveEnchantmentSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Enchantment)
+	player.Enchantments = append(player.Enchantments, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// resolveArtifactSpell resolves an artifact spell
+func (g *Game) resolveArtifactSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Artifact)
+	player.Artifacts = append(player.Artifacts, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// resolvePlaneswalkerSpell resolves a planeswalker spell
+func (g *Game) resolvePlaneswalkerSpell(player *Player, spell card.Card) {
+	// Create permanent
+	permanent := g.createPermanent(spell, player, Planeswalker)
+	player.Planeswalkers = append(player.Planeswalkers, permanent)
+	logger.LogCard("%s enters the battlefield", spell.Name)
+}
+
+// applySpellEffects applies the effects of instant and sorcery spells
+func (g *Game) applySpellEffects(player *Player, spell card.Card) {
+	// This is a simplified implementation
+	// In a full implementation, this would parse the oracle text and apply effects
+
+	// Check for common spell effects based on name or oracle text
+	spellName := strings.ToLower(spell.Name)
+	oracleText := strings.ToLower(spell.OracleText)
+
+	// Lightning Bolt and similar damage spells
+	if strings.Contains(spellName, "lightning bolt") ||
+	   strings.Contains(oracleText, "deals 3 damage") {
+		g.dealDamageToOpponent(player, 3)
+	} else if strings.Contains(spellName, "shock") ||
+	         strings.Contains(oracleText, "deals 2 damage") {
+		g.dealDamageToOpponent(player, 2)
+	} else if strings.Contains(oracleText, "draw") && strings.Contains(oracleText, "card") {
+		// Card draw spells
+		if strings.Contains(oracleText, "draw 2") {
+			g.drawCards(player, 2)
+		} else {
+			g.drawCards(player, 1)
+		}
+	} else if strings.Contains(oracleText, "gain") && strings.Contains(oracleText, "life") {
+		// Life gain spells
+		if strings.Contains(oracleText, "gain 3 life") {
+			player.LifeTotal += 3
+			logger.LogCard("%s gains 3 life (Life: %d)", player.Name, player.LifeTotal)
+		}
+	}
+	// Add more spell effects as needed
+}
+
+// dealDamageToOpponent deals damage to the first opponent
+func (g *Game) dealDamageToOpponent(player *Player, damage int) {
+	if len(player.Opponents) > 0 {
+		opponent := player.Opponents[0]
+		opponent.LifeTotal -= damage
+		logger.LogCard("Spell deals %d damage to %s (Life: %d)", damage, opponent.Name, opponent.LifeTotal)
+	}
+}
+
+// drawCards draws the specified number of cards
+func (g *Game) drawCards(player *Player, count int) {
+	for i := 0; i < count; i++ {
+		if !player.Deck.IsEmpty() {
+			drawnCard := player.Deck.DrawCard()
+			player.Hand = append(player.Hand, drawnCard)
+			logger.LogCard("%s draws %s", player.Name, drawnCard.Name)
+		} else {
+			logger.LogCard("%s tries to draw but deck is empty", player.Name)
+			player.LifeTotal = 0 // Lose the game
+			break
 		}
 	}
 }
@@ -546,19 +891,43 @@ func (g *Game) combatPhase(player *Player) {
 	g.resolveCombatDamage(attackers)
 }
 
-// declareAttackers chooses which creatures attack
+// declareAttackers chooses which creatures attack (prioritizing mana production)
 func (g *Game) declareAttackers(player *Player) []*Permanent {
 	var attackers []*Permanent
 
 	for _, creature := range player.Creatures {
-		// Can attack if not tapped and no summoning sickness and doesn't have defender
-		if !creature.tapped && !creature.summoningSickness && creature.power > 0 {
+		// Can attack if not tapped and (no summoning sickness OR has haste) and doesn't have defender
+		canAttackDueToSickness := !creature.summoningSickness || creature.hasEvergreenAbility("Haste")
+		if !creature.tapped && canAttackDueToSickness && creature.power > 0 {
 			// Check if creature has defender (can't attack)
 			if creature.hasEvergreenAbility("Defender") {
 				continue
 			}
 
-			// Simple AI: attack with all available creatures
+			// Prioritize mana production: don't attack with mana-producing creatures unless they have vigilance
+			// or we have excess mana sources
+			if creature.manaProducer {
+				// If creature has vigilance, it can attack and still tap for mana
+				if creature.hasEvergreenAbility("Vigilance") {
+					logger.LogCard("%s can attack with vigilance and still produce mana", creature.source.Name)
+				} else {
+					// Count total available mana sources
+					totalManaProducers := g.countAvailableManaProducers(player)
+
+					// Only attack with mana creatures if we have excess mana production
+					// (more than 3 available mana sources, indicating we have plenty)
+					if totalManaProducers <= 3 {
+						logger.LogCard("%s stays back to produce mana (%d total mana sources available)",
+							creature.source.Name, totalManaProducers)
+						continue
+					} else {
+						logger.LogCard("%s attacks despite being a mana producer (excess mana available: %d sources)",
+							creature.source.Name, totalManaProducers)
+					}
+				}
+			}
+
+			// Attack with this creature
 			if len(player.Opponents) > 0 {
 				creature.attacking = player.Opponents[0] // Attack first opponent
 
@@ -575,6 +944,34 @@ func (g *Game) declareAttackers(player *Player) []*Permanent {
 	}
 
 	return attackers
+}
+
+// countAvailableManaProducers counts all untapped mana-producing permanents
+func (g *Game) countAvailableManaProducers(player *Player) int {
+	count := 0
+
+	// Count untapped lands
+	for _, land := range player.Lands {
+		if !land.tapped && land.manaProducer {
+			count++
+		}
+	}
+
+	// Count untapped mana-producing creatures (without summoning sickness)
+	for _, creature := range player.Creatures {
+		if !creature.tapped && creature.manaProducer && !creature.summoningSickness {
+			count++
+		}
+	}
+
+	// Count untapped mana-producing artifacts
+	for _, artifact := range player.Artifacts {
+		if !artifact.tapped && artifact.manaProducer {
+			count++
+		}
+	}
+
+	return count
 }
 
 // declareBlockers chooses which creatures block
@@ -827,5 +1224,156 @@ func (g *Game) wasInCombatWith(creature1, creature2 *Permanent) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// handleMulligan implements the MTG mulligan system (Rule 4 compliance)
+func (g *Game) handleMulligan(player *Player) {
+	mulliganCount := 0
+	maxMulligans := 3 // Reasonable limit to prevent infinite mulligans in simulation
+
+	for mulliganCount <= maxMulligans {
+		// Draw initial hand (7 cards)
+		player.Hand = append(player.Hand, player.Deck.DrawCards(7)...)
+
+		// Evaluate hand quality for AI decision
+		keepHand := g.evaluateHandQuality(player)
+
+		if keepHand || mulliganCount >= maxMulligans {
+			// Keep this hand
+			if mulliganCount > 0 {
+				// Put cards back to bottom of library (mulligan rule)
+				cardsToBottom := mulliganCount
+				if cardsToBottom > len(player.Hand) {
+					cardsToBottom = len(player.Hand)
+				}
+
+				// Move cards from hand to bottom of deck
+				for i := 0; i < cardsToBottom; i++ {
+					if len(player.Hand) > 0 {
+						cardToBottom := player.Hand[len(player.Hand)-1]
+						player.Hand = player.Hand[:len(player.Hand)-1]
+						player.Deck.Cards = append([]card.Card{cardToBottom}, player.Deck.Cards...)
+					}
+				}
+
+				logger.LogPlayer("%s keeps hand after %d mulligans (hand size: %d)",
+					player.Name, mulliganCount, len(player.Hand))
+			} else {
+				logger.LogPlayer("%s keeps opening hand", player.Name)
+			}
+			break
+		} else {
+			// Mulligan - shuffle hand back into deck
+			player.Deck.Cards = append(player.Deck.Cards, player.Hand...)
+			player.Hand = make([]card.Card, 0)
+			player.Deck.Shuffle()
+			mulliganCount++
+
+			logger.LogPlayer("%s takes mulligan #%d", player.Name, mulliganCount)
+		}
+	}
+}
+
+// evaluateHandQuality determines if a hand should be kept (AI decision)
+func (g *Game) evaluateHandQuality(player *Player) bool {
+	if len(player.Hand) == 0 {
+		return false // Empty hand is never keepable
+	}
+
+	landCount := 0
+	spellCount := 0
+	lowCostSpells := 0
+
+	// Analyze hand composition
+	for _, card := range player.Hand {
+		if g.isLand(card) {
+			landCount++
+		} else {
+			spellCount++
+			if card.CMC <= 3 {
+				lowCostSpells++
+			}
+		}
+	}
+
+	// Basic hand evaluation criteria
+	// Keep if: 2-5 lands, at least 1 spell, at least 1 low-cost spell
+	hasGoodLandCount := landCount >= 2 && landCount <= 5
+	hasSpells := spellCount >= 1
+	hasEarlyCurve := lowCostSpells >= 1
+
+	keepHand := hasGoodLandCount && hasSpells && hasEarlyCurve
+
+	logger.LogPlayer("%s hand evaluation: %d lands, %d spells, %d low-cost - %s",
+		player.Name, landCount, spellCount, lowCostSpells,
+		map[bool]string{true: "KEEP", false: "MULLIGAN"}[keepHand])
+
+	return keepHand
+}
+
+// isLand checks if a card is a land
+func (g *Game) isLand(card card.Card) bool {
+	return card.IsLand()
+}
+
+// validateDeckSize validates deck construction rules (Rule 2 compliance)
+func (g *Game) validateDeckSize(deck deck.Deck) error {
+	deckSize := deck.Size()
+
+	// Check minimum deck size (60 cards for Constructed format)
+	if deckSize < 60 {
+		return fmt.Errorf("deck size %d is below minimum of 60 cards", deckSize)
+	}
+
+	// Check maximum reasonable deck size (no official maximum, but 100+ is unusual)
+	if deckSize > 100 {
+		logger.LogDeck("Warning: deck %s has unusual size of %d cards", deck.Name, deckSize)
+	}
+
+	// Validate 4-copy limit (except basic lands)
+	if err := g.validateCardCopies(deck); err != nil {
+		return err
+	}
+
+	logger.LogDeck("Deck %s validated: %d cards", deck.Name, deckSize)
+	return nil
+}
+
+// validateCardCopies enforces the 4-copy limit rule (Rule 2 compliance)
+func (g *Game) validateCardCopies(deck deck.Deck) error {
+	cardCounts := make(map[string]int)
+
+	// Count copies of each card
+	for _, card := range deck.Cards {
+		cardCounts[card.Name]++
+	}
+
+	// Check 4-copy limit
+	for cardName, count := range cardCounts {
+		if count > 4 {
+			// Check if it's a basic land (exempt from 4-copy rule)
+			if !g.isBasicLand(cardName) {
+				return fmt.Errorf("deck contains %d copies of %s (maximum 4 allowed)", count, cardName)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isBasicLand checks if a card is a basic land (exempt from 4-copy rule)
+func (g *Game) isBasicLand(cardName string) bool {
+	basicLands := []string{
+		"Plains", "Island", "Swamp", "Mountain", "Forest",
+		"Wastes", // Colorless basic land
+	}
+
+	for _, basicLand := range basicLands {
+		if cardName == basicLand {
+			return true
+		}
+	}
+
 	return false
 }

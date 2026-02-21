@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // TestRealMagicCards tests the ability system with real Magic: The Gathering cards.
@@ -32,8 +32,8 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Wall of Omens",
 			oracleText:  "Defender. When Wall of Omens enters the battlefield, draw a card.",
-			expectedAbilities: 1, // ETB draw ability (defender is a keyword)
-			description: "ETB card draw",
+			expectedAbilities: 2, // Defender + ETB draw ability
+			description: "Defender and ETB card draw",
 		},
 		{
 			name:        "Prodigal Pyromancer",
@@ -44,14 +44,14 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:        "Birds of Paradise",
 			oracleText:  "Flying. {T}: Add one mana of any color.",
-			expectedAbilities: 1, // Mana ability (flying is a keyword)
-			description: "Any color mana",
+			expectedAbilities: 2, // Flying + mana ability
+			description: "Flying and any color mana",
 		},
 		{
 			name:        "Mulldrifter",
 			oracleText:  "Flying. When Mulldrifter enters the battlefield, draw two cards.",
-			expectedAbilities: 2, // ETB draw + spell draw pattern match
-			description: "ETB draw multiple cards",
+			expectedAbilities: 2, // Flying + ETB draw
+			description: "Flying and ETB draw multiple cards",
 		},
 		{
 			name:        "Sakura-Tribe Elder",
@@ -132,7 +132,7 @@ func TestAbilityExecution(t *testing.T) {
 		name:     "Test Player",
 		life:     20,
 		hand:     []interface{}{},
-		manaPool: map[game.ManaType]int{game.Green: 1},
+		manaPool: map[types.ManaType]int{types.Green: 1},
 		creatures: []interface{}{},
 		lands:    []interface{}{},
 	}
@@ -263,7 +263,7 @@ func TestAIDecisionMaking(t *testing.T) {
 		name:     "AI Player",
 		life:     15, // Lower life to test life gain priorities
 		hand:     []interface{}{"Card1", "Card2"}, // Few cards to test draw priorities
-		manaPool: map[game.ManaType]int{game.Any: 4}, // Some mana available
+		manaPool: map[types.ManaType]int{types.Any: 4}, // Some mana available
 		creatures: []interface{}{},
 		lands:    []interface{}{},
 	}
@@ -292,7 +292,7 @@ func TestAIDecisionMaking(t *testing.T) {
 			ID:   uuid.New(),
 			Name: "Draw Ability",
 			Type: Activated,
-			Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 2}},
+			Cost: Cost{ManaCost: map[types.ManaType]int{types.Any: 2}},
 			Effects: []Effect{
 				{Type: DrawCards, Value: 1, Description: "Draw a card"},
 			},
@@ -302,7 +302,7 @@ func TestAIDecisionMaking(t *testing.T) {
 			ID:   uuid.New(),
 			Name: "Life Gain Ability",
 			Type: Activated,
-			Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 1}},
+			Cost: Cost{ManaCost: map[types.ManaType]int{types.Any: 1}},
 			Effects: []Effect{
 				{Type: GainLife, Value: 3, Description: "Gain 3 life"},
 			},
@@ -312,7 +312,7 @@ func TestAIDecisionMaking(t *testing.T) {
 			ID:   uuid.New(),
 			Name: "Expensive Ability",
 			Type: Activated,
-			Cost: Cost{ManaCost: map[game.ManaType]int{game.Any: 6}},
+			Cost: Cost{ManaCost: map[types.ManaType]int{types.Any: 6}},
 			Effects: []Effect{
 				{Type: DrawCards, Value: 2, Description: "Draw 2 cards"},
 			},

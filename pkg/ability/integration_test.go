@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/pkg/card"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // Mock implementations for integration testing
@@ -52,7 +52,7 @@ type mockPlayerInterface struct {
 	artifacts    []PermanentInterface
 	enchantments []PermanentInterface
 	planeswalkers []PermanentInterface
-	manaPool     map[game.ManaType]int
+	manaPool     map[types.ManaType]int
 }
 
 func (m *mockPlayerInterface) GetName() string {
@@ -95,18 +95,18 @@ func (m *mockPlayerInterface) GetPlaneswalkers() []PermanentInterface {
 	return m.planeswalkers
 }
 
-func (m *mockPlayerInterface) GetManaPool() map[game.ManaType]int {
+func (m *mockPlayerInterface) GetManaPool() map[types.ManaType]int {
 	return m.manaPool
 }
 
-func (m *mockPlayerInterface) AddManaToPool(manaType game.ManaType, amount int) {
+func (m *mockPlayerInterface) AddManaToPool(manaType types.ManaType, amount int) {
 	if m.manaPool == nil {
-		m.manaPool = make(map[game.ManaType]int)
+		m.manaPool = make(map[types.ManaType]int)
 	}
 	m.manaPool[manaType] += amount
 }
 
-func (m *mockPlayerInterface) CanPayManaCost(cost map[game.ManaType]int) bool {
+func (m *mockPlayerInterface) CanPayManaCost(cost map[types.ManaType]int) bool {
 	for manaType, amount := range cost {
 		if m.manaPool[manaType] < amount {
 			return false
@@ -115,7 +115,7 @@ func (m *mockPlayerInterface) CanPayManaCost(cost map[game.ManaType]int) bool {
 	return true
 }
 
-func (m *mockPlayerInterface) PayManaCost(cost map[game.ManaType]int) error {
+func (m *mockPlayerInterface) PayManaCost(cost map[types.ManaType]int) error {
 	if !m.CanPayManaCost(cost) {
 		return ErrInsufficientMana
 	}
@@ -201,7 +201,7 @@ func TestGameAdapter_ParseAndAddAbilities(t *testing.T) {
 	player := &mockPlayerInterface{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	game := &mockGame{
@@ -240,7 +240,7 @@ func TestGameAdapter_TriggerAbilities(t *testing.T) {
 	player := &mockPlayerInterface{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 	}
 
 	game := &mockGame{
@@ -282,7 +282,7 @@ func TestGameAdapter_ActivateAbilitiesForPlayer(t *testing.T) {
 	player := &mockPlayerInterface{
 		name:     "Test Player",
 		life:     20,
-		manaPool: make(map[game.ManaType]int),
+		manaPool: make(map[types.ManaType]int),
 		lands:    []PermanentInterface{},
 	}
 
@@ -326,7 +326,7 @@ func TestPlayerAdapter_Interface(t *testing.T) {
 		name:     "Test Player",
 		life:     20,
 		hand:     []card.Card{},
-		manaPool: map[game.ManaType]int{game.Red: 2, game.Green: 1},
+		manaPool: map[types.ManaType]int{types.Red: 2, types.Green: 1},
 	}
 
 	mockGameInstance := &mockGame{
@@ -348,13 +348,13 @@ func TestPlayerAdapter_Interface(t *testing.T) {
 
 	// Test mana pool
 	manaPool := playerAdapter.GetManaPool()
-	if manaPool[game.Red] != 2 {
-		t.Errorf("Red mana = %d, want 2", manaPool[game.Red])
+	if manaPool[types.Red] != 2 {
+		t.Errorf("Red mana = %d, want 2", manaPool[types.Red])
 	}
 
 	// Test cost payment
 	cost := Cost{
-		ManaCost: map[game.ManaType]int{game.Red: 1},
+		ManaCost: map[types.ManaType]int{types.Red: 1},
 	}
 
 	if !playerAdapter.CanPayCost(cost) {
@@ -367,8 +367,8 @@ func TestPlayerAdapter_Interface(t *testing.T) {
 	}
 
 	// Check that mana was spent
-	if mockPlayer.manaPool[game.Red] != 1 {
-		t.Errorf("Red mana after payment = %d, want 1", mockPlayer.manaPool[game.Red])
+	if mockPlayer.manaPool[types.Red] != 1 {
+		t.Errorf("Red mana after payment = %d, want 1", mockPlayer.manaPool[types.Red])
 	}
 }
 

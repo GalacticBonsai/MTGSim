@@ -4,7 +4,7 @@ package ability
 import (
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/pkg/card"
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // GameAdapter adapts the existing game structures to work with the ability system.
@@ -39,10 +39,10 @@ type PlayerInterface interface {
 	GetArtifacts() []PermanentInterface
 	GetEnchantments() []PermanentInterface
 	GetPlaneswalkers() []PermanentInterface
-	GetManaPool() map[game.ManaType]int
-	AddManaToPool(manaType game.ManaType, amount int)
-	CanPayManaCost(cost map[game.ManaType]int) bool
-	PayManaCost(cost map[game.ManaType]int) error
+	GetManaPool() map[types.ManaType]int
+	AddManaToPool(manaType types.ManaType, amount int)
+	CanPayManaCost(cost map[types.ManaType]int) bool
+	PayManaCost(cost map[types.ManaType]int) error
 }
 
 // PermanentInterface represents the interface to existing permanent structures.
@@ -131,7 +131,7 @@ func (ga *GameAdapter) CanActivateAbilities() bool {
 	return true // Simplified - in a real game this would check priority
 }
 
-func (ga *GameAdapter) AddManaToPool(player AbilityPlayer, manaType game.ManaType, amount int) {
+func (ga *GameAdapter) AddManaToPool(player AbilityPlayer, manaType types.ManaType, amount int) {
 	if playerAdapter, ok := player.(*PlayerAdapter); ok {
 		playerAdapter.player.AddManaToPool(manaType, amount)
 	}
@@ -239,7 +239,7 @@ func (pa *PlayerAdapter) PayCost(cost Cost) error {
 	return pa.player.PayManaCost(cost.ManaCost)
 }
 
-func (pa *PlayerAdapter) GetManaPool() map[game.ManaType]int {
+func (pa *PlayerAdapter) GetManaPool() map[types.ManaType]int {
 	return pa.player.GetManaPool()
 }
 

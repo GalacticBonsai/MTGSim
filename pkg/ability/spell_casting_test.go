@@ -4,7 +4,7 @@ package ability
 import (
 	"testing"
 
-	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/types"
 )
 
 // TestFixedManaCosts tests spells with fixed mana costs
@@ -13,15 +13,15 @@ func TestFixedManaCosts(t *testing.T) {
 		name         string
 		manaCost     string
 		expectedCMC  int
-		expectedCost map[game.ManaType]int
+		expectedCost map[types.ManaType]int
 		description  string
 	}{
 		{
 			name:        "Lightning Bolt",
 			manaCost:    "{R}",
 			expectedCMC: 1,
-			expectedCost: map[game.ManaType]int{
-				game.Red: 1,
+			expectedCost: map[types.ManaType]int{
+				types.Red: 1,
 			},
 			description: "Single colored mana cost",
 		},
@@ -29,8 +29,8 @@ func TestFixedManaCosts(t *testing.T) {
 			name:        "Counterspell",
 			manaCost:    "{U}{U}",
 			expectedCMC: 2,
-			expectedCost: map[game.ManaType]int{
-				game.Blue: 2,
+			expectedCost: map[types.ManaType]int{
+				types.Blue: 2,
 			},
 			description: "Double colored mana cost",
 		},
@@ -38,9 +38,9 @@ func TestFixedManaCosts(t *testing.T) {
 			name:        "Shivan Dragon",
 			manaCost:    "{4}{R}{R}",
 			expectedCMC: 6,
-			expectedCost: map[game.ManaType]int{
-				game.Any: 4,
-				game.Red: 2,
+			expectedCost: map[types.ManaType]int{
+				types.Any: 4,
+				types.Red: 2,
 			},
 			description: "Mixed generic and colored mana cost",
 		},
@@ -48,16 +48,16 @@ func TestFixedManaCosts(t *testing.T) {
 			name:        "Mox Ruby",
 			manaCost:    "{0}",
 			expectedCMC: 0,
-			expectedCost: map[game.ManaType]int{},
+			expectedCost: map[types.ManaType]int{},
 			description: "Zero mana cost",
 		},
 		{
 			name:        "Force of Will",
 			manaCost:    "{3}{U}{U}",
 			expectedCMC: 5,
-			expectedCost: map[game.ManaType]int{
-				game.Any:  3,
-				game.Blue: 2,
+			expectedCost: map[types.ManaType]int{
+				types.Any:  3,
+				types.Blue: 2,
 			},
 			description: "High cost spell with colored requirements",
 		},
@@ -283,8 +283,8 @@ func TestCostReductionEffects(t *testing.T) {
 
 // Helper functions for cost parsing and calculation
 
-func parseManaCostToMap(manaCost string) map[game.ManaType]int {
-	cost := make(map[game.ManaType]int)
+func parseManaCostToMap(manaCost string) map[types.ManaType]int {
+	cost := make(map[types.ManaType]int)
 
 	// Simple parsing for common mana cost patterns
 	i := 0
@@ -299,43 +299,43 @@ func parseManaCostToMap(manaCost string) map[game.ManaType]int {
 				symbol := manaCost[i+1:j]
 				switch symbol {
 				case "W":
-					cost[game.White]++
+					cost[types.White]++
 				case "U":
-					cost[game.Blue]++
+					cost[types.Blue]++
 				case "B":
-					cost[game.Black]++
+					cost[types.Black]++
 				case "R":
-					cost[game.Red]++
+					cost[types.Red]++
 				case "G":
-					cost[game.Green]++
+					cost[types.Green]++
 				case "C":
-					cost[game.Colorless]++
+					cost[types.Colorless]++
 				case "0":
 					// Zero cost, do nothing
 				case "1":
-					cost[game.Any] += 1
+					cost[types.Any] += 1
 				case "2":
-					cost[game.Any] += 2
+					cost[types.Any] += 2
 				case "3":
-					cost[game.Any] += 3
+					cost[types.Any] += 3
 				case "4":
-					cost[game.Any] += 4
+					cost[types.Any] += 4
 				case "5":
-					cost[game.Any] += 5
+					cost[types.Any] += 5
 				case "6":
-					cost[game.Any] += 6
+					cost[types.Any] += 6
 				case "7":
-					cost[game.Any] += 7
+					cost[types.Any] += 7
 				case "8":
-					cost[game.Any] += 8
+					cost[types.Any] += 8
 				case "9":
-					cost[game.Any] += 9
+					cost[types.Any] += 9
 				case "X":
 					// X costs are handled separately
 				default:
 					// Try to parse as number
 					if len(symbol) == 1 && symbol[0] >= '0' && symbol[0] <= '9' {
-						cost[game.Any] += int(symbol[0] - '0')
+						cost[types.Any] += int(symbol[0] - '0')
 					}
 				}
 				i = j + 1
@@ -350,7 +350,7 @@ func parseManaCostToMap(manaCost string) map[game.ManaType]int {
 	return cost
 }
 
-func parseVariableManaCost(manaCost string, xValue int) map[game.ManaType]int {
+func parseVariableManaCost(manaCost string, xValue int) map[types.ManaType]int {
 	cost := parseManaCostToMap(manaCost)
 
 	// Count how many X's are in the cost and replace each with xValue
@@ -362,7 +362,7 @@ func parseVariableManaCost(manaCost string, xValue int) map[game.ManaType]int {
 	}
 
 	if xCount > 0 {
-		cost[game.Any] += xValue * xCount
+		cost[types.Any] += xValue * xCount
 	}
 
 	return cost
@@ -370,7 +370,7 @@ func parseVariableManaCost(manaCost string, xValue int) map[game.ManaType]int {
 
 // containsX function removed as it was unused
 
-func calculateCMC(cost map[game.ManaType]int) int {
+func calculateCMC(cost map[types.ManaType]int) int {
 	total := 0
 	for _, amount := range cost {
 		total += amount
@@ -394,18 +394,18 @@ func parseAdditionalCost(costText string) AdditionalCost {
 	return AdditionalCost{Other: costText}
 }
 
-func applyCostReduction(originalCost map[game.ManaType]int, reduction int) map[game.ManaType]int {
-	reducedCost := make(map[game.ManaType]int)
+func applyCostReduction(originalCost map[types.ManaType]int, reduction int) map[types.ManaType]int {
+	reducedCost := make(map[types.ManaType]int)
 	for manaType, amount := range originalCost {
 		reducedCost[manaType] = amount
 	}
 	
 	// Apply reduction to generic mana first
-	if reducedCost[game.Any] > 0 {
-		if reducedCost[game.Any] >= reduction {
-			reducedCost[game.Any] -= reduction
+	if reducedCost[types.Any] > 0 {
+		if reducedCost[types.Any] >= reduction {
+			reducedCost[types.Any] -= reduction
 		} else {
-			reducedCost[game.Any] = 0
+			reducedCost[types.Any] = 0
 		}
 	}
 	
