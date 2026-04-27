@@ -50,7 +50,7 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:              "Mulldrifter",
 			oracleText:        "Flying. When Mulldrifter enters the battlefield, draw two cards.",
-			expectedAbilities: 2, // ETB draw + spell draw pattern match
+			expectedAbilities: 1, // ETB draw triggered ability
 			description:       "ETB draw multiple cards",
 		},
 		{

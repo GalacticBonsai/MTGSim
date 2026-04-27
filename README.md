@@ -4,12 +4,15 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG d
 
 ## Features
 
-- Import decks from `.deck` files with multiple format support
-- Simulate games between decks with configurable parameters
-- Track wins and losses for each deck with detailed statistics
-- Display top-performing decks based on win percentage
-- Automatic card database management with Scryfall integration
-- Modular, well-organized codebase with proper Go package structure
+- 🎴 Import decks from `.deck` files with multiple format support
+- ⚔️ Simulate games between decks with configurable parameters
+- 📊 Track wins and losses for each deck with detailed statistics
+- 🏆 Display top-performing decks based on win percentage
+- 📚 Automatic card database management with Scryfall integration
+- 🌐 **Web Dashboard** with real-time metrics and visualizations
+- 🧪 Comprehensive test suite with high coverage
+- 📈 Statistics tool with confidence intervals
+- 🎯 Modular, well-organized codebase with proper Go package structure
 
 ## Getting Started
 
@@ -43,6 +46,15 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG d
 
 ## Usage
 
+### Available Tools
+
+| Tool | Purpose | Command |
+|------|---------|---------|
+| `mtgsim` | Basic game simulator | `./mtgsim [options]` |
+| `mtgstats` | Detailed statistics tool | `./mtgstats [options]` |
+| `mtgsim-dashboard` | Web-based dashboard | `./mtgsim-dashboard [options]` |
+| `stack_demo` | Stack/abilities demo | `./stack_demo` |
+
 ### Command Line Options
 
 ```sh
@@ -53,6 +65,21 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG d
 - `-games N`: Number of games to simulate (default: 1)
 - `-decks DIR`: Directory containing deck files (default: "decks/1v1")
 - `-log LEVEL`: Log level - META, GAME, PLAYER, CARD (default: "CARD")
+
+### Web Dashboard
+
+Launch the web dashboard to browse simulation metrics in real-time:
+
+```sh
+./mtgsim-dashboard -games=100 -port=8080
+```
+
+Then open http://localhost:8080 in your browser to see:
+- 📊 Total games played and aggregate metrics
+- 🏆 Deck win rates with sortable rankings
+- ⏱️ Average game duration and turn counts
+- 📜 Recent game history with details
+- 🔄 Auto-refresh every 5 seconds
 
 ### Deck Format
 

@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build all binaries
+        run: |
+          mkdir -p release
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              ext=""
+              if [ "$os" = "windows" ]; then ext=".exe"; fi
+              GOOS=$os GOARCH=$arch go build -o release/mtgsim-$os-$arch$ext ./cmd/mtgsim
+              GOOS=$os GOARCH=$arch go build -o release/mtgstats-$os-$arch$ext ./cmd/mtgstats
+              GOOS=$os GOARCH=$arch go build -o release/mtgsim-dashboard-$os-$arch$ext ./cmd/mtgsim-dashboard
+              GOOS=$os GOARCH=$arch go build -o release/stack_demo-$os-$arch$ext ./cmd/stack_demo
+            done
+          done
+
+      - name: Create archives
+        run: |
+          cd release
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              ext=""
+              if [ "$os" = "windows" ]; then ext=".exe"; fi
+              tar -czf mtgsim-$os-$arch.tar.gz \
+                mtgsim-$os-$arch$ext \
+                mtgstats-$os-$arch$ext \
+                mtgsim-dashboard-$os-$arch$ext \
+                stack_demo-$os-$arch$ext
+            done
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.tar.gz
+          generate_release_notes: true

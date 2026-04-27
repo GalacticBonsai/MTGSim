@@ -138,7 +138,12 @@ func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) (
 	sentences := ap.splitOracleText(oracleText)
 
 	for _, sentence := range sentences {
+		matched := false
+		// Try each ability type's patterns in order
 		for abilityType, patterns := range ap.patterns {
+			if matched {
+				break // Already found a match for this sentence
+			}
 			for _, pattern := range patterns {
 				if matches := pattern.Regex.FindStringSubmatch(sentence); matches != nil {
 					ability, err := pattern.Parser(matches, sentence)
@@ -159,6 +164,7 @@ func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) (
 					}
 
 					abilities = append(abilities, ability)
+					matched = true
 					break // Found a match, don't try other patterns for this sentence
 				}
 			}
