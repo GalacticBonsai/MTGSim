@@ -33,12 +33,19 @@ func (g *Game) DeclareAttacker(attacker *Permanent, defendingPlayer *Player) err
 	if attacker.GetController() != g.GetActivePlayerRaw() {
 		return fmt.Errorf("only active player may declare attackers")
 	}
-	// CR 302.6: Creatures with "summoning sickness" can't attack unless they have haste
-	if attacker.GetEnteredTurn() == g.GetTurnNumber() {
+	// CR 302.6 / 702.10: Creatures with summoning sickness can't attack unless they have haste.
+	if attacker.GetEnteredTurn() == g.GetTurnNumber() && !attacker.HasKeyword(KWHaste) {
 		return fmt.Errorf("summoning sickness: creature can't attack this turn")
 	}
-	// Minimal rule set: tap the attacker on declaration
-	attacker.Tap()
+	// CR 702.20: defenders can't attack.
+	if attacker.HasKeyword(KWDefender) {
+		return fmt.Errorf("defenders can't attack")
+	}
+	// CR 508.1f: Attacking causes the creature to become tapped, except
+	// creatures with vigilance (CR 702.20).
+	if !attacker.HasKeyword(KWVigilance) {
+		attacker.Tap()
+	}
 	g.combat.attackers[attacker] = defendingPlayer
 	return nil
 }
@@ -66,6 +73,11 @@ func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	if blocker.IsTapped() {
 		return fmt.Errorf("tapped creatures can't block")
 	}
+	// CR 702.9: a creature with flying can be blocked only by creatures
+	// with flying or reach.
+	if attacker.HasKeyword(KWFlying) && !(blocker.HasKeyword(KWFlying) || blocker.HasKeyword(KWReach)) {
+		return fmt.Errorf("flying creature can only be blocked by flying or reach")
+	}
 	g.combat.blocks[attacker] = blocker
 	return nil
 }
@@ -82,29 +94,94 @@ func (g *Game) ResolveCombatDamage() {
 		return
 	}
 
-	// Helper closures
-	dealToPermanent := func(src *Permanent, tgt *Permanent) {
-		if src == nil || tgt == nil {
+	// Helper closures. Each application returns the damage actually dealt
+	// so callers (e.g. trample) can compute leftover.
+	applyLifelink := func(src *Permanent, dmg int) {
+		// CR 702.15: lifelink causes its controller to gain life equal
+		// to the damage dealt by that source.
+		if dmg <= 0 || src == nil || !src.HasKeyword(KWLifelink) {
 			return
 		}
-		tgt.AddDamage(src.GetPower())
+		if c := src.GetController(); c != nil {
+			c.SetLifeTotal(c.GetLifeTotal() + dmg)
+		}
 	}
-	dealToPlayer := func(src *Permanent, pl *Player) {
-		if src == nil || pl == nil {
-			return
+	dealToPermanent := func(src *Permanent, tgt *Permanent) int {
+		if src == nil || tgt == nil {
+			return 0
 		}
 		dmg := src.GetPower()
+		if dmg <= 0 {
+			return 0
+		}
+		tgt.AddDamage(dmg)
+		// CR 702.2: any nonzero damage from a deathtouch source is lethal.
+		if src.HasKeyword(KWDeathtouch) {
+			tgt.markedLethal = true
+		}
+		applyLifelink(src, dmg)
+		return dmg
+	}
+	dealToPlayer := func(src *Permanent, pl *Player) int {
+		if src == nil || pl == nil {
+			return 0
+		}
+		dmg := src.GetPower()
+		if dmg <= 0 {
+			return 0
+		}
 		pl.SetLifeTotal(pl.GetLifeTotal() - dmg)
 		// CR 704.5u: track commander damage for the 21-damage SBA.
 		if src.IsCommander() {
 			pl.AddCommanderDamage(src.GetOwner(), src.GetName(), dmg)
 		}
+		applyLifelink(src, dmg)
+		return dmg
+	}
+	// dealAttackerToBlocker handles trample: the attacker assigns just
+	// enough damage to be lethal to the blocker, and the remainder goes
+	// to the defending player (CR 702.19). With deathtouch, "lethal" is
+	// any 1 damage (CR 702.2c).
+	dealAttackerToBlocker := func(a, b *Permanent, defender *Player) {
+		if a == nil || b == nil {
+			return
+		}
+		dmg := a.GetPower()
+		if dmg <= 0 {
+			return
+		}
+		needed := b.GetToughness() - b.GetDamageCounters()
+		if needed < 0 {
+			needed = 0
+		}
+		if a.HasKeyword(KWDeathtouch) && needed > 1 {
+			needed = 1
+		}
+		assignedToBlocker := dmg
+		if a.HasKeyword(KWTrample) && dmg > needed {
+			assignedToBlocker = needed
+		}
+		if assignedToBlocker > 0 {
+			b.AddDamage(assignedToBlocker)
+			if a.HasKeyword(KWDeathtouch) {
+				b.markedLethal = true
+			}
+		}
+		excess := dmg - assignedToBlocker
+		if a.HasKeyword(KWTrample) && excess > 0 && defender != nil {
+			defender.SetLifeTotal(defender.GetLifeTotal() - excess)
+			if a.IsCommander() {
+				defender.AddCommanderDamage(a.GetOwner(), a.GetName(), excess)
+			}
+		}
+		applyLifelink(a, dmg)
 	}
 
 	// Collect sets for steps
 	type pair struct {
 		a *Permanent
 		b *Permanent
+		d *Player
 	}
 	var fsPairs, normPairs []pair
 	var fsUnblocked, normUnblocked []struct {
@@ -115,9 +192,9 @@ func (g *Game) ResolveCombatDamage() {
 	for a, def := range g.combat.attackers {
 		if b, blocked := g.combat.blocks[a]; blocked {
 			if a.HasFirstStrike() || a.HasDoubleStrike() || b.HasFirstStrike() || b.HasDoubleStrike() {
-				fsPairs = append(fsPairs, pair{a: a, b: b})
+				fsPairs = append(fsPairs, pair{a: a, b: b, d: def})
 			} else {
-				normPairs = append(normPairs, pair{a: a, b: b})
+				normPairs = append(normPairs, pair{a: a, b: b, d: def})
 			}
 		} else {
 			// unblocked
@@ -137,12 +214,10 @@ func (g *Game) ResolveCombatDamage() {
 
 	// First strike step
 	for _, p := range fsPairs {
-		a, b := p.a, p.b
-		// Attacker with FS/DS deals first-strike damage to blocker
+		a, b, def := p.a, p.b, p.d
 		if a.HasFirstStrike() || a.HasDoubleStrike() {
-			dealToPermanent(a, b)
+			dealAttackerToBlocker(a, b, def)
 		}
-		// Blocker with FS/DS deals first-strike damage to attacker
 		if b.HasFirstStrike() || b.HasDoubleStrike() {
 			dealToPermanent(b, a)
 		}
@@ -154,20 +229,22 @@ func (g *Game) ResolveCombatDamage() {
 
 	// Normal step
 	for _, p := range fsPairs {
-		a, b := p.a, p.b
-		// If the attacker has double strike and both are still around, it deals again
-		if a.HasDoubleStrike() && g.onBattlefield(a) && g.onBattlefield(b) {
-			dealToPermanent(a, b)
+		a, b, def := p.a, p.b, p.d
+		// Attacker with double strike (or no first strike at all) deals normal damage if both alive
+		attackerStrikesNormal := a.HasDoubleStrike() || !a.HasFirstStrike()
+		if attackerStrikesNormal && g.onBattlefield(a) && g.onBattlefield(b) {
+			dealAttackerToBlocker(a, b, def)
 		}
-		// If the blocker has double strike, it deals again
-		if b.HasDoubleStrike() && g.onBattlefield(a) && g.onBattlefield(b) {
+		// Blocker with double strike (or no first strike at all) deals normal damage if both alive
+		blockerStrikesNormal := b.HasDoubleStrike() || !b.HasFirstStrike()
+		if blockerStrikesNormal && g.onBattlefield(a) && g.onBattlefield(b) {
 			dealToPermanent(b, a)
 		}
 	}
 	for _, p := range normPairs {
-		a, b := p.a, p.b
+		a, b, def := p.a, p.b, p.d
 		if g.onBattlefield(a) && g.onBattlefield(b) {
-			dealToPermanent(a, b)
+			dealAttackerToBlocker(a, b, def)
 			dealToPermanent(b, a)
 		}
 	}

@@ -127,6 +127,93 @@ const (
 	UntilLeavesPlay
 )
 
+// EffectKind classifies the broad category of an effect for engine
+// dispatch. Mirrors XMage org.mage.abilities.effects.Effect.EffectType.
+type EffectKind int
+
+const (
+	EffectKindOneShot EffectKind = iota
+	EffectKindContinuous
+	EffectKindReplacement
+	EffectKindPrevention
+)
+
+// Effecter is the common base interface for every effect category. Each
+// concrete implementation knows its own EffectKind and can produce a
+// human-readable description for logging.
+type Effecter interface {
+	Kind() EffectKind
+	Description() string
+}
+
+// OneShotEffect is an effect that resolves once and is then discarded.
+// Examples: "Draw a card.", "Deal 3 damage to any target.". The Source is
+// the *game.Permanent or spell that produced the effect; targets are the
+// chosen Target objects supplied at resolution time.
+//
+// Mirrors XMage org.mage.abilities.effects.OneShotEffect.
+type OneShotEffect interface {
+	Effecter
+	Apply(g any, source any, targets []any) error
+}
+
+// ContinuousEffect is an effect that modifies the game state for as long
+// as it remains active. Continuous effects participate in the CR 613
+// layered evaluation pipeline implemented in pkg/game.
+//
+// Layer/Sublayer values use the same numbering as game.Layer / game.Sublayer
+// (kept as plain ints here to avoid an import cycle). Discard returns true
+// when the effect has expired and should be removed from the engine on
+// the next sweep.
+//
+// Mirrors XMage org.mage.abilities.effects.ContinuousEffect.
+type ContinuousEffect interface {
+	Effecter
+	Layer() int
+	Sublayer() int
+	// ApplyView is called once per affected object during a layer pass.
+	// view is an opaque *game.PermanentView; the implementation casts to
+	// the concrete type to mutate the layered view.
+	ApplyView(object any, view any)
+	// Affects returns true if the effect applies to the given object.
+	Affects(object any) bool
+	// Discard returns true once the effect should be removed.
+	Discard() bool
+}
+
+// ReplacementEffect replaces or modifies an event before it occurs. The
+// classic example is "If a creature would die, exile it instead." See
+// CR 614 for the full semantics.
+//
+// Mirrors XMage org.mage.abilities.effects.ReplacementEffect.
+type ReplacementEffect interface {
+	Effecter
+	// Replaces returns true if the effect applies to the given event,
+	// which is an opaque *game.Event the implementation downcasts.
+	Replaces(event any) bool
+	// Replace returns the substitute event(s); returning nil drops the
+	// original event entirely (e.g. "instead" replacements that prevent
+	// the action from happening at all).
+	Replace(event any) []any
+}
+
+// TriggeredAbility represents a "When/Whenever/At ..." ability that goes
+// on the stack in response to an event. The engine walks every registered
+// TriggeredAbility on each emitted Event and queues the matching ones for
+// resolution.
+//
+// Mirrors XMage org.mage.abilities.TriggeredAbility.
+type TriggeredAbility interface {
+	// Triggers returns true if the supplied event satisfies this
+	// ability's trigger condition. event is an opaque *game.Event.
+	Triggers(event any) bool
+	// Resolve performs the ability's effect on resolution. The supplied
+	// game/source/targets follow the same convention as OneShotEffect.
+	Resolve(g any, source any, targets []any) error
+	// Description returns a human-readable trigger description.
+	Description() string
+}
+
 // Ability represents a Magic: The Gathering ability.
 type Ability struct {
 	ID                uuid.UUID

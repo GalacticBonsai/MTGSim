@@ -5,11 +5,26 @@ package game
 // - Players with 0 or less life lose the game (marked lost)
 // - Auras whose attached object is no longer on the battlefield are put into graveyard
 func (g *Game) ApplyStateBasedActions() {
-	// 1) Lethal damage
+	// 1) Lethal damage / 0-toughness destruction (CR 704.5f, 704.5g, 704.5h)
+	// Indestructible (CR 702.12) skips damage-based destruction but still
+	// dies from 0-or-less toughness.
 	var toGraveyard []*Permanent
 	for _, pl := range g.players {
 		for _, perm := range pl.Battlefield {
-			if perm.IsCreature() && perm.GetDamageCounters() >= perm.GetToughness() {
+			if !perm.IsCreature() {
+				continue
+			}
+			zeroToughness := perm.GetToughness() <= 0
+			lethalDamage := perm.GetDamageCounters() > 0 && perm.GetDamageCounters() >= perm.GetToughness()
+			deathtouchLethal := perm.markedLethal && perm.GetDamageCounters() > 0
+			if zeroToughness {
+				toGraveyard = append(toGraveyard, perm)
+				continue
+			}
+			if perm.HasKeyword(KWIndestructible) {
+				continue
+			}
+			if lethalDamage || deathtouchLethal {
 				toGraveyard = append(toGraveyard, perm)
 			}
 		}
