@@ -105,6 +105,55 @@ func TestServer_HandlerRoutes(t *testing.T) {
 	}
 }
 
+func TestServer_HandleEDHResults_Disabled(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	req := httptest.NewRequest("GET", "/api/edh-results", nil)
+	w := httptest.NewRecorder()
+	server.handleEDHResults(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp edhResultsResponse
+	body, _ := io.ReadAll(w.Body)
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Enabled {
+		t.Errorf("expected enabled=false when no EDH provider is registered")
+	}
+}
+
+func TestServer_HandleEDHResults_Enabled(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	server.SetEDHProvider(func() []simulation.EDHDeckStats {
+		return []simulation.EDHDeckStats{{
+			DeckName: "Atraxa", CommanderName: "Atraxa, Praetors' Voice",
+			Games: 3, Wins: 2, Losses: 1, WinRate: 66.6, AvgFinalLife: 12.0,
+			CommanderDamageKOs: 1,
+		}}
+	})
+	req := httptest.NewRequest("GET", "/api/edh-results", nil)
+	w := httptest.NewRecorder()
+	server.handleEDHResults(w, req)
+
+	var resp edhResultsResponse
+	body, _ := io.ReadAll(w.Body)
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !resp.Enabled {
+		t.Fatalf("expected enabled=true with provider registered")
+	}
+	if len(resp.Decks) != 1 || resp.Decks[0].DeckName != "Atraxa" {
+		t.Fatalf("unexpected EDH decks: %+v", resp.Decks)
+	}
+	if resp.Decks[0].CommanderDamageKOs != 1 {
+		t.Errorf("expected 1 commander dmg KO, got %d", resp.Decks[0].CommanderDamageKOs)
+	}
+}
+
 func TestNewServer(t *testing.T) {
 	r := simulation.NewResults()
 	server := NewServer(snapshotFromResults(r), 8080)

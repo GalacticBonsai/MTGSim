@@ -16,11 +16,17 @@ import (
 // The caller is responsible for any synchronization needed to produce the snapshot.
 type ResultsProvider func() []simulation.Result
 
+// EDHResultsProvider returns a snapshot of EDH-format aggregate stats
+// (per-deck wins, losses, commander damage KOs, etc.). It is optional;
+// when nil the dashboard falls back to the 1v1 legacy view only.
+type EDHResultsProvider func() []simulation.EDHDeckStats
+
 // Server serves the dashboard.
 type Server struct {
-	provider ResultsProvider
-	port     int
-	mux      *http.ServeMux
+	provider    ResultsProvider
+	edhProvider EDHResultsProvider
+	port        int
+	mux         *http.ServeMux
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
@@ -32,6 +38,11 @@ func NewServer(provider ResultsProvider, port int) *Server {
 	}
 }
 
+// SetEDHProvider attaches an EDH results provider to the server. The
+// /api/edh-results endpoint and the EDH section of the HTML view are
+// only enabled when a non-nil provider has been set.
+func (s *Server) SetEDHProvider(p EDHResultsProvider) { s.edhProvider = p }
+
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
 	s.registerRoutes()
@@ -40,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/results", s.handleResults)
+	s.mux.HandleFunc("/api/edh-results", s.handleEDHResults)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -87,6 +99,22 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		UniqueDecks: len(rows),
 		Decks:       rows,
 	})
+}
+
+type edhResultsResponse struct {
+	Enabled bool                       `json:"enabled"`
+	Decks   []simulation.EDHDeckStats  `json:"decks"`
+}
+
+// handleEDHResults returns per-deck EDH aggregates if an EDH provider
+// is registered; otherwise responds with {"enabled": false}.
+func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.edhProvider == nil {
+		_ = json.NewEncoder(w).Encode(edhResultsResponse{Enabled: false})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(edhResultsResponse{Enabled: true, Decks: s.edhProvider()})
 }
 
 // handleHealth returns server health.
@@ -160,6 +188,28 @@ const htmlDashboard = `
 				<tr><td colspan="4" class="loading">Loading...</td></tr>
 			</tbody>
 		</table>
+
+		<div id="edhSection" style="display:none">
+			<h3>EDH / Commander Performance</h3>
+			<table class="table" id="edhDecks">
+				<thead>
+					<tr>
+						<th>Deck</th>
+						<th>Commander</th>
+						<th>Games</th>
+						<th>Wins</th>
+						<th>Losses</th>
+						<th>Win Rate</th>
+						<th>Avg Life</th>
+						<th>Cmdr Dmg KOs</th>
+						<th>Avg Mulls</th>
+					</tr>
+				</thead>
+				<tbody id="edhDecksBody">
+					<tr><td colspan="9" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
 	</div>
 
 	<script>
@@ -171,6 +221,16 @@ const htmlDashboard = `
 				renderDecks(data);
 			} catch (err) {
 				console.error('Error loading results:', err);
+			}
+			try {
+				const res = await fetch('/api/edh-results');
+				const data = await res.json();
+				if (data.enabled) {
+					document.getElementById('edhSection').style.display = '';
+					renderEDH(data);
+				}
+			} catch (err) {
+				console.error('Error loading EDH results:', err);
 			}
 		}
 
@@ -188,6 +248,25 @@ const htmlDashboard = `
 				html += '<tr><td>' + d.name + '</td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
 			}
 			document.getElementById('decksBody').innerHTML = html || '<tr><td colspan="4">No data</td></tr>';
+		}
+
+		function renderEDH(data) {
+			const decks = data.decks || [];
+			let html = '';
+			for (let d of decks) {
+				html += '<tr>'
+					+ '<td>' + d.deck_name + '</td>'
+					+ '<td>' + (d.commander_name || '-') + '</td>'
+					+ '<td>' + d.games + '</td>'
+					+ '<td>' + d.wins + '</td>'
+					+ '<td>' + d.losses + '</td>'
+					+ '<td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td>'
+					+ '<td>' + (d.avg_final_life || 0).toFixed(1) + '</td>'
+					+ '<td>' + d.commander_damage_kos + '</td>'
+					+ '<td>' + (d.avg_mulligans || 0).toFixed(2) + '</td>'
+					+ '</tr>';
+			}
+			document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="9">No data</td></tr>';
 		}
 
 		setInterval(loadResults, 5000);
