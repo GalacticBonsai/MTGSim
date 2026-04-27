@@ -35,6 +35,9 @@ type EDHGameRecord struct {
 	Turns   int
 	Players []EDHPlayerRecord
 	Winner  string // deck name; empty if draw / turn limit
+	// Events is the per-pod replay log. Populated only when
+	// EDHRunOptions.RecordEvents is true.
+	Events []EDHEvent
 }
 
 // EDHDeckStats is the aggregate row exposed to the dashboard.

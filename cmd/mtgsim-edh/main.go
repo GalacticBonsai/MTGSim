@@ -6,10 +6,12 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -31,6 +33,7 @@ func main() {
 	keepAlive := flag.Bool("keep-alive", true, "Keep the dashboard server running after games finish")
 	logLevel := flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
 	seed := flag.Int64("seed", 0, "RNG seed (0 = time-based)")
+	replayDir := flag.String("replay", "", "Directory to write per-pod replay JSON (empty = disabled)")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
@@ -77,10 +80,18 @@ func main() {
 	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
 	start := time.Now()
 
+	if *replayDir != "" {
+		if err := os.MkdirAll(*replayDir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot create replay dir %q: %v\n", *replayDir, err)
+			os.Exit(1)
+		}
+	}
+
 	for i := 0; i < *games; i++ {
 		pod := pickPod(seats, *podSize, rng, *mulligans)
 		rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
 			Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
+			RecordEvents: *replayDir != "",
 		})
 		if err != nil {
 			logger.LogMeta("Pod %d skipped: %v", i+1, err)
@@ -90,6 +101,9 @@ func main() {
 		edhResults.RecordGame(rec)
 		recordLegacy(legacyResults, rec)
 		mu.Unlock()
+		if *replayDir != "" {
+			writeReplay(*replayDir, i+1, rec)
+		}
 		if (i+1)%10 == 0 {
 			logger.LogMeta("Completed %d/%d pods", i+1, *games)
 		}
@@ -183,6 +197,21 @@ func printSummary(r *simulation.EDHResults) {
 	for _, s := range r.DeckStats() {
 		logger.LogMeta("Deck %-30s G:%-3d W:%-3d L:%-3d WR:%5.1f%%  AvgLife:%5.1f  CmdrDmgKO:%d",
 			s.DeckName, s.Games, s.Wins, s.Losses, s.WinRate, s.AvgFinalLife, s.CommanderDamageKOs)
+	}
+}
+
+// writeReplay serializes a single pod's record (including the event log
+// when present) to JSON. The file name encodes the pod index so a batch
+// run produces stable, deterministic output names.
+func writeReplay(dir string, podIndex int, rec simulation.EDHGameRecord) {
+	path := filepath.Join(dir, fmt.Sprintf("pod-%04d.json", podIndex))
+	bs, err := json.MarshalIndent(rec, "", "  ")
+	if err != nil {
+		logger.LogMeta("replay marshal pod %d: %v", podIndex, err)
+		return
+	}
+	if err := os.WriteFile(path, bs, 0o644); err != nil {
+		logger.LogMeta("replay write pod %d: %v", podIndex, err)
 	}
 }
 

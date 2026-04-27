@@ -24,13 +24,22 @@ type EDHRunOptions struct {
 	Seats    []EDHSeat
 	MaxTurns int
 	RNG      *rand.Rand
+	// Priority is the optional opponent-priority handler. nil falls
+	// back to NoopPriorityHandler so the runner stays sorcery-speed.
+	Priority PriorityHandler
+	// RecordEvents enables per-pod event logging. The resulting log is
+	// attached to EDHGameRecord.Events. Off by default to keep batch
+	// runs cheap.
+	RecordEvents bool
 }
 
 // SimulateEDHGame runs a single pod and returns the recorded game.
 // The implementation is deliberately simple — a thin "play a land,
-// summon every creature, attack the next opponent" AI — so it exercises
-// the multiplayer / EDH plumbing (command zone, 21-damage SBA, life
-// totals) without depending on a complete cost / mana solver.
+// summon every creature, attack the most threatening opponent" AI —
+// so it exercises the multiplayer / EDH plumbing (command zone,
+// 21-damage SBA, life totals) without depending on a complete cost /
+// mana solver. Phase 4 added APNAP-ordered triggers, threat assessment,
+// an opponent-priority hook, and an optional per-pod event log.
 func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 	if len(opts.Seats) < 2 {
 		return EDHGameRecord{}, errors.New("EDH pod requires at least 2 seats")
@@ -43,13 +52,26 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 	if maxTurns <= 0 {
 		maxTurns = 50
 	}
+	priority := opts.Priority
+	if priority == nil {
+		priority = NoopPriorityHandler{}
+	}
+	var log *EDHEventLog
+	if opts.RecordEvents {
+		log = NewEDHEventLog()
+	}
 
 	players, casts := setupEDHPlayers(opts.Seats, rng)
 	g := game.NewGame(players...)
+	if log != nil {
+		for _, s := range opts.Seats {
+			log.Append(EDHEvent{Turn: 1, Phase: "setup", Kind: EventGameStart, Actor: s.DeckName, Detail: s.DeckPath})
+		}
+	}
 
 	turnLimitHit := false
 	for {
-		if anyAlive := stepOneEDHTurn(g, opts.Seats, casts); !anyAlive {
+		if anyAlive := stepOneEDHTurn(g, opts.Seats, casts, priority, log); !anyAlive {
 			break
 		}
 		if survivors(g) <= 1 {
@@ -61,7 +83,12 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 		}
 	}
 
-	return finalizeRecord(g, opts.Seats, casts, turnLimitHit), nil
+	rec := finalizeRecord(g, opts.Seats, casts, turnLimitHit)
+	if log != nil {
+		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: "end", Kind: EventGameEnd, Actor: rec.Winner})
+		rec.Events = log.Events()
+	}
+	return rec, nil
 }
 
 // setupEDHPlayers materializes Player objects, registers commanders, and
