@@ -15,21 +15,34 @@ type Player struct {
 	Battlefield []*Permanent
 	Graveyard   []SimpleCard
 	Exile       []SimpleCard
+	CommandZone []SimpleCard
 
 	manaPool map[ManaType]int
+
+	// Commander bookkeeping (CR 903). Names of cards designated as this
+	// player's commander(s); cast count from the command zone (for tax,
+	// CR 903.8); and damage received per opposing commander, keyed by
+	// "<ownerName>|<commanderName>" (CR 704.5u).
+	commanderNames          map[string]bool
+	commanderCastCount      map[string]int
+	commanderDamageReceived map[string]int
 }
 
 func NewPlayer(name string, startingLife int) *Player {
 	return &Player{
-		name:        name,
-		life:        startingLife,
-		lost:        false,
-		Library:     []SimpleCard{},
-		Hand:        []SimpleCard{},
-		Battlefield: []*Permanent{},
-		Graveyard:   []SimpleCard{},
-		Exile:       []SimpleCard{},
-		manaPool:    map[ManaType]int{},
+		name:                    name,
+		life:                    startingLife,
+		lost:                    false,
+		Library:                 []SimpleCard{},
+		Hand:                    []SimpleCard{},
+		Battlefield:             []*Permanent{},
+		Graveyard:               []SimpleCard{},
+		Exile:                   []SimpleCard{},
+		CommandZone:             []SimpleCard{},
+		manaPool:                map[ManaType]int{},
+		commanderNames:          map[string]bool{},
+		commanderCastCount:      map[string]int{},
+		commanderDamageReceived: map[string]int{},
 	}
 }
 

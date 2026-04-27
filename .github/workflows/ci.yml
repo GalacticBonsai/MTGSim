@@ -1,0 +1,110 @@
+name: CI
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.html
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  build:
+    name: Build
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build mtgsim
+        run: go build -v -o mtgsim${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim
+
+      - name: Build mtgstats
+        run: go build -v -o mtgstats${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgstats
+
+      - name: Build mtgsim-dashboard
+        run: go build -v -o mtgsim-dashboard${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim-dashboard
+
+      - name: Build stack_demo
+        run: go build -v -o stack_demo${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/stack_demo
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtgsim-${{ matrix.os }}
+          path: |
+            mtgsim*
+            mtgstats*
+            mtgsim-dashboard*
+            stack_demo*
+          if-no-files-found: error

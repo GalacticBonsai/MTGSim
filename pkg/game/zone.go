@@ -10,6 +10,7 @@ const (
 	Battlefield
 	Graveyard
 	Exile
+	Command
 )
 
 func (z Zone) String() string {
@@ -24,6 +25,8 @@ func (z Zone) String() string {
 		return "Graveyard"
 	case Exile:
 		return "Exile"
+	case Command:
+		return "Command"
 	default:
 		return "Unknown"
 	}

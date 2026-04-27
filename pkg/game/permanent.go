@@ -30,6 +30,9 @@ type Permanent struct {
 	// Minimal keyword flags (subset for Task 10)
 	firstStrike  bool
 	doubleStrike bool
+
+	// Commander status (CR 903.3)
+	isCommander bool
 }
 
 func NewPermanent(c SimpleCard, owner *Player, controller *Player) *Permanent {
@@ -97,6 +100,10 @@ func (p *Permanent) SetFirstStrike(v bool)  { p.firstStrike = v }
 func (p *Permanent) HasFirstStrike() bool   { return p.firstStrike }
 func (p *Permanent) SetDoubleStrike(v bool) { p.doubleStrike = v }
 func (p *Permanent) HasDoubleStrike() bool  { return p.doubleStrike }
+
+// Commander status (CR 903.3)
+func (p *Permanent) SetIsCommander(v bool) { p.isCommander = v }
+func (p *Permanent) IsCommander() bool     { return p.isCommander }
 
 // Attachment helpers
 func (p *Permanent) AttachTo(target *Permanent) { p.attachedTo = target }

@@ -93,7 +93,12 @@ func (g *Game) ResolveCombatDamage() {
 		if src == nil || pl == nil {
 			return
 		}
-		pl.SetLifeTotal(pl.GetLifeTotal() - src.GetPower())
+		dmg := src.GetPower()
+		pl.SetLifeTotal(pl.GetLifeTotal() - dmg)
+		// CR 704.5u: track commander damage for the 21-damage SBA.
+		if src.IsCommander() {
+			pl.AddCommanderDamage(src.GetOwner(), src.GetName(), dmg)
+		}
 	}
 
 	// Collect sets for steps

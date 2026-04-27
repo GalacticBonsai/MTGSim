@@ -43,6 +43,14 @@ func (g *Game) ApplyStateBasedActions() {
 			pl.lost = true
 		}
 	}
+
+	// 4) CR 704.5u: a player who has been dealt 21 or more combat
+	// damage by the same commander over the course of the game loses.
+	for _, pl := range g.players {
+		if pl.MaxCommanderDamageReceived() >= 21 {
+			pl.lost = true
+		}
+	}
 }
 
 func (g *Game) onBattlefield(p *Permanent) bool {
