@@ -41,6 +41,16 @@ func (g *Game) handleDies(perm *Permanent) bool {
 	if ctrl == nil {
 		return false
 	}
+	// CR 903.9: if a commander would be put into a graveyard or exile from
+	// anywhere, its owner may put it into the command zone instead. The
+	// automated player always elects to do so.
+	if perm.IsCommander() {
+		owner := perm.GetOwner()
+		if owner != nil && owner.SendCommanderToCommandZone(perm) {
+			g.emit(Event{Type: EventZoneChange, ZoneChange: &ZoneChange{Card: perm.source, From: Battlefield, To: Command, LKI: snap}})
+			return true
+		}
+	}
 	if g.wouldDieExile(perm) {
 		ok := ctrl.DestroyPermanentToExile(perm)
 		if ok {
