@@ -110,14 +110,9 @@ func (g *Game) clearUntilEndOfTurnEffects() {
 			perm.ClearDamage()
 		}
 	}
-	// restore base set effects
-	if g.continuous != nil && len(g.continuous.setBase) > 0 {
-		for p, base := range g.continuous.setBase {
-			p.power = base.power
-			p.toughness = base.toughness
-		}
-		g.continuous.setBase = map[*Permanent]struct{ power, toughness int }{}
-	}
+	// drop EOT-duration layered effects and recompute views
+	g.clearLayeredEffectsEOT()
+	g.RecomputeContinuous()
 	// clear replacements and prevention
 	g.clearReplacementsEOT()
 	g.clearPreventionEOT()
