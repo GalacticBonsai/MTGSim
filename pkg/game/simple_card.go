@@ -18,6 +18,7 @@ func (c SimpleCard) IsSorcery() bool      { return contains(c.TypeLine, "Sorcery
 func (c SimpleCard) IsArtifact() bool     { return contains(c.TypeLine, "Artifact") }
 func (c SimpleCard) IsEnchantment() bool  { return contains(c.TypeLine, "Enchantment") }
 func (c SimpleCard) IsPlaneswalker() bool { return contains(c.TypeLine, "Planeswalker") }
+func (c SimpleCard) IsLegendary() bool    { return contains(c.TypeLine, "Legendary") }
 
 // contains is a simple substring checker (ASCII)
 func contains(s, sub string) bool {

@@ -52,14 +52,17 @@ func (g *Game) ApplyStateBasedActions() {
 		}
 	}
 
-	// 3) Player 0 or less life loses
+	// 3) Legend rule (CR 704.5k): If a player controls two or more legendary permanents with the same name, that player chooses one of them, and the rest are put into their owners' graveyards.
+	g.applyLegendRule()
+
+	// 4) Player 0 or less life loses
 	for _, pl := range g.players {
 		if pl.GetLifeTotal() <= 0 {
 			pl.lost = true
 		}
 	}
 
-	// 4) CR 704.5u: a player who has been dealt 21 or more combat
+	// 5) CR 704.5u: a player who has been dealt 21 or more combat
 	// damage by the same commander over the course of the game loses.
 	for _, pl := range g.players {
 		if pl.MaxCommanderDamageReceived() >= 21 {
@@ -77,4 +80,25 @@ func (g *Game) onBattlefield(p *Permanent) bool {
 		}
 	}
 	return false
+}
+
+// applyLegendRule implements CR 704.5k: If a player controls two or more legendary permanents with the same name, that player chooses one of them, and the rest are put into their owners' graveyards.
+// For simulation purposes, we arbitrarily keep the first one encountered.
+func (g *Game) applyLegendRule() {
+	for _, pl := range g.players {
+		nameCounts := make(map[string][]*Permanent)
+		for _, perm := range pl.Battlefield {
+			if perm.IsLegendary() {
+				nameCounts[perm.GetName()] = append(nameCounts[perm.GetName()], perm)
+			}
+		}
+		for _, perms := range nameCounts {
+			if len(perms) > 1 {
+				// Keep the first one, destroy the rest
+				for i := 1; i < len(perms); i++ {
+					g.handleDies(perms[i])
+				}
+			}
+		}
+	}
 }

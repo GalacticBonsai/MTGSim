@@ -148,3 +148,4 @@ func (p *Permanent) GetAttachedTo() *Permanent  { return p.attachedTo }
 func (p *Permanent) IsCreature() bool { return p.source.IsCreature() }
 func (p *Permanent) IsLand() bool     { return p.source.IsLand() }
 func (p *Permanent) IsAura() bool     { return p.source.IsAura() }
+func (p *Permanent) IsLegendary() bool { return p.source.IsLegendary() }

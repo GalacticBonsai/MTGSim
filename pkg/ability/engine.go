@@ -307,7 +307,16 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		}
 
 	case DestroyPermanent:
-		logger.LogCard("Destroy permanent effect resolves")
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				// Destroy the permanent (put into graveyard)
+				owner := perm.GetOwner()
+				if owner != nil {
+					owner.DestroyPermanent(perm)
+					logger.LogCard("Destroyed %s", perm.GetName())
+				}
+			}
+		}
 
 	case AddMana:
 		// Add mana to player's mana pool

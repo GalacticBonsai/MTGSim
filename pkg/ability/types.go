@@ -274,6 +274,7 @@ type AbilityEngine struct {
 	triggeredQueue []*Ability
 	stack          []*StackObject
 	priorityPlayer interface{}
+	gameState      GameState
 }
 
 // StackObject represents an ability or spell on the stack.
@@ -286,11 +287,12 @@ type StackObject struct {
 }
 
 // NewAbilityEngine creates a new ability engine.
-func NewAbilityEngine() *AbilityEngine {
+func NewAbilityEngine(gameState GameState) *AbilityEngine {
 	return &AbilityEngine{
 		abilities:      make(map[uuid.UUID]*Ability),
 		triggeredQueue: make([]*Ability, 0),
 		stack:          make([]*StackObject, 0),
+		gameState:      gameState,
 	}
 }
 
@@ -359,7 +361,7 @@ func (ae *AbilityEngine) ResolveStack() error {
 func (ae *AbilityEngine) resolveAbility(stackObj *StackObject) error {
 	// TODO: Implement ability resolution based on effect types
 	for _, effect := range stackObj.Ability.Effects {
-		err := ae.applyEffect(effect, stackObj.Targets)
+		err := ae.applyEffect(effect, stackObj)
 		if err != nil {
 			return err
 		}
@@ -368,14 +370,27 @@ func (ae *AbilityEngine) resolveAbility(stackObj *StackObject) error {
 }
 
 // applyEffect applies a specific effect.
-func (ae *AbilityEngine) applyEffect(effect Effect, targets []interface{}) error {
+func (ae *AbilityEngine) applyEffect(effect Effect, stackObj *StackObject) error {
 	switch effect.Type {
 	case DrawCards:
 		// TODO: Implement card drawing
+		for _, target := range stackObj.Targets {
+			if player, ok := target.(AbilityPlayer); ok {
+				ae.gameState.DrawCards(player, effect.Value)
+			}
+		}
 	case DealDamage:
-		// TODO: Implement damage dealing
+		// Implement damage dealing
+		for _, target := range stackObj.Targets {
+			ae.gameState.DealDamage(stackObj.Source, target, effect.Value)
+		}
 	case GainLife:
 		// TODO: Implement life gain
+		for _, target := range stackObj.Targets {
+			if player, ok := target.(AbilityPlayer); ok {
+				ae.gameState.GainLife(player, effect.Value)
+			}
+		}
 	case AddMana:
 		// TODO: Implement mana addition
 	default:
