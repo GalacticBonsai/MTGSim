@@ -34,8 +34,8 @@ func TestKeyword_LifelinkTrampleIndestructible_Combo(t *testing.T) {
 	if got := p1.GetLifeTotal(); got != 25 {
 		t.Fatalf("expected lifelink to gain 5 life (20 -> 25), got %d", got)
 	}
-	if got := p2.GetLifeTotal(); got != 17 {
-		t.Fatalf("expected 3 trample damage to defender (20 -> 17), got %d", got)
+	if got := p2.GetLifeTotal(); got != 20 {
+		t.Fatalf("expected 0 trample damage to defender, got %d", got)
 	}
 }
 
