@@ -4,15 +4,30 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG d
 
 ## Features
 
-- 🎴 Import decks from `.deck` files with multiple format support
-- ⚔️ Simulate games between decks with configurable parameters
-- 📊 Track wins and losses for each deck with detailed statistics
+- 🎴 Import decks from `.deck` files with multiple format support (mainboard, sideboard, Commander)
+- ⚔️ Simulate 1v1 games between decks with configurable parameters
+- 👥 Headless multiplayer EDH/Commander pods (2–6 players) with London Mulligan
+- 🧠 Threat-assessment combat AI and APNAP-ordered triggered abilities (CR 603.3b)
+- 🎬 Per-pod structured event log with JSON replay export
+- 📊 Track wins, losses, kill source, and average game length per deck
 - 🏆 Display top-performing decks based on win percentage
 - 📚 Automatic card database management with Scryfall integration
 - 🌐 **Web Dashboard** with real-time metrics and visualizations
 - 🧪 Comprehensive test suite with high coverage
 - 📈 Statistics tool with confidence intervals
 - 🎯 Modular, well-organized codebase with proper Go package structure
+
+## Project Status
+
+MTGSim is built in incremental phases. Each phase is shipped as its own pull request once `go build`, `go vet`, and `go test ./...` are green.
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | Multiplayer & Command Zone foundation (N players, command zone, commander tax, CR 903.9 zone-change replacement, 21-commander-damage SBA, color identity validation) | ✅ Merged |
+| 2 | Effect & ability framework hardening (CR 613 seven-layer continuous effects, keyword integration into combat/SBA, formal effect interfaces, London Mulligan) | ✅ Merged |
+| 3 | Automated EDH simulation runner (`cmd/mtgsim-edh`, multiplayer metrics, dashboard endpoints) | 🔁 In review |
+| 4 | Advanced AI & multiplayer stack fidelity (APNAP triggers, threat-assessment AI, opponent priority hook, per-pod replay JSON) | 🔁 In review |
+| 5 | Hardening & polish (additional keyword interaction tests, dashboard surfacing of replay/threat metrics, README) | 🚧 In progress |
 
 ## Getting Started
 
@@ -50,7 +65,8 @@ MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG d
 
 | Tool | Purpose | Command |
 |------|---------|---------|
-| `mtgsim` | Basic game simulator | `./mtgsim [options]` |
+| `mtgsim` | 1v1 game simulator | `./mtgsim [options]` |
+| `mtgsim-edh` | Headless multiplayer EDH/Commander runner | `./mtgsim-edh [options]` |
 | `mtgstats` | Detailed statistics tool | `./mtgstats [options]` |
 | `mtgsim-dashboard` | Web-based dashboard | `./mtgsim-dashboard [options]` |
 | `stack_demo` | Stack/abilities demo | `./stack_demo` |
@@ -122,6 +138,22 @@ Sideboard
 ```sh
 ./mtgsim -log=PLAYER -games=10
 ```
+
+### EDH / Commander Multiplayer
+
+`mtgsim-edh` runs N-player Commander pods headlessly. Decks may either ship a `Commander` section or be plain main-only deckfiles (the player is then seated at 40 life with no commander but the rest of the EDH plumbing still applies).
+
+```sh
+./mtgsim-edh -games=50 -pod=4 -decks=decks/welcome -seed=1
+```
+
+**Options of note:**
+- `-pod N`: players per pod (2–6).
+- `-mulligans N`: London Mulligans every player takes before turn 1.
+- `-replay DIR`: dump per-pod JSON replays (one file per pod with the structured event log: turn starts, land plays, commander casts, summons, attacks, eliminations).
+- `-port 0`: disable the integrated dashboard.
+
+The dashboard at `http://localhost:8080` exposes both the legacy 1v1 deck table and an EDH section (`/api/edh-results`) backed by the multiplayer aggregator.
 
 ## Project Structure
 
@@ -217,17 +249,17 @@ AI and automation:
 
 ## Known Limitations
 
-- Game simulation is currently simplified (basic damage dealing)
-- Full MTG rules engine is not implemented
-- Advanced card interactions are not simulated
+- Mana costs are not enforced in the headless EDH runner; the AI plays one land per turn and summons every creature in hand.
+- Instant-speed counterplay is not yet exercised — the opponent priority hook is wired in (Phase 4) but the default handler is a no-op.
+- Activated abilities outside the main-phase auto-activator are not played by the AI.
+- JSON replays are write-only today; replaying a JSON back through the engine is planned.
 
 ## Future Enhancements
 
-- **Complete Rules Engine**: Implement full Magic: The Gathering rules
-- **Advanced Card Interactions**: Support for complex card abilities and interactions
-- **Deck Analysis**: Statistical analysis of deck composition and performance
-- **Tournament Simulation**: Multi-round tournament brackets
-- **Web Interface**: Browser-based deck building and simulation
+- **Mana-cost enforcement** in the EDH runner so colored requirements affect deck performance.
+- **Real instant-speed AI** plugged into the existing priority hook (counterspells, removal in response to spells).
+- **Replay loader** that re-runs a JSON pod through the rules engine deterministically.
+- **Tournament simulation**: multi-round pod brackets with seeding.
 
 ## Contributing
 
