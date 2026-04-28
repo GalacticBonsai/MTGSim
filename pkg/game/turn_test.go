@@ -36,11 +36,15 @@ func TestAdvancePhaseAndTurnRotation(t *testing.T) {
 	if g.GetCurrentPhase() != PhaseEnd {
 		t.Fatalf("want End, got %v", g.GetCurrentPhase())
 	}
+	g.AdvancePhase() // Cleanup
+	if g.GetCurrentPhase() != PhaseCleanup {
+		t.Fatalf("want Cleanup after End, got %v", g.GetCurrentPhase())
+	}
 
 	// Next call rotates to next player and Untap
 	g.AdvancePhase() // -> next player's Untap
 	if g.GetCurrentPhase() != PhaseUntap {
-		t.Fatalf("want Untap after End")
+		t.Fatalf("want Untap after Cleanup")
 	}
 	if g.GetCurrentPlayerRaw() != p2 {
 		t.Fatalf("expected turn to rotate to P2")
@@ -50,7 +54,7 @@ func TestAdvancePhaseAndTurnRotation(t *testing.T) {
 	}
 
 	// Complete P2's turn to wrap back to P1 and increment turn
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		g.AdvancePhase()
 	}
 	if g.GetCurrentPlayerRaw() != p1 {

@@ -11,6 +11,7 @@ const (
 	PhaseCombat
 	PhaseMain2
 	PhaseEnd
+	PhaseCleanup
 )
 
 // Game is the core game container for players and shared state.
@@ -72,7 +73,16 @@ func (g *Game) IsMainPhase() bool {
 }
 func (g *Game) IsCombatPhase() bool { return g.currentPhase == PhaseCombat }
 
-// AdvancePhase steps to the next phase; on end step completion, rotate to next player's turn.
+// removeDamageFromPermanents removes all damage from permanents during cleanup step.
+func (g *Game) removeDamageFromPermanents() {
+	for _, pl := range g.players {
+		for _, perm := range pl.Battlefield {
+			perm.ClearDamage()
+		}
+	}
+}
+
+// AdvancePhase steps to the next phase; on cleanup step completion, rotate to next player's turn.
 func (g *Game) AdvancePhase() {
 	switch g.currentPhase {
 	case PhaseUntap:
@@ -88,6 +98,10 @@ func (g *Game) AdvancePhase() {
 	case PhaseMain2:
 		g.currentPhase = PhaseEnd
 	case PhaseEnd:
+		g.currentPhase = PhaseCleanup
+	case PhaseCleanup:
+		// cleanup step: remove damage from permanents
+		g.removeDamageFromPermanents()
 		// end of turn -> next player
 		g.clearUntilEndOfTurnEffects()
 		if len(g.players) > 0 {
