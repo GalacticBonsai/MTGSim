@@ -12,6 +12,7 @@ type SimpleCard struct {
 	// automation to keep generated lists legal under CR 903.4.
 	ColorIdentity []string
 	ManaCost      string
+
 }
 
 func (c SimpleCard) IsLand() bool         { return contains(c.TypeLine, "Land") }
