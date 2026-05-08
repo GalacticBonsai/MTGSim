@@ -123,3 +123,39 @@ Deck
 		t.Fatalf("expected empty sideboard, got %d", side.Size())
 	}
 }
+
+func TestImportCommanderDeckfileWithSideboard_ValidatesSideboard(t *testing.T) {
+	db := newCommanderMockDB()
+	path := writeTempDeck(t, `Commander
+1 Krenko, Mob Boss
+
+Deck
+1 Goblin Guide
+1 Mountain
+
+Sideboard
+1 Sol Ring
+`)
+	cmd, main, side, err := ImportCommanderDeckfileWithSideboard(path, db)
+	if err != nil {
+		t.Fatalf("expected valid commander deck with sideboard, got %v", err)
+	}
+	if cmd.Name != "Krenko, Mob Boss" || main.Size() != 2 || side.Size() != 1 {
+		t.Fatalf("unexpected import cmd=%s main=%d side=%d", cmd.Name, main.Size(), side.Size())
+	}
+
+	offColor := writeTempDeck(t, `Commander
+1 Krenko, Mob Boss
+
+Deck
+1 Goblin Guide
+1 Mountain
+
+Sideboard
+1 Llanowar Elves
+`)
+	_, _, _, err = ImportCommanderDeckfileWithSideboard(offColor, db)
+	if err == nil || !strings.Contains(err.Error(), "color identity") {
+		t.Fatalf("expected sideboard color identity error, got %v", err)
+	}
+}

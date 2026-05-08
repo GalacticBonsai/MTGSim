@@ -151,6 +151,8 @@ Sideboard
 - `-pod N`: players per pod (2–6).
 - `-mulligans N`: London Mulligans every player takes before turn 1.
 - `-replay DIR`: dump per-pod JSON replays (one file per pod with the structured event log: turn starts, land plays, commander casts, summons, attacks, eliminations).
+- `-sideboard-variants N`: generate N additional deck variants per imported deck by swapping cards from the deck's `Sideboard` section into the main list.
+- `-sideboard-swaps N`: cards swapped per generated sideboard variant (default 3). Variant names are annotated in stats so win rates compare original lists against each sideboard mix.
 - `-port 0`: disable the integrated dashboard.
 
 The dashboard at `http://localhost:8080` exposes both the legacy 1v1 deck table and an EDH section (`/api/edh-results`) backed by the multiplayer aggregator.

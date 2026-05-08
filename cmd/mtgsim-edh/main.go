@@ -34,6 +34,8 @@ func main() {
 	logLevel := flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
 	seed := flag.Int64("seed", 0, "RNG seed (0 = time-based)")
 	replayDir := flag.String("replay", "", "Directory to write per-pod replay JSON (empty = disabled)")
+	sideboardVariants := flag.Int("sideboard-variants", 0, "Generated sideboard variants per imported deck (0 = disabled)")
+	sideboardSwaps := flag.Int("sideboard-swaps", 3, "Cards swapped per generated sideboard variant")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
@@ -58,9 +60,24 @@ func main() {
 	}
 	logger.LogMeta("Found %d deck files in %s", len(deckFiles), *decksDir)
 
+	rngSeed := *seed
+	if rngSeed == 0 {
+		rngSeed = time.Now().UnixNano()
+	}
+	rng := rand.New(rand.NewSource(rngSeed))
+
 	seats := loadSeats(deckFiles, cardDB)
+	if *sideboardVariants > 0 {
+		before := len(seats)
+		seats = simulation.ExpandSideboardVariants(seats, simulation.SideboardVariantOptions{
+			VariantsPerDeck: *sideboardVariants,
+			SwapsPerVariant: *sideboardSwaps,
+			RNG:             rand.New(rand.NewSource(rng.Int63())),
+		})
+		logger.LogMeta("Generated %d sideboard variants (%d total seats)", len(seats)-before, len(seats))
+	}
 	if len(seats) < *podSize {
-		fmt.Fprintf(os.Stderr, "Only %d deck files were importable; need %d\n", len(seats), *podSize)
+		fmt.Fprintf(os.Stderr, "Only %d decklists/variants were importable; need %d\n", len(seats), *podSize)
 		os.Exit(1)
 	}
 
@@ -71,12 +88,6 @@ func main() {
 	if *port > 0 {
 		startDashboard(legacyResults, edhResults, &mu, *port)
 	}
-
-	rngSeed := *seed
-	if rngSeed == 0 {
-		rngSeed = time.Now().UnixNano()
-	}
-	rng := rand.New(rand.NewSource(rngSeed))
 	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
 	start := time.Now()
 
@@ -138,21 +149,21 @@ func loadSeats(deckFiles []string, cardDB *card.CardDB) []simulation.EDHSeat {
 // a commander it is registered; otherwise the player is seated at 40
 // life with no commander but the rest of the EDH plumbing still applies.
 func loadEDHSeat(path string, cardDB deck.CardDatabase) (simulation.EDHSeat, error) {
-	if cmdr, main, err := deck.ImportCommanderDeckfile(path, cardDB); err == nil {
+	if cmdr, main, side, err := deck.ImportCommanderDeckfileWithSideboard(path, cardDB); err == nil {
 		c := toSimpleCard(cmdr)
 		return simulation.EDHSeat{
 			DeckPath: path, DeckName: main.Name,
-			Library:   librarySimpleCards(main),
+			Library: librarySimpleCards(main), Sideboard: librarySimpleCards(side),
 			Commander: &c,
 		}, nil
 	}
-	main, _, err := deck.ImportDeckfile(path, cardDB)
+	main, side, err := deck.ImportDeckfile(path, cardDB)
 	if err != nil {
 		return simulation.EDHSeat{}, err
 	}
 	return simulation.EDHSeat{
 		DeckPath: path, DeckName: main.Name,
-		Library: librarySimpleCards(main),
+		Library: librarySimpleCards(main), Sideboard: librarySimpleCards(side),
 	}, nil
 }
 
@@ -168,7 +179,8 @@ func toSimpleCard(c card.Card) game.SimpleCard {
 	return game.SimpleCard{
 		Name: c.Name, TypeLine: c.TypeLine, Power: c.Power,
 		Toughness: c.Toughness, OracleText: c.OracleText, Colors: c.Colors,
-		ManaCost: c.ManaCost,
+		ColorIdentity: c.ColorIdentity,
+		ManaCost:      c.ManaCost,
 	}
 }
 

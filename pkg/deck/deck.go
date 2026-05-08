@@ -79,17 +79,28 @@ func ImportDeckfile(filename string, cardDB CardDatabase) (Deck, Deck, error) {
 // color identity that is a subset of the commander's color identity (CR
 // 903.4). Returns (commander, mainDeck, error).
 func ImportCommanderDeckfile(filename string, cardDB CardDatabase) (card.Card, Deck, error) {
-	main, _, commander, err := importDeckfileWithCommander(filename, cardDB)
+	commanderCard, main, _, err := ImportCommanderDeckfileWithSideboard(filename, cardDB)
+	return commanderCard, main, err
+}
+
+// ImportCommanderDeckfileWithSideboard imports a Commander deck and returns
+// the commander, main deck, and sideboard. Both main and sideboard cards are
+// validated against the commander's color identity because sideboard variants
+// may swap those cards into the main deck.
+func ImportCommanderDeckfileWithSideboard(filename string, cardDB CardDatabase) (card.Card, Deck, Deck, error) {
+	main, side, commander, err := importDeckfileWithCommander(filename, cardDB)
 	if err != nil {
-		return card.Card{}, Deck{}, err
+		return card.Card{}, Deck{}, Deck{}, err
 	}
 	if commander == nil {
-		return card.Card{}, Deck{}, errMissingCommander
+		return card.Card{}, Deck{}, Deck{}, errMissingCommander
 	}
-	if err := validateColorIdentity(*commander, main.Cards); err != nil {
-		return *commander, main, err
+	legalCards := append([]card.Card{}, main.Cards...)
+	legalCards = append(legalCards, side.Cards...)
+	if err := validateColorIdentity(*commander, legalCards); err != nil {
+		return *commander, main, side, err
 	}
-	return *commander, main, nil
+	return *commander, main, side, nil
 }
 
 func importDeckfileWithCommander(filename string, cardDB CardDatabase) (Deck, Deck, *card.Card, error) {
