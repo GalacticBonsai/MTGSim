@@ -8,10 +8,11 @@ func TestEDHResults_RecordAndAggregate(t *testing.T) {
 	r := NewEDHResults()
 
 	r.RecordGame(EDHGameRecord{
-		Turns:  10,
-		Winner: "Alpha",
+		Turns: 10, Winner: "Alpha", MaxStormCount: 3, TotalManaSpent: 11, TotalCardsPlayed: 8,
+		TotalCombatDamage: 21, TotalEliminations: 2,
 		Players: []EDHPlayerRecord{
-			{DeckName: "Alpha", CommanderName: "Atraxa", Mulligans: 0, FinalLife: 17, CommanderCasts: 1},
+			{DeckName: "Alpha", CommanderName: "Atraxa", Mulligans: 0, FinalLife: 17, CommanderCasts: 1,
+				CardsPlayed: 5, LandsPlayed: 2, SpellsCast: 3, ManaSpent: 7, MaxStormCount: 3, CombatDamage: 21, Eliminations: 2},
 			{DeckName: "Beta", CommanderName: "Edgar", Mulligans: 1, FinalLife: 0, CommanderCasts: 2,
 				Eliminated: true, KillSource: KillSourceLifeLoss},
 			{DeckName: "Gamma", CommanderName: "Krenko", Mulligans: 2, FinalLife: 0, CommanderCasts: 1,
@@ -19,12 +20,14 @@ func TestEDHResults_RecordAndAggregate(t *testing.T) {
 		},
 	})
 	r.RecordGame(EDHGameRecord{
-		Turns:  14,
-		Winner: "Beta",
+		Turns: 14, Winner: "Beta", MaxStormCount: 2, TotalManaSpent: 9, TotalCardsPlayed: 6,
+		TotalCombatDamage: 15, TotalEliminations: 1,
 		Players: []EDHPlayerRecord{
 			{DeckName: "Alpha", CommanderName: "Atraxa", Mulligans: 0, FinalLife: 0, CommanderCasts: 1,
+				CardsPlayed: 3, LandsPlayed: 1, SpellsCast: 2, ManaSpent: 4, MaxStormCount: 2, CombatDamage: 0,
 				Eliminated: true, KillSource: KillSourceCommanderDamage},
-			{DeckName: "Beta", CommanderName: "Edgar", Mulligans: 0, FinalLife: 8, CommanderCasts: 1},
+			{DeckName: "Beta", CommanderName: "Edgar", Mulligans: 0, FinalLife: 8, CommanderCasts: 1,
+				CardsPlayed: 3, LandsPlayed: 1, SpellsCast: 2, ManaSpent: 5, MaxStormCount: 2, CombatDamage: 15, Eliminations: 1},
 		},
 	})
 
@@ -54,6 +57,12 @@ func TestEDHResults_RecordAndAggregate(t *testing.T) {
 	if alpha.AvgFinalLife != 8.5 {
 		t.Fatalf("Alpha avg final life want 8.5, got %v", alpha.AvgFinalLife)
 	}
+	if alpha.MaxStormCount != 3 || alpha.TotalManaSpent != 11 || alpha.TotalCardsPlayed != 8 || alpha.Eliminations != 2 {
+		t.Fatalf("Alpha tuning metrics wrong: %+v", alpha)
+	}
+	if alpha.AvgManaSpent != 5.5 || alpha.AvgCardsPlayed != 4.0 || alpha.AvgCombatDamage != 10.5 {
+		t.Fatalf("Alpha tuning averages wrong: %+v", alpha)
+	}
 
 	beta := byName["Beta"]
 	if beta.Wins != 1 || beta.Losses != 1 || beta.LifeLossKOs != 1 {
@@ -66,6 +75,14 @@ func TestEDHResults_RecordAndAggregate(t *testing.T) {
 	}
 	if gamma.AvgMulligans != 2.0 {
 		t.Fatalf("Gamma avg mulligans want 2, got %v", gamma.AvgMulligans)
+	}
+
+	summary := r.Summary()
+	if summary.TotalGames != 2 || summary.HighestStormCount != 3 || summary.TotalManaSpent != 20 || summary.TotalCardsPlayed != 14 {
+		t.Fatalf("summary totals wrong: %+v", summary)
+	}
+	if summary.AverageManaSpent != 10 || summary.AverageCardsPlayed != 7 || summary.AverageCombatDamage != 18 {
+		t.Fatalf("summary averages wrong: %+v", summary)
 	}
 }
 

@@ -24,11 +24,15 @@ type EDHResultsProvider func() []simulation.EDHDeckStats
 // EDHGamesProvider returns recent EDH pod records for replay/event-log views.
 type EDHGamesProvider func() []simulation.EDHGameRecord
 
+// EDHSummaryProvider returns global EDH telemetry for dashboard highlight cards.
+type EDHSummaryProvider func() simulation.EDHSummary
+
 // Server serves the dashboard.
 type Server struct {
 	provider    ResultsProvider
 	edhProvider EDHResultsProvider
 	edhGames    EDHGamesProvider
+	edhSummary  EDHSummaryProvider
 	port        int
 	mux         *http.ServeMux
 }
@@ -49,6 +53,9 @@ func (s *Server) SetEDHProvider(p EDHResultsProvider) { s.edhProvider = p }
 
 // SetEDHGamesProvider attaches a recent-pod provider for /api/edh-games.
 func (s *Server) SetEDHGamesProvider(p EDHGamesProvider) { s.edhGames = p }
+
+// SetEDHSummaryProvider attaches global EDH telemetry for /api/edh-results.
+func (s *Server) SetEDHSummaryProvider(p EDHSummaryProvider) { s.edhSummary = p }
 
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
@@ -112,6 +119,7 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 type edhResultsResponse struct {
 	Enabled bool                      `json:"enabled"`
 	Decks   []simulation.EDHDeckStats `json:"decks"`
+	Summary simulation.EDHSummary     `json:"summary"`
 }
 
 // handleEDHResults returns per-deck EDH aggregates if an EDH provider
@@ -122,7 +130,11 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(edhResultsResponse{Enabled: false})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(edhResultsResponse{Enabled: true, Decks: s.edhProvider()})
+	resp := edhResultsResponse{Enabled: true, Decks: s.edhProvider()}
+	if s.edhSummary != nil {
+		resp.Summary = s.edhSummary()
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 type edhGamesResponse struct {
@@ -212,6 +224,11 @@ const htmlDashboard = `
 		</table>
 
 		<div id="edhSection" style="display:none">
+				<h3>EDH Tuning Highlights</h3>
+				<div class="grid" id="edhSummary">
+					<div class="loading">Loading EDH telemetry...</div>
+				</div>
+
 			<h3>EDH / Commander Performance</h3>
 			<table class="table" id="edhDecks">
 				<thead>
@@ -227,21 +244,29 @@ const htmlDashboard = `
 							<th>Life KOs</th>
 							<th>Mill KOs</th>
 							<th>Avg Cmdr Casts</th>
+					<th>Avg Mana</th>
+					<th>Avg Cards</th>
+					<th>Avg Lands</th>
+					<th>Avg Spells</th>
+					<th>Avg Creatures</th>
+							<th>Avg Combat</th>
+							<th>Max Storm</th>
+							<th>KOs</th>
 						<th>Avg Mulls</th>
 					</tr>
 				</thead>
 				<tbody id="edhDecksBody">
-						<tr><td colspan="12" class="loading">Loading...</td></tr>
+					<tr><td colspan="20" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
 
 				<h3>Recent EDH Pods</h3>
 				<table class="table" id="edhGames">
 					<thead>
-						<tr><th>Winner</th><th>Turns</th><th>Players</th><th>Events</th><th>Last Event</th></tr>
+						<tr><th>Winner</th><th>Turns</th><th>Max Storm</th><th>Mana</th><th>Cards</th><th>Combat</th><th>Players</th><th>Events</th><th>Last Event</th></tr>
 					</thead>
 					<tbody id="edhGamesBody">
-						<tr><td colspan="5" class="loading">Loading...</td></tr>
+						<tr><td colspan="9" class="loading">Loading...</td></tr>
 					</tbody>
 				</table>
 		</div>
@@ -287,6 +312,7 @@ const htmlDashboard = `
 
 		function renderEDH(data) {
 			const decks = data.decks || [];
+				renderEDHSummary(data.summary || {});
 			let html = '';
 			for (let d of decks) {
 				html += '<tr>'
@@ -301,11 +327,31 @@ const htmlDashboard = `
 					+ '<td>' + d.life_loss_kos + '</td>'
 					+ '<td>' + d.mill_kos + '</td>'
 					+ '<td>' + (d.avg_commander_casts || 0).toFixed(2) + '</td>'
+					+ '<td>' + (d.avg_mana_spent || 0).toFixed(1) + '</td>'
+					+ '<td>' + (d.avg_cards_played || 0).toFixed(1) + '</td>'
+					+ '<td>' + (d.avg_lands_played || 0).toFixed(1) + '</td>'
+					+ '<td>' + (d.avg_spells_cast || 0).toFixed(1) + '</td>'
+					+ '<td>' + (d.avg_creatures_cast || 0).toFixed(1) + '</td>'
+					+ '<td>' + (d.avg_combat_damage || 0).toFixed(1) + '</td>'
+					+ '<td>' + (d.max_storm_count || 0) + '</td>'
+					+ '<td>' + (d.eliminations || 0) + '</td>'
 					+ '<td>' + (d.avg_mulligans || 0).toFixed(2) + '</td>'
 					+ '</tr>';
 			}
-				document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="12">No data</td></tr>';
+				document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
 		}
+
+			function renderEDHSummary(s) {
+				let html = '';
+				html += '<div class="card"><h2>EDH Pods</h2><div class="value">' + (s.total_games || 0) + '</div></div>';
+				html += '<div class="card"><h2>Average Turns</h2><div class="value">' + (s.average_turns || 0).toFixed(1) + '</div></div>';
+				html += '<div class="card"><h2>Highest Storm</h2><div class="value">' + (s.highest_storm_count || 0) + '</div></div>';
+				html += '<div class="card"><h2>Total Mana Spent</h2><div class="value">' + (s.total_mana_spent || 0) + '</div><span class="unit">avg ' + (s.average_mana_spent || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card"><h2>Total Cards Played</h2><div class="value">' + (s.total_cards_played || 0) + '</div><span class="unit">avg ' + (s.average_cards_played || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card"><h2>Combat Damage</h2><div class="value">' + (s.total_combat_damage || 0) + '</div><span class="unit">avg ' + (s.average_combat_damage || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card"><h2>Eliminations</h2><div class="value">' + (s.total_eliminations || 0) + '</div><span class="unit">avg ' + (s.average_eliminations || 0).toFixed(1) + '/pod</span></div>';
+				document.getElementById('edhSummary').innerHTML = html;
+			}
 
 			async function loadEDHGames() {
 				try {
@@ -314,18 +360,18 @@ const htmlDashboard = `
 					if (data.enabled) renderEDHGames(data.games || []);
 				} catch (err) {
 					console.error('Error loading EDH games:', err);
-				}
+			}
 			}
 
 			function renderEDHGames(games) {
 				let html = '';
 				for (let g of games) {
-					const players = (g.Players || []).map(p => p.DeckName + (p.Eliminated ? ' ✗' : ' ✓')).join(', ');
+					const players = (g.Players || []).map(p => p.DeckName + ' mana=' + (p.ManaSpent || 0) + ' cards=' + (p.CardsPlayed || 0) + (p.Eliminated ? ' ✗' : ' ✓')).join('<br>');
 					const events = g.Events || [];
 					const last = events.length ? events[events.length - 1].kind : '-';
-					html += '<tr><td>' + (g.Winner || 'Draw') + '</td><td>' + g.Turns + '</td><td>' + players + '</td><td>' + events.length + '</td><td>' + last + '</td></tr>';
-				}
-				document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="5">No recent pods</td></tr>';
+					html += '<tr><td>' + (g.Winner || 'Draw') + '</td><td>' + g.Turns + '</td><td>' + (g.MaxStormCount || 0) + '</td><td>' + (g.TotalManaSpent || 0) + '</td><td>' + (g.TotalCardsPlayed || 0) + '</td><td>' + (g.TotalCombatDamage || 0) + '</td><td>' + players + '</td><td>' + events.length + '</td><td>' + last + '</td></tr>';
+			}
+				document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="9">No recent pods</td></tr>';
 			}
 
 		setInterval(loadResults, 5000);

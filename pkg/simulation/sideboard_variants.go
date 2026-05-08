@@ -98,6 +98,7 @@ func cloneSeat(s EDHSeat) EDHSeat {
 	out := s
 	out.Library = append([]game.SimpleCard(nil), s.Library...)
 	out.Sideboard = append([]game.SimpleCard(nil), s.Sideboard...)
+	out.Commanders = append([]game.SimpleCard(nil), s.Commanders...)
 	if s.Commander != nil {
 		c := *s.Commander
 		out.Commander = &c

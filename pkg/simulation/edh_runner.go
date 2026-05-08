@@ -3,6 +3,7 @@ package simulation
 import (
 	"errors"
 	"math/rand"
+	"strings"
 
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
@@ -16,8 +17,11 @@ type EDHSeat struct {
 	DeckName  string
 	Library   []game.SimpleCard
 	Sideboard []game.SimpleCard
-	Commander *game.SimpleCard // nil if the deck has no commander designated
-	Mulligans int              // mulligans the player will take before the game starts
+	// Commanders holds all designated command-zone cards. Commander is retained
+	// for callers/tests that only need a single commander.
+	Commanders []game.SimpleCard
+	Commander  *game.SimpleCard // nil if the deck has no commander designated
+	Mulligans  int              // mulligans the player will take before the game starts
 }
 
 // EDHRunOptions configures one pod simulation.
@@ -61,6 +65,7 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 	if opts.RecordEvents {
 		log = NewEDHEventLog()
 	}
+	metrics := newEDHMetrics(len(opts.Seats))
 
 	players, casts := setupEDHPlayers(opts.Seats, rng)
 	g := game.NewGame(players...)
@@ -72,7 +77,7 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 
 	turnLimitHit := false
 	for {
-		if anyAlive := stepOneEDHTurn(g, opts.Seats, casts, priority, log); !anyAlive {
+		if anyAlive := stepOneEDHTurn(g, casts, priority, log, metrics); !anyAlive {
 			break
 		}
 		if survivors(g) <= 1 {
@@ -84,7 +89,7 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 		}
 	}
 
-	rec := finalizeRecord(g, opts.Seats, casts, turnLimitHit)
+	rec := finalizeRecord(g, opts.Seats, casts, turnLimitHit, metrics)
 	if log != nil {
 		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: "end", Kind: EventGameEnd, Actor: rec.Winner})
 		rec.Events = log.Events()
@@ -101,8 +106,8 @@ func setupEDHPlayers(seats []EDHSeat, rng *rand.Rand) ([]*game.Player, []int) {
 		p := game.NewEDHPlayer(s.DeckName)
 		p.Library = append(p.Library, s.Library...)
 		rng.Shuffle(len(p.Library), func(a, b int) { p.Library[a], p.Library[b] = p.Library[b], p.Library[a] })
-		if s.Commander != nil {
-			p.RegisterCommander(*s.Commander)
+		for _, commander := range seatCommanders(s) {
+			p.RegisterCommander(commander)
 		}
 		if s.Mulligans > 0 {
 			_, _ = p.LondonMulligan(rng, s.Mulligans)
@@ -126,7 +131,7 @@ func survivors(g *game.Game) int {
 }
 
 // finalizeRecord builds the EDHGameRecord after the simulation loop ends.
-func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit bool) EDHGameRecord {
+func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit bool, metrics *edhMetrics) EDHGameRecord {
 	rec := EDHGameRecord{Turns: g.GetTurnNumber(), Players: make([]EDHPlayerRecord, len(seats))}
 	var winner string
 	for i, p := range g.GetPlayersRaw() {
@@ -136,17 +141,40 @@ func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit boo
 			FinalLife:      p.GetLifeTotal(),
 			CommanderCasts: casts[i],
 		}
-		if seats[i].Commander != nil {
-			pr.CommanderName = seats[i].Commander.Name
-		}
+		pr.CommanderName = strings.Join(seatCommanderNames(seats[i]), " / ")
 		if p.HasLost() {
 			pr.Eliminated = true
 			pr.KillSource = classifyElimination(p, turnLimitHit)
 		} else {
 			winner = seats[i].DeckName
 		}
+		if metrics != nil {
+			metrics.applyToPlayerRecord(i, &pr)
+		}
 		rec.Players[i] = pr
 	}
 	rec.Winner = winner
+	if metrics != nil {
+		metrics.applyToGameRecord(&rec)
+	}
 	return rec
+}
+
+func seatCommanders(s EDHSeat) []game.SimpleCard {
+	if len(s.Commanders) > 0 {
+		return s.Commanders
+	}
+	if s.Commander != nil {
+		return []game.SimpleCard{*s.Commander}
+	}
+	return nil
+}
+
+func seatCommanderNames(s EDHSeat) []string {
+	commanders := seatCommanders(s)
+	names := make([]string, 0, len(commanders))
+	for _, c := range commanders {
+		names = append(names, c.Name)
+	}
+	return names
 }

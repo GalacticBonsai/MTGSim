@@ -11,15 +11,16 @@ import (
 type EDHEventKind string
 
 const (
-	EventGameStart       EDHEventKind = "game_start"
-	EventTurnStart       EDHEventKind = "turn_start"
-	EventLandPlay        EDHEventKind = "land_play"
-	EventCreatureSummon  EDHEventKind = "creature_summon"
-	EventCommanderCast   EDHEventKind = "commander_cast"
-	EventAttackDeclared  EDHEventKind = "attack_declared"
-	EventCombatResolved  EDHEventKind = "combat_resolved"
+	EventGameStart        EDHEventKind = "game_start"
+	EventTurnStart        EDHEventKind = "turn_start"
+	EventLandPlay         EDHEventKind = "land_play"
+	EventCreatureSummon   EDHEventKind = "creature_summon"
+	EventPermanentCast    EDHEventKind = "permanent_cast"
+	EventCommanderCast    EDHEventKind = "commander_cast"
+	EventAttackDeclared   EDHEventKind = "attack_declared"
+	EventCombatResolved   EDHEventKind = "combat_resolved"
 	EventPlayerEliminated EDHEventKind = "player_eliminated"
-	EventGameEnd         EDHEventKind = "game_end"
+	EventGameEnd          EDHEventKind = "game_end"
 )
 
 // EDHEvent is a single structured entry in a pod's event log. Designed

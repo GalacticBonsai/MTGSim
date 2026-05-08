@@ -1,283 +1,413 @@
-# MTGSim
+# MTGSim 🎴⚔️
 
-MTGSim is a Magic: The Gathering (MTG) deck simulation tool that simulates MTG decks and helps analyze deck performance. The tool can import decks, simulate games, and track the performance of different decks.
+[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](./)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## Features
+> A headless, automated **Magic: The Gathering** simulator and deck-analysis sandbox written in Go.
 
-- 🎴 Import decks from `.deck` files with multiple format support (mainboard, sideboard, Commander)
-- ⚔️ Simulate 1v1 games between decks with configurable parameters
-- 👥 Headless multiplayer EDH/Commander pods (2–6 players) with London Mulligan
-- 🧠 Threat-assessment combat AI and APNAP-ordered triggered abilities (CR 603.3b)
-- 🎬 Per-pod structured event log with JSON replay export
-- 📊 Track wins, losses, kill source, and average game length per deck
-- 🏆 Display top-performing decks based on win percentage
-- 📚 Automatic card database management with Scryfall integration
-- 🌐 **Web Dashboard** with real-time metrics and visualizations
-- 🧪 Comprehensive test suite with high coverage
-- 📈 Statistics tool with confidence intervals
-- 🎯 Modular, well-organized codebase with proper Go package structure
+MTGSim lets you import decklists, simulate thousands of games, and analyze performance — from quick 1v1 smoke tests to full multiplayer EDH pods with structured replay export. Everything runs locally with a cached Scryfall card database and ships with a built-in web dashboard.
 
-## Project Status
+## Five commands, five levels of fidelity
 
-MTGSim is built in incremental phases. Each phase is shipped as its own pull request once `go build`, `go vet`, and `go test ./...` are green.
+| Command | What it does | Best for |
+|---|---|---|
+| `mtgsim` | Fast 1v1 batch simulator | Smoke-testing deck ideas |
+| `mtgstats` | Mana-aware 1v1 stats with confidence intervals | Comparing tuned lists |
+| `mtgsim-edh` | Multiplayer Commander pods (2–6 players) | EDH meta analysis |
+| `mtgsim-dashboard` | Live web dashboard for results | Real-time browsing |
+| `stack_demo` | Stack / priority demo | Understanding the engine |
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| 1 | Multiplayer & Command Zone foundation (N players, command zone, commander tax, CR 903.9 zone-change replacement, 21-commander-damage SBA, color identity validation) | ✅ Merged |
-| 2 | Effect & ability framework hardening (CR 613 seven-layer continuous effects, keyword integration into combat/SBA, formal effect interfaces, London Mulligan) | ✅ Merged |
-| 3 | Automated EDH simulation runner (`cmd/mtgsim-edh`, multiplayer metrics, dashboard endpoints) | 🔁 In review |
-| 4 | Advanced AI & multiplayer stack fidelity (APNAP triggers, threat-assessment AI, opponent priority hook, per-pod replay JSON) | 🔁 In review |
-| 5 | Hardening & polish (additional keyword interaction tests, dashboard surfacing of replay/threat metrics, README) | 🚧 In progress |
+## Feature highlights
 
-## Getting Started
+- 🧠 **Multiplayer EDH engine** — 2-6 players, 40 life, command zone, commander tax, 21-damage SBA, London Mulligans
+- 📊 **Threat-based AI** — attack targeting uses board-state scoring; APNAP-ordered trigger resolution
+- 📝 **Replay export** — per-pod structured JSON event logs (turns, casts, combat, eliminations)
+- 🌐 **Built-in dashboard** — auto-refreshing HTML UI with 1v1 and EDH endpoints
+- 📦 **Flexible deck import** — plain lists, Cockatrice `.dck`, sectioned exports (Moxfield, etc.), inferred commanders
+- 🧪 **Comprehensive tests** — full coverage across `pkg/game`, `pkg/ability`, `pkg/simulation`, `pkg/deck`, and `pkg/dashboard`
 
-### Prerequisites
+## Quick decision guide
 
-- Go 1.21 or later
-- Internet connection (for downloading card data on first run)
+- **Quick 1v1 smoke test** → `mtgsim`
+- **Richer 1v1 analysis with mana enforcement** → `mtgstats`
+- **EDH pod testing & replay export** → `mtgsim-edh`
+- **Browser-based metrics** → `mtgsim-dashboard`
 
-### Installation
+## Requirements
 
-1. Clone the repository:
-    ```sh
-    git clone https://github.com/yourusername/MTGSim.git
-    cd MTGSim
-    ```
+- Go 1.21+ (Go 1.23.x recommended — `go.mod` pins `toolchain go1.23.4`)
+- Internet access **only** if `cardDB.json` is missing (one-time Scryfall download)
 
-2. Install dependencies:
-    ```sh
-    go mod tidy
-    ```
-
-3. Build the project:
-    ```sh
-    go build -o mtgsim ./cmd/mtgsim
-    ```
-
-4. Run the project:
-    ```sh
-    ./mtgsim
-    ```
-
-## Usage
-
-### Available Tools
-
-| Tool | Purpose | Command |
-|------|---------|---------|
-| `mtgsim` | 1v1 game simulator | `./mtgsim [options]` |
-| `mtgsim-edh` | Headless multiplayer EDH/Commander runner | `./mtgsim-edh [options]` |
-| `mtgstats` | Detailed statistics tool | `./mtgstats [options]` |
-| `mtgsim-dashboard` | Web-based dashboard | `./mtgsim-dashboard [options]` |
-| `stack_demo` | Stack/abilities demo | `./stack_demo` |
-
-### Command Line Options
+## Quick start
 
 ```sh
-./mtgsim [options]
+git clone https://github.com/mtgsim/mtgsim.git
+cd MTGSim
 ```
 
-**Options:**
-- `-games N`: Number of games to simulate (default: 1)
-- `-decks DIR`: Directory containing deck files (default: "decks/1v1")
-- `-log LEVEL`: Log level - META, GAME, PLAYER, CARD (default: "CARD")
+On first run the simulator checks for `cardDB.json` in the repo root. If it is missing, it downloads the pinned Scryfall oracle snapshot and caches it locally automatically.
 
-### Web Dashboard
-
-Launch the web dashboard to browse simulation metrics in real-time:
+### 1️⃣ Run a quick 1v1 batch
 
 ```sh
-./mtgsim-dashboard -games=100 -port=8080
+go run ./cmd/mtgsim -games=100 -decks=decks/welcome -log=META
 ```
 
-Then open http://localhost:8080 in your browser to see:
-- 📊 Total games played and aggregate metrics
-- 🏆 Deck win rates with sortable rankings
-- ⏱️ Average game duration and turn counts
-- 📜 Recent game history with details
-- 🔄 Auto-refresh every 5 seconds
+**Typical output:**
 
-### Deck Format
-
-Decks should be stored as `.deck` files. The tool supports multiple formats:
-
-**Standard Format:**
+```text
+META: Loading card database...
+META: Card database loaded with 28418 cards
+META: Found 5 deck files
+META: Starting simulation of 100 games...
+META: Simulation completed.
+┌────────────────────────────────┐
+│ Top 3 Decks by Win Rate    │
+├────────────────────────────────┤
+│ 1. Red Deck       62.0%   │
+│ 2. Green Deck     58.0%   │
+│ 3. Blue Deck      45.0%   │
+└────────────────────────────────┘
+Simulated 100 games in 0.42s: 238 games/sec
 ```
+
+### 2️⃣ Run detailed 1v1 statistics
+
+```sh
+go run ./cmd/mtgstats -games=100 -decks=decks/1v1 -v=1
+```
+
+**Typical output snippet:**
+
+```text
+== Simulation Summary ==
+Games: 100 | Total Time: 1.2s | Games/sec: 83
+
+Deck Performance (95% CI)
+Red Deck              52      48      52.0%   [42.1%, 61.8%]
+Green Deck            48      52      48.0%   [38.2%, 57.9%]
+
+Aggregate Game Metrics
+Avg Turns: 8.4
+Final Life P1: avg=12.3 min=0 max=20 | P2: avg=8.1 min=0 max=20
+```
+
+### 3️⃣ Launch the live dashboard
+
+```sh
+go run ./cmd/mtgsim-dashboard -games=200 -decks=decks/1v1 -port=8080
+```
+
+Then open **http://localhost:8080** in your browser. The page auto-refreshes every 5 seconds as games finish.
+
+### 4️⃣ Run a 4-player EDH pod batch with replay export
+
+```sh
+go run ./cmd/mtgsim-edh -games=25 -pod=4 -decks=decks/edh \
+  -mulligans=1 -replay=replays -port=0
+```
+
+**Typical output snippet:**
+
+```text
+META: Starting 25 4-player pods (seed=1715601023)...
+META: Completed 10/25 pods
+META: Completed 20/25 pods
+META: Simulated 25 pods in 3.1s (avg 12.4 turns/pod)
+=== EDH Results ===
+Deck Krenko                      G:25  W:12  L:13  WR: 48.0%  AvgLife: 18.3  CmdrDmgKO:3
+```
+
+Replay files land in `replays/pod-0001.json`, `replays/pod-0002.json`, etc.
+
+## Building the tools
+
+```sh
+go build -o mtgsim          ./cmd/mtgsim
+go build -o mtgstats        ./cmd/mtgstats
+go build -o mtgsim-dashboard ./cmd/mtgsim-dashboard
+go build -o mtgsim-edh      ./cmd/mtgsim-edh
+go build -o stack_demo       ./cmd/stack_demo
+```
+
+## Command overview
+
+| Command | Purpose | Important flags |
+|---|---|---|
+| `mtgsim` | Fast 1v1 simulator | `-games`, `-decks`, `-log` |
+| `mtgstats` | Detailed 1v1 stats runner | `-games`, `-decks`, `-swap`, `-v`, `-log` |
+| `mtgsim-dashboard` | Runs simulations and serves dashboard UI | `-games`, `-decks`, `-port`, `-keep-alive`, `-log` |
+| `mtgsim-edh` | Headless multiplayer EDH / Commander runner | `-games`, `-pod`, `-decks`, `-max-turns`, `-mulligans`, `-replay`, `-sideboard-variants`, `-sideboard-swaps`, `-port`, `-keep-alive`, `-seed`, `-log` |
+| `stack_demo` | Demonstrates stack / priority interactions | no flags |
+
+### `mtgsim`
+
+Quick two-player batch simulator.
+
+```sh
+./mtgsim -games=250 -decks=decks/welcome -log=META
+```
+
+Flags:
+
+- `-games N`: number of games to simulate (default `1`)
+- `-decks DIR`: deck directory to scan recursively (default `decks/1v1`)
+- `-log LEVEL`: `META`, `GAME`, `PLAYER`, or `CARD` (default `CARD`)
+
+### `mtgstats`
+
+More detailed 1v1 analysis runner. Compared with `mtgsim`, this path enforces mana payment for its spell-casting flow, tracks aggregate metrics, and prints Wilson-score confidence intervals.
+
+```sh
+./mtgstats -games=200 -decks=decks/1v1 -swap=2 -v=1
+```
+
+Notable flags:
+
+- `-games N`: number of games to simulate (default `100`)
+- `-decks DIR`: recursively scanned deck directory (default `decks/1v1`)
+- `-swap N`: swap `N` random sideboard cards into the main deck each game
+- `-v N`: verbosity (`0` minimal, `1` summary, `2` per-game details)
+- `-log LEVEL`: logger verbosity
+
+### `mtgsim-dashboard`
+
+Runs 1v1 simulations and serves an HTML dashboard at `http://localhost:<port>`.
+
+```sh
+./mtgsim-dashboard -games=300 -decks=decks/1v1 -port=8080
+```
+
+Notable flags:
+
+- `-games N`: simulations to run (default `50`)
+- `-decks DIR`: recursively scanned deck directory (default `decks/1v1`)
+- `-port N`: HTTP port (default `8080`)
+- `-keep-alive`: keep the server running after the batch completes (default `true`)
+
+### `mtgsim-edh`
+
+Runs multiplayer Commander / EDH pods headlessly and can optionally expose EDH metrics on the same dashboard server.
+
+```sh
+./mtgsim-edh -games=50 -pod=4 -decks=decks/edh -mulligans=1 -replay=replays -keep-alive=false
+```
+
+Notable flags:
+
+- `-games N`: number of pods to simulate (default `50`)
+- `-pod N`: players per pod, from `2` to `6` (default `4`)
+- `-decks DIR`: recursively scanned deck directory (default `decks`)
+- `-max-turns N`: hard turn cap per pod (default `50`)
+- `-mulligans N`: London Mulligans each player takes before turn 1
+- `-seed N`: RNG seed (`0` means time-based)
+- `-replay DIR`: write one JSON replay per pod
+- `-sideboard-variants N`: generate `N` sideboard-swap variants per imported deck
+- `-sideboard-swaps N`: number of cards swapped for each generated variant (default `3`)
+- `-port N`: dashboard port; set `0` to disable dashboard startup
+- `-keep-alive`: keep dashboard alive after simulations finish (default `true`)
+
+Important note: because the default EDH deck root is `decks`, `mtgsim-edh` will recurse through every subdirectory under `decks/`. If you want only Commander lists, prefer `-decks=decks/edh`.
+
+### `stack_demo`
+
+`stack_demo` demonstrates spell casting, priority passing, counterspells, stack resolution, and sorcery timing restrictions.
+
+```sh
+./stack_demo
+```
+
+## Dashboard & API
+
+When a dashboard-capable binary (`mtgsim-dashboard` or `mtgsim-edh`) is running, the server exposes a dark-themed auto-refreshing HTML UI plus JSON endpoints you can query directly.
+
+### Endpoints
+
+| Endpoint | What it returns | Available from |
+|---|---|---|
+| `GET /` | Dark HTML dashboard with live tables | Any dashboard binary |
+| `GET /api/health` | `{"status":"healthy"}` | Any dashboard binary |
+| `GET /api/results` | 1v1 win/loss aggregates | Any dashboard binary |
+| `GET /api/edh-results` | EDH per-deck stats + summary telemetry | `mtgsim-edh` only |
+| `GET /api/edh-games` | Recent EDH pod records (latest 10) | `mtgsim-edh` only |
+
+### Example API queries
+
+```sh
+# 1v1 leaderboard
+curl -s http://localhost:8080/api/results | jq '.decks[:3]'
+
+# EDH aggregate telemetry (requires mtgsim-edh)
+curl -s http://localhost:8080/api/edh-results | jq '.summary'
+
+# Recent pod replays (requires mtgsim-edh)
+curl -s http://localhost:8080/api/edh-games | jq '.games[0] | {winner, turns, players}'
+```
+
+### HTML dashboard preview
+
+The UI auto-refreshes every 5 seconds and shows:
+
+- **Summary cards** — total games, unique decks, average turns
+- **Deck rankings** — sortable win-rate table
+- **EDH telemetry** (when running `mtgsim-edh`) — pods, highest storm count, total mana spent, combat damage, eliminations
+- **Recent pods** — winner, turns, per-player mana/cards played, and final event
+
+## Deck file formats
+
+Deck discovery is recursive and filename-agnostic. In practice, this repo contains `.deck`, `.dck`, and `.txt` deck exports. The importer parses deck contents rather than depending on a specific extension.
+
+Supported patterns include:
+
+### Plain list
+
+```txt
 4 Lightning Bolt
 3 Mountain
 20 Forest
 ```
 
-**Extended Format with Set Information:**
-```
+### Sectioned list
+
+```txt
 About
 Name My Awesome Deck
 
 Deck
 4x Lightning Bolt (CLB) 401
 3x Mountain (DSK) 283
-20x Forest (TDM) 276
 
 Sideboard
 2x Naturalize (M19) 190
 ```
 
-### Examples
+### Commander / EDH-friendly sections
 
-**Simulate 100 games:**
-```sh
-./mtgsim -games=100
+```txt
+COMMANDER:
+1 Krenko, Mob Boss
+
+DECK
+99 other cards...
+
+SIDEBOARD
+5 flex cards...
 ```
 
-**Use different deck directory:**
-```sh
-./mtgsim -decks=decks/welcome -games=50
-```
+The Commander importer also handles common export conventions such as:
 
-**Enable detailed logging:**
-```sh
-./mtgsim -log=PLAYER -games=10
-```
+- `Commander`, `Command Zone`, `Deck`, and `Sideboard` section headers
+- `SB:` inline lines used by Cockatrice-style exports
+- `COMMANDER:` inline lines
+- `NAME:` deck titles
+- Moxfield/Cockatrice-style final command-zone groups
 
-### EDH / Commander Multiplayer
+Commander imports validate card color identity against the designated commander(s). Sideboard cards are also checked because the EDH runner can generate sideboard-swap variants.
 
-`mtgsim-edh` runs N-player Commander pods headlessly. Decks may either ship a `Commander` section or be plain main-only deckfiles (the player is then seated at 40 life with no commander but the rest of the EDH plumbing still applies).
+## Repository layout
 
-```sh
-./mtgsim-edh -games=50 -pod=4 -decks=decks/welcome -seed=1
-```
-
-**Options of note:**
-- `-pod N`: players per pod (2–6).
-- `-mulligans N`: London Mulligans every player takes before turn 1.
-- `-replay DIR`: dump per-pod JSON replays (one file per pod with the structured event log: turn starts, land plays, commander casts, summons, attacks, eliminations).
-- `-sideboard-variants N`: generate N additional deck variants per imported deck by swapping cards from the deck's `Sideboard` section into the main list.
-- `-sideboard-swaps N`: cards swapped per generated sideboard variant (default 3). Variant names are annotated in stats so win rates compare original lists against each sideboard mix.
-- `-port 0`: disable the integrated dashboard.
-
-The dashboard at `http://localhost:8080` exposes both the legacy 1v1 deck table and an EDH section (`/api/edh-results`) backed by the multiplayer aggregator.
-
-## Project Structure
-
-```
+```text
 MTGSim/
-├── cmd/mtgsim/          # Main application
-├── pkg/                 # Public packages
-│   ├── card/           # Card types and database
-│   ├── deck/           # Deck management
-│   ├── game/           # Game types and constants
-│   └── simulation/     # Simulation utilities
-├── internal/logger/    # Internal logging package
-├── decks/              # Deck files organized by category
-│   ├── 1v1/           # Two-player decks
-│   ├── welcome/       # Beginner-friendly decks
-│   ├── vanilla/       # Simple creature decks
-│   └── novelty/       # Special theme decks
-└── meta/              # Deck generation tools
+├── cmd/                  # CLI entry points
+│   ├── mtgsim/
+│   ├── mtgstats/
+│   ├── mtgsim-dashboard/
+│   ├── mtgsim-edh/
+│   └── stack_demo/
+├── pkg/
+│   ├── ability/          # Ability parsing, targeting, stack, priority, AI glue
+│   ├── bridge/           # Bridges between game state and ability systems
+│   ├── card/             # Card models, mana parsing, card database loader
+│   ├── dashboard/        # HTTP server and HTML dashboard
+│   ├── deck/             # Deck import and commander validation
+│   ├── game/             # Core rules engine and zones
+│   └── simulation/       # 1v1 / EDH runners, results, utilities, threat logic
+├── internal/logger/      # Internal logging helpers
+├── decks/                # Sample 1v1 and EDH decklists
+├── meta/                 # Deck generation utilities
+└── cardDB.json           # Cached Scryfall oracle DB (created/updated locally)
 ```
 
-## Card Database
+## Architecture overview
 
-MTGSim automatically downloads and caches card data from [Scryfall](https://scryfall.com/) on first run. The database is stored locally as `cardDB.json` and contains comprehensive information about Magic: The Gathering cards.
+```mermaid
+graph LR
+    A[Deck files<br/>.deck .dck .txt] -->|pkg/deck| B(Card DB<br/>cardDB.json)
+    B --> C[pkg/card]
+    C --> D[pkg/game<br/>Core engine]
+    D --> E[pkg/simulation<br/>1v1 & EDH runners]
+    E --> F[JSON replay<br/>replays/]
+    E --> G[pkg/dashboard<br/>HTTP server]
+    G --> H[HTML UI + API<br/>localhost:8080]
+    I[pkg/ability<br/>Stack & targeting] --> D
+    J[pkg/bridge<br/>AI glue] --> D
+```
+
+**Flow in words:**
+1. **Deck import** (`pkg/deck`) recursively reads lists, infers command zones, and validates color identity against the cached Scryfall oracle database (`pkg/card`).
+2. **Game engine** (`pkg/game`) runs headless turn/phase loops, combat with first-strike timing, layered continuous effects, triggers, state-based actions, and commander damage.
+3. **Ability & bridge layers** (`pkg/ability`, `pkg/bridge`) extend the engine with stack handling, targeting, timing checks, and AI-assisted casting.
+4. **Simulation runners** (`pkg/simulation`) orchestrate 1v1 pairings or EDH pods, aggregate metrics, apply threat-based attack targeting, and optionally write per-pod JSON replays.
+5. **Dashboard** (`pkg/dashboard`) serves both the auto-refreshing HTML UI and the JSON API endpoints.
+
+## Rules engine highlights
+
+The `pkg/game` engine is intentionally headless and focused on simulation workflows. Current engine capabilities in the checked-in code include:
+
+- turn / phase progression and cleanup
+- combat with blockers and first-strike / double-strike timing
+- keyword handling used by combat and state-based actions
+- layered continuous effects for power/toughness changes
+- triggers, watchers, and event-driven game hooks
+- damage prevention and replacement-effect hooks
+- commander bookkeeping (command zone, tax, commander damage)
+- multiplayer APNAP trigger ordering
+
+The `pkg/ability` and `pkg/bridge` packages extend this with stack handling, targeting, timing checks, and AI-assisted activation / casting in the more detailed simulation paths.
+
+## Sample deck directories
+
+- `decks/1v1`: basic two-player test decks
+- `decks/welcome`: simple monocolor intro-style lists
+- `decks/vanilla`: creature-heavy lower-complexity lists
+- `decks/novelty`: themed examples
+- `decks/edh`: Commander / EDH exports used by the multiplayer runner
+
+## Current limitations
+
+- **Simulation fidelity** — `mtgsim` is intentionally a fast batch simulator, not a full competitive MTG AI. `mtgstats` adds mana enforcement and confidence intervals, but both use heuristics rather than exhaustive search.
+- **Instant-speed interaction** — The EDH runner auto-plays lands, commanders, castable non-instant permanents, combat, and main-phase abilities. Rich instant-speed play is not enabled by default.
+- **Opponent priority** — The EDH opponent-priority hook exists, but the default handler is a no-op. Custom priority handlers can be wired in via `pkg/game`.
+- **Replay playback** — JSON replays are write-only today. A deterministic replay-import CLI is not yet implemented.
+- **Deck discovery** — Recursive directory scanning does not filter by file extension. Keep sideboard drafts and non-deck files out of the scanned tree.
 
 ## Development
 
-### Running Tests
+Run the standard checks from the repository root:
 
 ```sh
 go test ./...
+go vet ./...
 ```
 
-### Building for Different Platforms
+If you want a quick manual smoke test, these are the highest-signal commands:
 
 ```sh
-# Linux
-GOOS=linux GOARCH=amd64 go build -o mtgsim-linux ./cmd/mtgsim
-
-# Windows
-GOOS=windows GOARCH=amd64 go build -o mtgsim.exe ./cmd/mtgsim
-
-# macOS
-GOOS=darwin GOARCH=amd64 go build -o mtgsim-mac ./cmd/mtgsim
+go run ./cmd/mtgsim -games=10 -decks=decks/welcome
+go run ./cmd/mtgstats -games=10 -decks=decks/1v1
+go run ./cmd/mtgsim-edh -games=2 -pod=4 -decks=decks/edh -port=0
 ```
-
-## Architecture
-
-The codebase follows Go best practices with a clean separation of concerns:
-
-- **cmd/**: Application entry points
-- **pkg/**: Reusable packages that could be imported by other projects
-- **internal/**: Private packages not intended for external use
-
-
-## Rules Engine (pkg/game)
-
-A lightweight, headless rules engine powers automated simulations without UI/networking. It implements:
-
-- Turn/phase progression with end-of-turn cleanup
-- Combat (attackers, one-to-one blocks, first/double strike timing)
-- Continuous effects: Set power/toughness and temporary pumps until EOT (timestamp last-wins for SetPT)
-- Triggers and watchers: event-driven actions with per-turn watcher reset
-- Replacement effects: e.g., "would die → exile instead" centralized in dies handling
-- Damage prevention: shield pools for players/permanents that consume before damage is applied
-
-Key entry points:
-- Game.AdvancePhase() and IsMainPhase()/IsCombatPhase()
-- SummonCreature/PlayLand (emit ETB events)
-- ApplySetPTUntilEOT, ApplyTempPump
-- AddWouldDieExileUntilEOT, ApplyDamageToPlayer/ApplyDamageToPermanent
-- AddTrigger, AddWatcher (CreatureETBWatcher provided)
-
-Example (integrated mini-scenario):
-
-```go
-p1, p2 := game.NewPlayer("P1", 20), game.NewPlayer("P2", 20)
-g := game.NewGame(p1, p2)
-// ETB trigger: draw a card when your creature enters
-g.AddTrigger(&game.Trigger{ On: game.EventEntersBattlefield,
-  Condition: func(e game.Event) bool { return e.ZoneChange.Permanent.GetController()==p1 },
-  Action: func(g *game.Game, e game.Event){ p1.Draw(1) },
-})
-// Summon 2/2, set 5/5 until EOT, then EOT resets
-p1.AddCardToHand(game.SimpleCard{Name:"Bear", TypeLine:"Creature", Power:"2", Toughness:"2"})
-perm, _ := g.SummonCreature(p1, "Bear")
-g.ApplySetPTUntilEOT(perm, 5, 5)
-for i := 0; i < 7; i++ { g.AdvancePhase() } // clears EOT effects
-```
-
-AI and automation:
-- pkg/bridge exposes AutoActivateMainPhaseAbilities(g) to safely call the ability AI during main phases
-- pkg/simulation.RunOneTurnAuto(g) advances a full turn and calls the AI hook in each main phase
-
-## Known Limitations
-
-- Mana costs are not enforced in the headless EDH runner; the AI plays one land per turn and summons every creature in hand.
-- Instant-speed counterplay is not yet exercised — the opponent priority hook is wired in (Phase 4) but the default handler is a no-op.
-- Activated abilities outside the main-phase auto-activator are not played by the AI.
-- JSON replays are write-only today; replaying a JSON back through the engine is planned.
-
-## Future Enhancements
-
-- **Mana-cost enforcement** in the EDH runner so colored requirements affect deck performance.
-- **Real instant-speed AI** plugged into the existing priority hook (counterspells, removal in response to spells).
-- **Replay loader** that re-runs a JSON pod through the rules engine deterministically.
-- **Tournament simulation**: multi-round pod brackets with seeding.
 
 ## Contributing
 
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md) if you are contributing through a fork or PR workflow.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-- [Scryfall](https://scryfall.com/) for providing comprehensive MTG card data
-- The Magic: The Gathering community for inspiration and feedback
+- [Scryfall](https://scryfall.com/) for the oracle card data used by the local card database cache
+- The MTG community for the rules references, deck exports, and inspiration behind the simulator

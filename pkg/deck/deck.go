@@ -69,15 +69,15 @@ func (d *Deck) IsEmpty() bool {
 // ImportDeckfile imports a deck from a file, supporting multiple formats.
 // Returns the main deck and sideboard as separate Deck objects.
 func ImportDeckfile(filename string, cardDB CardDatabase) (Deck, Deck, error) {
-	main, side, _, err := importDeckfileWithCommander(filename, cardDB)
+	main, side, _, err := importDeckfileWithCommanders(filename, cardDB, false)
 	return main, side, err
 }
 
-// ImportCommanderDeckfile imports a Commander deck. The file is expected to
-// declare a commander via a "Commander" heading followed by exactly one
-// card line. The returned Deck for the main 99 is validated to have a
-// color identity that is a subset of the commander's color identity (CR
-// 903.4). Returns (commander, mainDeck, error).
+// ImportCommanderDeckfile imports a Commander deck. The file may declare a
+// commander explicitly or use common EDH export conventions such as Cockatrice
+// SB: command-zone lines or a final Moxfield command-zone group. The returned
+// Deck is validated against the commander's color identity (CR 903.4). Returns
+// the first commander and the main deck.
 func ImportCommanderDeckfile(filename string, cardDB CardDatabase) (card.Card, Deck, error) {
 	commanderCard, main, _, err := ImportCommanderDeckfileWithSideboard(filename, cardDB)
 	return commanderCard, main, err
@@ -88,22 +88,51 @@ func ImportCommanderDeckfile(filename string, cardDB CardDatabase) (card.Card, D
 // validated against the commander's color identity because sideboard variants
 // may swap those cards into the main deck.
 func ImportCommanderDeckfileWithSideboard(filename string, cardDB CardDatabase) (card.Card, Deck, Deck, error) {
-	main, side, commander, err := importDeckfileWithCommander(filename, cardDB)
+	commanders, main, side, err := ImportCommanderDeckfileWithCommanders(filename, cardDB)
 	if err != nil {
 		return card.Card{}, Deck{}, Deck{}, err
 	}
-	if commander == nil {
-		return card.Card{}, Deck{}, Deck{}, errMissingCommander
+	return commanders[0], main, side, nil
+}
+
+// ImportCommanderDeckfileWithCommanders imports a Commander deck and returns
+// all command-zone cards. This covers partner/background-style exports while
+// the older single-commander APIs continue returning the first commander.
+func ImportCommanderDeckfileWithCommanders(filename string, cardDB CardDatabase) ([]card.Card, Deck, Deck, error) {
+	main, side, commanders, err := importDeckfileWithCommanders(filename, cardDB, true)
+	if err != nil {
+		return nil, Deck{}, Deck{}, err
+	}
+	if len(commanders) == 0 {
+		return nil, Deck{}, Deck{}, errMissingCommander
 	}
 	legalCards := append([]card.Card{}, main.Cards...)
 	legalCards = append(legalCards, side.Cards...)
-	if err := validateColorIdentity(*commander, legalCards); err != nil {
-		return *commander, main, side, err
+	if err := validateColorIdentityForCommanders(commanders, legalCards); err != nil {
+		return commanders, main, side, err
 	}
-	return *commander, main, side, nil
+	return commanders, main, side, nil
 }
 
-func importDeckfileWithCommander(filename string, cardDB CardDatabase) (Deck, Deck, *card.Card, error) {
+type deckSection int
+
+const (
+	sectionMain deckSection = iota
+	sectionSideboard
+	sectionCommander
+	sectionIgnored
+)
+
+type parsedDeckEntry struct {
+	count    int
+	card     card.Card
+	known    bool
+	section  deckSection
+	group    int
+	inlineSB bool
+}
+
+func importDeckfileWithCommanders(filename string, cardDB CardDatabase, inferCommander bool) (Deck, Deck, []card.Card, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return Deck{}, Deck{}, nil, err
@@ -115,19 +144,24 @@ func importDeckfileWithCommander(filename string, cardDB CardDatabase) (Deck, De
 		}
 	}()
 
-	var cards []card.Card
-	var sideboardCards []card.Card
-	var commander *card.Card
+	var entries []parsedDeckEntry
 	var deckName = filename
-	inSideboard := false
-	inCommander := false
+	section := sectionMain
+	group := 0
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "//") {
+			if line == "" {
+				group++
+				if section == sectionSideboard || section == sectionIgnored {
+					section = sectionMain
+				}
+			}
 			continue
 		}
 
@@ -135,104 +169,204 @@ func importDeckfileWithCommander(filename string, cardDB CardDatabase) (Deck, De
 		if strings.HasPrefix(line, "About") {
 			scanner.Scan()
 			nameLine := strings.TrimSpace(scanner.Text())
-			if strings.HasPrefix(nameLine, "Name ") {
-				deckName = strings.TrimPrefix(nameLine, "Name ")
+			if name, ok := strings.CutPrefix(nameLine, "Name "); ok {
+				deckName = name
 			}
 			continue
 		}
-
-		// Detect the start of the commander section (CR 903)
-		if strings.EqualFold(line, "Commander") {
-			inCommander = true
-			inSideboard = false
+		if name, ok := parseDeckName(line); ok {
+			deckName = name
+			continue
+		}
+		if strings.HasPrefix(strings.ToUpper(line), "LAYOUT ") {
 			continue
 		}
 
-		// Detect the start of the sideboard section
-		if strings.EqualFold(line, "Sideboard") {
-			inSideboard = true
-			inCommander = false
+		if nextSection, handled := parseSectionHeading(line); handled {
+			section = nextSection
 			continue
 		}
 
-		// "Deck" / "Mainboard" headings explicitly switch back to the main list.
-		if strings.EqualFold(line, "Deck") || strings.EqualFold(line, "Mainboard") {
-			inSideboard = false
-			inCommander = false
+		entrySection := section
+		inlineSB := false
+		if rest, ok := trimInlinePrefix(line, "SB:"); ok {
+			line = rest
+			entrySection = sectionSideboard
+			inlineSB = true
+		} else if rest, ok := trimInlinePrefix(line, "COMMANDER:"); ok {
+			line = rest
+			entrySection = sectionCommander
+		}
+
+		if entrySection == sectionIgnored {
 			continue
 		}
 
-		// Handle multiple formats: "4x Elvish Mystic (CMM) 284", "4 Elvish Mystic", or just "Elvish Mystic"
-		var count int
-		var name string
-
-		if strings.Contains(line, "x ") {
-			// Format: "4x Elvish Mystic (CMM) 284"
-			parts := strings.SplitN(line, "x ", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			count, err = strconv.Atoi(strings.TrimSpace(parts[0]))
-			if err != nil {
-				continue
-			}
-			name = strings.TrimSpace(parts[1])
-			// Remove set and collector number if present
-			if idx := strings.Index(name, " ("); idx != -1 {
-				name = name[:idx]
-			}
-		} else {
-			// Try format: "4 Elvish Mystic"
-			parts := strings.SplitN(line, " ", 2)
-			if len(parts) == 2 {
-				count, err = strconv.Atoi(strings.TrimSpace(parts[0]))
-				if err == nil {
-					// Successfully parsed count, use the rest as name
-					name = strings.TrimSpace(parts[1])
-					// Remove set and collector number if present
-					if idx := strings.Index(name, " ("); idx != -1 {
-						name = name[:idx]
-					}
-				} else {
-					// Failed to parse count, treat entire line as card name with count 1
-					count = 1
-					name = strings.TrimSpace(line)
-				}
-			} else {
-				// Single word or no spaces, treat as card name with count 1
-				count = 1
-				name = strings.TrimSpace(line)
-			}
+		count, name, ok := parseDeckCardLine(line)
+		if !ok {
+			continue
 		}
 
 		// Lookup the card in the card database
 		cardData, exists := cardDB.GetCardByName(name)
 		if !exists {
 			logger.LogDeck("Card not found: %s", name)
-			continue
+			if !inferCommander {
+				continue
+			}
+			cardData = card.Card{Name: name}
 		}
 
-		// Add the card to the appropriate section
-		for i := 0; i < count; i++ {
-			switch {
-			case inCommander:
-				if commander == nil {
-					c := cardData
-					commander = &c
-				}
-			case inSideboard:
-				sideboardCards = append(sideboardCards, cardData)
-			default:
-				cards = append(cards, cardData)
-			}
-		}
+		entries = append(entries, parsedDeckEntry{
+			count: count, card: cardData, known: exists, section: entrySection, group: group, inlineSB: inlineSB,
+		})
 	}
 
 	if err := scanner.Err(); err != nil {
 		return Deck{}, Deck{}, nil, err
 	}
 
-	return Deck{Cards: cards, Name: deckName}, Deck{Cards: sideboardCards}, commander, nil
+	if inferCommander {
+		inferCommanderEntries(entries)
+	}
+
+	cards, sideboardCards, commanders := materializeDeckEntries(entries)
+	return Deck{Cards: cards, Name: deckName}, Deck{Cards: sideboardCards}, commanders, nil
+}
+
+func parseDeckName(line string) (string, bool) {
+	if rest, ok := trimInlinePrefix(line, "NAME:"); ok {
+		return rest, rest != ""
+	}
+	return "", false
+}
+
+func parseSectionHeading(line string) (deckSection, bool) {
+	normalized := strings.TrimSuffix(strings.ToUpper(strings.TrimSpace(line)), ":")
+	switch normalized {
+	case "COMMANDER", "COMMANDERS", "COMMAND ZONE":
+		return sectionCommander, true
+	case "SIDEBOARD", "SIDEBOARDS":
+		return sectionSideboard, true
+	case "DECK", "MAIN", "MAINBOARD":
+		return sectionMain, true
+	case "STICKERS", "ATTRACTIONS":
+		return sectionIgnored, true
+	default:
+		return sectionMain, false
+	}
+}
+
+func trimInlinePrefix(line, prefix string) (string, bool) {
+	if !strings.HasPrefix(strings.ToUpper(line), prefix) {
+		return "", false
+	}
+	return strings.TrimSpace(line[len(prefix):]), true
+}
+
+func parseDeckCardLine(line string) (int, string, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return 0, "", false
+	}
+	count := 1
+	name := line
+	parts := strings.Fields(line)
+	if len(parts) > 0 {
+		countToken := strings.TrimSuffix(strings.ToLower(parts[0]), "x")
+		if parsed, err := strconv.Atoi(countToken); err == nil {
+			count = parsed
+			name = strings.TrimSpace(strings.TrimPrefix(line, parts[0]))
+		}
+	}
+	name = normalizeDeckCardName(name)
+	return count, name, count > 0 && name != ""
+}
+
+func normalizeDeckCardName(name string) string {
+	name = strings.TrimSpace(name)
+	if strings.HasPrefix(name, "[") {
+		if end := strings.Index(name, "]"); end >= 0 && end+1 < len(name) {
+			name = strings.TrimSpace(name[end+1:])
+		}
+	}
+	if idx := strings.Index(name, " ("); idx != -1 {
+		name = strings.TrimSpace(name[:idx])
+	}
+	return name
+}
+
+func inferCommanderEntries(entries []parsedDeckEntry) {
+	if hasCommanders(entries) {
+		return
+	}
+	if markInlineSBCommanders(entries) {
+		return
+	}
+	markFinalGroupCommanders(entries)
+}
+
+func hasCommanders(entries []parsedDeckEntry) bool {
+	for _, e := range entries {
+		if e.section == sectionCommander {
+			return true
+		}
+	}
+	return false
+}
+
+func markInlineSBCommanders(entries []parsedDeckEntry) bool {
+	marked := false
+	for i := range entries {
+		if entries[i].inlineSB && entries[i].count == 1 {
+			entries[i].section = sectionCommander
+			marked = true
+		}
+	}
+	return marked
+}
+
+func markFinalGroupCommanders(entries []parsedDeckEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	lastGroup := entries[len(entries)-1].group
+	var idxs []int
+	for i := range entries {
+		if entries[i].group == lastGroup {
+			idxs = append(idxs, i)
+		}
+	}
+	if len(idxs) == 0 || len(idxs) > 2 || lastGroup == entries[0].group {
+		return
+	}
+	for _, idx := range idxs {
+		if entries[idx].section != sectionMain || entries[idx].count != 1 {
+			return
+		}
+	}
+	for _, idx := range idxs {
+		entries[idx].section = sectionCommander
+	}
+}
+
+func materializeDeckEntries(entries []parsedDeckEntry) ([]card.Card, []card.Card, []card.Card) {
+	var cards []card.Card
+	var sideboardCards []card.Card
+	var commanders []card.Card
+	for _, e := range entries {
+		for i := 0; i < e.count; i++ {
+			switch e.section {
+			case sectionCommander:
+				commanders = append(commanders, e.card)
+			case sectionSideboard:
+				sideboardCards = append(sideboardCards, e.card)
+			case sectionMain:
+				cards = append(cards, e.card)
+			}
+		}
+	}
+	return cards, sideboardCards, commanders
 }
 
 // CardDatabase interface for card lookup functionality.
@@ -240,24 +374,40 @@ type CardDatabase interface {
 	GetCardByName(name string) (card.Card, bool)
 }
 
-// errMissingCommander is returned when a Commander deckfile lacks a
-// "Commander" section.
+// errMissingCommander is returned when a Commander deckfile lacks a commander.
 var errMissingCommander = errors.New("commander deck has no commander declared")
 
-// validateColorIdentity verifies that every card in the main deck has a
-// color identity that is a subset of the commander's (CR 903.4).
-func validateColorIdentity(commander card.Card, main []card.Card) error {
+func validateColorIdentityForCommanders(commanders []card.Card, main []card.Card) error {
+	if hasUnknownCommander(commanders) {
+		return nil
+	}
 	allowed := map[string]bool{}
-	for _, c := range commander.ColorIdentity {
-		allowed[strings.ToUpper(c)] = true
+	var commanderNames []string
+	var commanderIdentities []string
+	for _, commander := range commanders {
+		commanderNames = append(commanderNames, commander.Name)
+		for _, c := range commander.ColorIdentity {
+			upper := strings.ToUpper(c)
+			allowed[upper] = true
+			commanderIdentities = append(commanderIdentities, upper)
+		}
 	}
 	for _, c := range main {
 		for _, ci := range c.ColorIdentity {
 			if !allowed[strings.ToUpper(ci)] {
-				return fmt.Errorf("card %q color identity %v not within commander %q identity %v",
-					c.Name, c.ColorIdentity, commander.Name, commander.ColorIdentity)
+				return fmt.Errorf("card %q color identity %v not within commander(s) %q identity %v",
+					c.Name, c.ColorIdentity, strings.Join(commanderNames, " / "), commanderIdentities)
 			}
 		}
 	}
 	return nil
+}
+
+func hasUnknownCommander(commanders []card.Card) bool {
+	for _, commander := range commanders {
+		if commander.TypeLine == "" && commander.ManaCost == "" && len(commander.ColorIdentity) == 0 {
+			return true
+		}
+	}
+	return false
 }

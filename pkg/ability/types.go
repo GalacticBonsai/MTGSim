@@ -59,6 +59,8 @@ const (
 	ChangeControl
 	PreventDamage
 	SourcePowerDamage // e.g., Rabid Bite style: first target deals damage equal to its power to second target
+	ChooseMode        // Modal spells/actions with choices represented explicitly instead of fake draw effects
+	TakeExtraTurn     // Extra-turn effects; execution engines may queue an additional turn
 )
 
 // TimingRestriction represents when an ability can be activated.
@@ -393,6 +395,13 @@ func (ae *AbilityEngine) applyEffect(effect Effect, stackObj *StackObject) error
 		}
 	case AddMana:
 		// TODO: Implement mana addition
+	case ChooseMode:
+		// Modal choices are parsed explicitly and resolved by higher-level spell
+		// choice logic; they are no longer represented as fake card draw.
+	case TakeExtraTurn:
+		// Extra-turn queueing is not part of the current GameState interface.
+		// Keep the effect explicit so callers can detect/support it without
+		// corrupting statistics as a DrawCards effect.
 	default:
 		return ErrUnknownEffect
 	}
