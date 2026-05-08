@@ -360,14 +360,8 @@ func materializeDeckEntries(entries []parsedDeckEntry) ([]card.Card, []card.Card
 			case sectionCommander:
 				commanders = append(commanders, e.card)
 			case sectionSideboard:
-				if !e.known {
-					continue
-				}
 				sideboardCards = append(sideboardCards, e.card)
 			case sectionMain:
-				if !e.known {
-					continue
-				}
 				cards = append(cards, e.card)
 			}
 		}
