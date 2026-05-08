@@ -95,7 +95,7 @@ func TestServer_HandlerRoutes(t *testing.T) {
 	server := NewServer(snapshotFromResults(r), 0)
 	h := server.Handler()
 
-	for _, path := range []string{"/", "/api/results", "/api/health"} {
+	for _, path := range []string{"/", "/api/results", "/api/edh-games", "/api/health"} {
 		req := httptest.NewRequest("GET", path, nil)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, req)
@@ -151,6 +151,33 @@ func TestServer_HandleEDHResults_Enabled(t *testing.T) {
 	}
 	if resp.Decks[0].CommanderDamageKOs != 1 {
 		t.Errorf("expected 1 commander dmg KO, got %d", resp.Decks[0].CommanderDamageKOs)
+	}
+}
+
+func TestServer_HandleEDHGames_Enabled(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	server.SetEDHGamesProvider(func() []simulation.EDHGameRecord {
+		return []simulation.EDHGameRecord{{
+			Turns: 7, Winner: "Deck A",
+			Players: []simulation.EDHPlayerRecord{{DeckName: "Deck A"}},
+			Events:  []simulation.EDHEvent{{Kind: simulation.EventGameEnd}},
+		}}
+	})
+	req := httptest.NewRequest("GET", "/api/edh-games", nil)
+	w := httptest.NewRecorder()
+	server.handleEDHGames(w, req)
+
+	var resp edhGamesResponse
+	body, _ := io.ReadAll(w.Body)
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !resp.Enabled || len(resp.Games) != 1 {
+		t.Fatalf("unexpected EDH games response: %+v", resp)
+	}
+	if resp.Games[0].Winner != "Deck A" || len(resp.Games[0].Events) != 1 {
+		t.Fatalf("unexpected game payload: %+v", resp.Games[0])
 	}
 }
 

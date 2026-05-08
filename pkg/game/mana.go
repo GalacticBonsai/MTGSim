@@ -1,5 +1,10 @@
 package game
 
+import (
+	"strconv"
+	"strings"
+)
+
 // Mana is a simple map of mana amounts by type.
 type Mana map[ManaType]int
 
@@ -42,6 +47,16 @@ func (mp *ManaPool) Add(t ManaType, n int) {
 		mp.pool = map[ManaType]int{}
 	}
 	mp.pool[t] = mp.pool[t] + n
+}
+
+// Clear empties the mana pool at the end of a step or phase (CR 500.4).
+func (mp *ManaPool) Clear() {
+	if mp == nil {
+		return
+	}
+	for k := range mp.pool {
+		delete(mp.pool, k)
+	}
 }
 
 // Get returns amount for a mana type.
@@ -130,4 +145,77 @@ func (mp *ManaPool) total() int {
 		sum += v
 	}
 	return sum
+}
+
+// parseManaCost parses Scryfall-style mana costs such as "{2}{W}{U}" into
+// the engine's Mana representation. Generic numeric symbols become Any;
+// colored and colorless symbols remain specific requirements. X is tracked
+// separately so callers can decide what value X should have in context.
+func parseManaCost(cost string) Mana {
+	out := Mana{}
+	for _, sym := range manaSymbols(cost) {
+		if sym == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(sym); err == nil {
+			out.Add(Any, n)
+			continue
+		}
+		switch strings.ToUpper(sym) {
+		case "W":
+			out.Add(White, 1)
+		case "U":
+			out.Add(Blue, 1)
+		case "B":
+			out.Add(Black, 1)
+		case "R":
+			out.Add(Red, 1)
+		case "G":
+			out.Add(Green, 1)
+		case "C":
+			out.Add(Colorless, 1)
+		case "X":
+			out.Add(X, 1)
+		case "S":
+			out.Add(Snow, 1)
+		}
+	}
+	return out
+}
+
+func manaSymbols(cost string) []string {
+	cost = strings.TrimSpace(cost)
+	if cost == "" {
+		return nil
+	}
+	var out []string
+	for i := 0; i < len(cost); i++ {
+		if cost[i] != '{' {
+			continue
+		}
+		end := strings.IndexByte(cost[i+1:], '}')
+		if end < 0 {
+			break
+		}
+		out = append(out, cost[i+1:i+1+end])
+		i += end + 1
+	}
+	if len(out) > 0 {
+		return out
+	}
+	// Fallback for compact test inputs like "2WU".
+	for i := 0; i < len(cost); i++ {
+		ch := cost[i]
+		if ch >= '0' && ch <= '9' {
+			j := i + 1
+			for j < len(cost) && cost[j] >= '0' && cost[j] <= '9' {
+				j++
+			}
+			out = append(out, cost[i:j])
+			i = j - 1
+			continue
+		}
+		out = append(out, string(ch))
+	}
+	return out
 }

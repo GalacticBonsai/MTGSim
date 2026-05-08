@@ -36,8 +36,8 @@ func TestTrigger_APNAPOrdering(t *testing.T) {
 		t.Fatalf("APNAP order with P1 active: got %v, want %v", got, want)
 	}
 
-	// Rotate active player to P2 by advancing through end of P1's turn.
-	for i := 0; i < 7; i++ {
+	// Rotate active player to P2 by advancing through P1's cleanup step.
+	for i := 0; i < 8; i++ {
 		g.AdvancePhase()
 	}
 	if g.GetActivePlayerRaw() != p2 {

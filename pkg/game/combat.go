@@ -4,15 +4,15 @@ import "fmt"
 
 // combat holds state for the current combat declaration and resolution.
 type combat struct {
-	attackers map[*Permanent]*Player    // attacker -> defending player
-	blocks    map[*Permanent]*Permanent // attacker -> blocker (one-to-one)
+	attackers map[*Permanent]*Player       // attacker -> defending player
+	blocks    map[*Permanent][]*Permanent // attacker -> blockers (multiple allowed)
 }
 
 // BeginCombat starts a new combat instance for the current turn.
 func (g *Game) BeginCombat() {
 	g.combat = &combat{
 		attackers: map[*Permanent]*Player{},
-		blocks:    map[*Permanent]*Permanent{},
+		blocks:    map[*Permanent][]*Permanent{},
 	}
 }
 
@@ -50,7 +50,7 @@ func (g *Game) DeclareAttacker(attacker *Permanent, defendingPlayer *Player) err
 	return nil
 }
 
-// DeclareBlocker declares a one-to-one block: blocker blocks attacker.
+// DeclareBlocker declares a block: blocker blocks attacker (multiple blockers allowed).
 func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	if g.combat == nil {
 		return fmt.Errorf("combat not started")
@@ -67,8 +67,11 @@ func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	if _, ok := g.combat.attackers[attacker]; !ok {
 		return fmt.Errorf("target is not an attacker")
 	}
-	if _, already := g.combat.blocks[attacker]; already {
-		return fmt.Errorf("attacker already blocked")
+	// Check if already blocking this attacker
+	for _, b := range g.combat.blocks[attacker] {
+		if b == blocker {
+			return fmt.Errorf("creature is already blocking this attacker")
+		}
 	}
 	if blocker.IsTapped() {
 		return fmt.Errorf("tapped creatures can't block")
@@ -78,7 +81,7 @@ func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	if attacker.HasKeyword(KWFlying) && !(blocker.HasKeyword(KWFlying) || blocker.HasKeyword(KWReach)) {
 		return fmt.Errorf("flying creature can only be blocked by flying or reach")
 	}
-	g.combat.blocks[attacker] = blocker
+	g.combat.blocks[attacker] = append(g.combat.blocks[attacker], blocker)
 	return nil
 }
 
@@ -138,63 +141,73 @@ func (g *Game) ResolveCombatDamage() {
 		applyLifelink(src, dmg)
 		return dmg
 	}
-	// dealAttackerToBlocker handles trample: the attacker assigns just
-	// enough damage to be lethal to the blocker, and the remainder goes
-	// to the defending player (CR 702.19). With deathtouch, "lethal" is
-	// any 1 damage (CR 702.2c).
-	dealAttackerToBlocker := func(a, b *Permanent, defender *Player) {
-		if a == nil || b == nil {
-			return
-		}
+	// assignDamageToBlockers assigns attacker's damage to blockers and possibly tramples excess to player.
+	// Simple strategy: assign lethal damage to blockers in order, then trample excess.
+	assignDamageToBlockers := func(a *Permanent, blockers []*Permanent, defender *Player) {
 		dmg := a.GetPower()
 		if dmg <= 0 {
 			return
 		}
-		needed := b.GetToughness() - b.GetDamageCounters()
-		if needed < 0 {
-			needed = 0
-		}
-		if a.HasKeyword(KWDeathtouch) && needed > 1 {
-			needed = 1
-		}
-		assignedToBlocker := dmg
-		if a.HasKeyword(KWTrample) && dmg > needed {
-			assignedToBlocker = needed
-		}
-		if assignedToBlocker > 0 {
-			b.AddDamage(assignedToBlocker)
-			if a.HasKeyword(KWDeathtouch) {
-				b.markedLethal = true
+		remainingDmg := dmg
+		for _, b := range blockers {
+			if remainingDmg <= 0 {
+				break
+			}
+			needed := b.GetToughness() - b.GetDamageCounters()
+			if needed < 0 {
+				needed = 0
+			}
+			if a.HasKeyword(KWDeathtouch) && needed > 1 {
+				needed = 1
+			}
+			assigned := remainingDmg
+			if assigned > needed {
+				assigned = needed
+			}
+			if assigned > 0 {
+				b.AddDamage(assigned)
+				if a.HasKeyword(KWDeathtouch) {
+					b.markedLethal = true
+				}
+				remainingDmg -= assigned
 			}
 		}
-		excess := dmg - assignedToBlocker
-		if a.HasKeyword(KWTrample) && excess > 0 && defender != nil {
-			defender.SetLifeTotal(defender.GetLifeTotal() - excess)
+		// Trample excess
+		if a.HasKeyword(KWTrample) && remainingDmg > 0 && defender != nil {
+			defender.SetLifeTotal(defender.GetLifeTotal() - remainingDmg)
 			if a.IsCommander() {
-				defender.AddCommanderDamage(a.GetOwner(), a.GetName(), excess)
+				defender.AddCommanderDamage(a.GetOwner(), a.GetName(), remainingDmg)
 			}
 		}
 		applyLifelink(a, dmg)
 	}
 
 	// Collect sets for steps
-	type pair struct {
+	type blockedAttacker struct {
 		a *Permanent
-		b *Permanent
+		blockers []*Permanent
 		d *Player
 	}
-	var fsPairs, normPairs []pair
+	var fsBlocked, normBlocked []blockedAttacker
 	var fsUnblocked, normUnblocked []struct {
 		a *Permanent
 		d *Player
 	}
 
 	for a, def := range g.combat.attackers {
-		if b, blocked := g.combat.blocks[a]; blocked {
-			if a.HasFirstStrike() || a.HasDoubleStrike() || b.HasFirstStrike() || b.HasDoubleStrike() {
-				fsPairs = append(fsPairs, pair{a: a, b: b, d: def})
+		if blockers, blocked := g.combat.blocks[a]; blocked && len(blockers) > 0 {
+			ba := blockedAttacker{a: a, blockers: blockers, d: def}
+			hasFirstStrike := a.HasFirstStrike() || a.HasDoubleStrike()
+			for _, b := range blockers {
+				if b.HasFirstStrike() || b.HasDoubleStrike() {
+					hasFirstStrike = true
+					break
+				}
+			}
+			if hasFirstStrike {
+				fsBlocked = append(fsBlocked, ba)
 			} else {
-				normPairs = append(normPairs, pair{a: a, b: b, d: def})
+				normBlocked = append(normBlocked, ba)
 			}
 		} else {
 			// unblocked
@@ -213,13 +226,16 @@ func (g *Game) ResolveCombatDamage() {
 	}
 
 	// First strike step
-	for _, p := range fsPairs {
-		a, b, def := p.a, p.b, p.d
+	for _, ba := range fsBlocked {
+		a, blockers, def := ba.a, ba.blockers, ba.d
 		if a.HasFirstStrike() || a.HasDoubleStrike() {
-			dealAttackerToBlocker(a, b, def)
+			assignDamageToBlockers(a, blockers, def)
 		}
-		if b.HasFirstStrike() || b.HasDoubleStrike() {
-			dealToPermanent(b, a)
+		// Blockers deal damage
+		for _, b := range blockers {
+			if b.HasFirstStrike() || b.HasDoubleStrike() {
+				dealToPermanent(b, a)
+			}
 		}
 	}
 	for _, u := range fsUnblocked {
@@ -228,24 +244,46 @@ func (g *Game) ResolveCombatDamage() {
 	g.ApplyStateBasedActions()
 
 	// Normal step
-	for _, p := range fsPairs {
-		a, b, def := p.a, p.b, p.d
-		// Attacker with double strike (or no first strike at all) deals normal damage if both alive
+	for _, ba := range fsBlocked {
+		a, blockers, def := ba.a, ba.blockers, ba.d
+		// Attacker with double strike (or no first strike at all) deals normal damage if alive
 		attackerStrikesNormal := a.HasDoubleStrike() || !a.HasFirstStrike()
-		if attackerStrikesNormal && g.onBattlefield(a) && g.onBattlefield(b) {
-			dealAttackerToBlocker(a, b, def)
+		if attackerStrikesNormal && g.onBattlefield(a) {
+			// Check if any blockers are still alive
+			aliveBlockers := []*Permanent{}
+			for _, b := range blockers {
+				if g.onBattlefield(b) {
+					aliveBlockers = append(aliveBlockers, b)
+				}
+			}
+			if len(aliveBlockers) > 0 {
+				assignDamageToBlockers(a, aliveBlockers, def)
+			}
 		}
-		// Blocker with double strike (or no first strike at all) deals normal damage if both alive
-		blockerStrikesNormal := b.HasDoubleStrike() || !b.HasFirstStrike()
-		if blockerStrikesNormal && g.onBattlefield(a) && g.onBattlefield(b) {
-			dealToPermanent(b, a)
+		// Blockers with double strike (or no first strike at all) deal normal damage if both alive
+		for _, b := range blockers {
+			blockerStrikesNormal := b.HasDoubleStrike() || !b.HasFirstStrike()
+			if blockerStrikesNormal && g.onBattlefield(a) && g.onBattlefield(b) {
+				dealToPermanent(b, a)
+			}
 		}
 	}
-	for _, p := range normPairs {
-		a, b, def := p.a, p.b, p.d
-		if g.onBattlefield(a) && g.onBattlefield(b) {
-			dealAttackerToBlocker(a, b, def)
-			dealToPermanent(b, a)
+	for _, ba := range normBlocked {
+		a, blockers, def := ba.a, ba.blockers, ba.d
+		if g.onBattlefield(a) {
+			// Check alive blockers
+			aliveBlockers := []*Permanent{}
+			for _, b := range blockers {
+				if g.onBattlefield(b) {
+					aliveBlockers = append(aliveBlockers, b)
+				}
+			}
+			if len(aliveBlockers) > 0 {
+				assignDamageToBlockers(a, aliveBlockers, def)
+				for _, b := range aliveBlockers {
+					dealToPermanent(b, a)
+				}
+			}
 		}
 	}
 	for _, u := range normUnblocked {

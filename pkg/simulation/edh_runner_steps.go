@@ -1,6 +1,8 @@
 package simulation
 
 import (
+	"strings"
+
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
@@ -102,29 +104,43 @@ func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player) {
 }
 
 // runMainPhase plays one land, casts the commander when possible, and
-// summons every creature in hand (no mana enforcement — a deliberate
-// simplification mirrored from cmd/mtgsim's main loop). Optional log
+// summons creatures in hand if mana allows. Optional log
 // records every public action so a replay can be reproduced.
 func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) {
-	for i, c := range ap.Hand {
+	for _, c := range ap.Hand {
 		if c.IsLand() {
-			ap.Hand = append(ap.Hand[:i], ap.Hand[i+1:]...)
-			_, _ = g.PlayLand(ap, c.Name)
+			if _, err := g.PlayLand(ap, c.Name); err != nil {
+				continue
+			}
 			if log != nil {
 				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventLandPlay, Actor: ap.GetName(), Detail: c.Name})
 			}
 			break
 		}
 	}
+	tapLandsForMainPhaseMana(ap)
 
 	idx := indexOfPlayer(g, ap)
 	if idx >= 0 && len(ap.CommandZone) > 0 {
 		name := ap.CommandZone[0].Name
-		if perm := ap.CastCommander(name); perm != nil {
-			perm.SetEnteredTurn(g.GetTurnNumber())
-			casts[idx]++
-			if log != nil {
-				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: name})
+		var cmdrCard game.SimpleCard
+		for _, c := range ap.CommandZone {
+			if c.Name == name {
+				cmdrCard = c
+				break
+			}
+		}
+		if ap.CanPayForCommander(cmdrCard) {
+			if ap.PayForCommander(cmdrCard) {
+				perm := ap.CastCommander(name)
+				if perm == nil {
+					return
+				}
+				perm.SetEnteredTurn(g.GetTurnNumber())
+				casts[idx]++
+				if log != nil {
+					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: name})
+				}
 			}
 		}
 	}
@@ -132,12 +148,14 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) 
 	again := true
 	for again {
 		again = false
-		for i, c := range ap.Hand {
-			if !c.IsCreature() {
+		for _, c := range ap.Hand {
+			if !c.IsCreature() || !ap.CanPayForCard(c) {
 				continue
 			}
-			ap.Hand = append(ap.Hand[:i], ap.Hand[i+1:]...)
-			if perm, err := summonByName(ap, c.Name); err == nil && perm != nil {
+			if !ap.PayForCard(c) {
+				continue
+			}
+			if perm, err := g.SummonCreature(ap, c.Name); err == nil && perm != nil {
 				perm.SetEnteredTurn(g.GetTurnNumber())
 				if log != nil {
 					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCreatureSummon, Actor: ap.GetName(), Detail: c.Name})
@@ -149,6 +167,80 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) 
 	}
 
 	bridge.AutoActivateMainPhaseAbilities(g)
+}
+
+func tapLandsForMainPhaseMana(ap *game.Player) {
+	demand := aggregateMainPhaseManaDemand(ap)
+	for _, perm := range ap.GetLands() {
+		if perm.IsTapped() {
+			continue
+		}
+		mt, ok := landManaChoice(perm.GetSource(), demand)
+		if !ok {
+			continue
+		}
+		perm.Tap()
+		ap.AddManaToPool(mt, 1)
+	}
+}
+
+func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
+	demand := game.Mana{}
+	for _, c := range ap.CommandZone {
+		for mt, n := range c.GetManaCost() {
+			demand.Add(mt, n)
+		}
+		demand.Add(game.Any, ap.CommanderTax(c.Name))
+	}
+	for _, c := range ap.Hand {
+		if !c.IsCreature() {
+			continue
+		}
+		for mt, n := range c.GetManaCost() {
+			demand.Add(mt, n)
+		}
+	}
+	return demand
+}
+
+func landManaChoice(c game.SimpleCard, demand game.Mana) (game.ManaType, bool) {
+	choices := landManaChoices(c)
+	if len(choices) == 0 {
+		return "", false
+	}
+	best := choices[0]
+	bestNeed := demand[best]
+	for _, mt := range choices[1:] {
+		if demand[mt] > bestNeed {
+			best = mt
+			bestNeed = demand[mt]
+		}
+	}
+	return best, true
+}
+
+func landManaChoices(c game.SimpleCard) []game.ManaType {
+	text := strings.ToLower(c.Name + " " + c.TypeLine + " " + c.OracleText)
+	seen := map[game.ManaType]bool{}
+	var out []game.ManaType
+	add := func(mt game.ManaType, needles ...string) {
+		for _, needle := range needles {
+			if strings.Contains(text, strings.ToLower(needle)) {
+				if !seen[mt] {
+					seen[mt] = true
+					out = append(out, mt)
+				}
+				return
+			}
+		}
+	}
+	add(game.White, "plains", "{w}")
+	add(game.Blue, "island", "{u}")
+	add(game.Black, "swamp", "{b}")
+	add(game.Red, "mountain", "{r}")
+	add(game.Green, "forest", "{g}")
+	add(game.Colorless, "wastes", "{c}")
+	return out
 }
 
 // summonByName wraps Player.SummonCreature so callers can avoid the

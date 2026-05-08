@@ -42,26 +42,26 @@ type EDHGameRecord struct {
 
 // EDHDeckStats is the aggregate row exposed to the dashboard.
 type EDHDeckStats struct {
-	DeckName            string  `json:"deck_name"`
-	CommanderName       string  `json:"commander_name"`
-	Games               int     `json:"games"`
-	Wins                int     `json:"wins"`
-	Losses              int     `json:"losses"`
-	WinRate             float64 `json:"win_rate"`
-	AvgFinalLife        float64 `json:"avg_final_life"`
-	AvgMulligans        float64 `json:"avg_mulligans"`
-	CommanderDamageKOs  int     `json:"commander_damage_kos"`
-	LifeLossKOs         int     `json:"life_loss_kos"`
-	MillKOs             int     `json:"mill_kos"`
-	AvgCommanderCasts   float64 `json:"avg_commander_casts"`
+	DeckName           string  `json:"deck_name"`
+	CommanderName      string  `json:"commander_name"`
+	Games              int     `json:"games"`
+	Wins               int     `json:"wins"`
+	Losses             int     `json:"losses"`
+	WinRate            float64 `json:"win_rate"`
+	AvgFinalLife       float64 `json:"avg_final_life"`
+	AvgMulligans       float64 `json:"avg_mulligans"`
+	CommanderDamageKOs int     `json:"commander_damage_kos"`
+	LifeLossKOs        int     `json:"life_loss_kos"`
+	MillKOs            int     `json:"mill_kos"`
+	AvgCommanderCasts  float64 `json:"avg_commander_casts"`
 }
 
 // EDHResults aggregates EDHGameRecord values across many simulated pods.
 // It is safe for concurrent use.
 type EDHResults struct {
-	mu      sync.Mutex
-	games   []EDHGameRecord
-	byDeck  map[string]*deckAccumulator
+	mu     sync.Mutex
+	games  []EDHGameRecord
+	byDeck map[string]*deckAccumulator
 }
 
 type deckAccumulator struct {
@@ -148,6 +148,32 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].WinRate > out[j].WinRate })
+	return out
+}
+
+// RecentGames returns up to limit completed pods, newest first. The returned
+// records are deep-copied enough for dashboard/API consumers to read without
+// racing the simulator workers.
+func (r *EDHResults) RecentGames(limit int) []EDHGameRecord {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 || len(r.games) == 0 {
+		return nil
+	}
+	if limit > len(r.games) {
+		limit = len(r.games)
+	}
+	out := make([]EDHGameRecord, 0, limit)
+	for i := len(r.games) - 1; i >= 0 && len(out) < limit; i-- {
+		out = append(out, cloneEDHGameRecord(r.games[i]))
+	}
+	return out
+}
+
+func cloneEDHGameRecord(rec EDHGameRecord) EDHGameRecord {
+	out := rec
+	out.Players = append([]EDHPlayerRecord(nil), rec.Players...)
+	out.Events = append([]EDHEvent(nil), rec.Events...)
 	return out
 }
 

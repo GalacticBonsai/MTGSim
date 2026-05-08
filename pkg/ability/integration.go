@@ -66,14 +66,14 @@ type PermanentInterface interface {
 
 // NewGameAdapter creates a new game adapter.
 func NewGameAdapter(game GameInterface) *GameAdapter {
-	abilityEngine := NewAbilityEngine()
-
 	adapter := &GameAdapter{
 		game:          game,
-		abilityEngine: abilityEngine,
 		parser:        NewAbilityParser(),
 		currentPhase:  "Main",
 	}
+
+	// Create ability engine with adapter as game state
+	adapter.abilityEngine = NewAbilityEngine(adapter)
 
 	// Create execution engine with adapter as game state
 	adapter.executionEngine = NewExecutionEngine(adapter)

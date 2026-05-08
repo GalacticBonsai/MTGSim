@@ -149,8 +149,8 @@ func TestMultiplayer_TurnRotation_4Players(t *testing.T) {
 	}
 	expected := []*Player{p2, p3, p4, p1}
 	for _, want := range expected {
-		// 7 phase advances per turn to wrap from Untap back to Untap of next player
-		for i := 0; i < 7; i++ {
+		// 8 phase advances per turn: Untap through explicit Cleanup, then next Untap.
+		for i := 0; i < 8; i++ {
 			g.AdvancePhase()
 		}
 		if g.GetCurrentPlayerRaw() != want {

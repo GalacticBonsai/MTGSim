@@ -139,11 +139,14 @@ func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) (
 
 	for _, sentence := range sentences {
 		matched := false
-		// Try each ability type's patterns in order
-		for abilityType, patterns := range ap.patterns {
+		// Try ability type groups in deterministic precedence. Go map
+		// iteration is intentionally randomized; without this, broad spell
+		// patterns like "Draw a card" can beat a more specific ETB trigger.
+		for _, abilityType := range []AbilityType{Mana, Triggered, Activated, Static} {
 			if matched {
 				break // Already found a match for this sentence
 			}
+			patterns := ap.patterns[abilityType]
 			for _, pattern := range patterns {
 				if matches := pattern.Regex.FindStringSubmatch(sentence); matches != nil {
 					ability, err := pattern.Parser(matches, sentence)

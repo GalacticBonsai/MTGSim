@@ -15,7 +15,7 @@ import "testing"
 func TestKeyword_LifelinkTrampleIndestructible_Combo(t *testing.T) {
 	g, p1, p2 := twoPlayer(t)
 	att := makeCreature("Beast", "Lifelink\nTrample\nIndestructible", 5, 5, p1)
-	blk := makeCreature("Wall", "", 2, 5, p2) // 5 toughness so it strikes lethal back
+	blk := makeCreature("Wall", "", 5, 2, p2) // high power so it strikes lethal back
 	g.BeginCombat()
 	if err := g.DeclareAttacker(att, p2); err != nil {
 		t.Fatalf("declare attacker: %v", err)
@@ -29,13 +29,13 @@ func TestKeyword_LifelinkTrampleIndestructible_Combo(t *testing.T) {
 		t.Fatalf("indestructible attacker should have survived 2 damage from blocker")
 	}
 	if g.onBattlefield(blk) {
-		t.Fatalf("blocker should have died to 5 trample damage (2 lethal + 3 excess assigned correctly)")
+		t.Fatalf("blocker should have died to 2 assigned lethal damage")
 	}
 	if got := p1.GetLifeTotal(); got != 25 {
 		t.Fatalf("expected lifelink to gain 5 life (20 -> 25), got %d", got)
 	}
-	if got := p2.GetLifeTotal(); got != 20 {
-		t.Fatalf("expected 0 trample damage to defender, got %d", got)
+	if got := p2.GetLifeTotal(); got != 17 {
+		t.Fatalf("expected 3 trample damage to defender (20 -> 17), got %d", got)
 	}
 }
 

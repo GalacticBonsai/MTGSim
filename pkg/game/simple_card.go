@@ -8,6 +8,7 @@ type SimpleCard struct {
 	Toughness  string
 	OracleText string
 	Colors     []string
+	ManaCost   string
 }
 
 func (c SimpleCard) IsLand() bool         { return contains(c.TypeLine, "Land") }
@@ -18,6 +19,12 @@ func (c SimpleCard) IsSorcery() bool      { return contains(c.TypeLine, "Sorcery
 func (c SimpleCard) IsArtifact() bool     { return contains(c.TypeLine, "Artifact") }
 func (c SimpleCard) IsEnchantment() bool  { return contains(c.TypeLine, "Enchantment") }
 func (c SimpleCard) IsPlaneswalker() bool { return contains(c.TypeLine, "Planeswalker") }
+func (c SimpleCard) IsLegendary() bool    { return contains(c.TypeLine, "Legendary") }
+
+// GetManaCost parses the mana cost string into a Mana map.
+func (c SimpleCard) GetManaCost() Mana {
+	return parseManaCost(c.ManaCost)
+}
 
 // contains is a simple substring checker (ASCII)
 func contains(s, sub string) bool {
