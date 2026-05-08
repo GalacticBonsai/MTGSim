@@ -11,9 +11,12 @@ import (
 // the simplified runner AI. Returns false if no players are alive after
 // the turn finishes. priority is invoked at instant-speed windows so
 // future AI can respond on opponents' turns; log is optional.
-func stepOneEDHTurn(g *game.Game, seats []EDHSeat, casts []int, priority PriorityHandler, log *EDHEventLog) bool {
+func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *EDHEventLog, metrics *edhMetrics) bool {
 	startTurn := g.GetTurnNumber()
 	milledThisTurn := false
+	if metrics != nil {
+		metrics.resetTurn()
+	}
 	for {
 		ap := g.GetActivePlayerRaw()
 		switch g.GetCurrentPhase() {
@@ -35,10 +38,10 @@ func stepOneEDHTurn(g *game.Game, seats []EDHSeat, casts []int, priority Priorit
 			if log != nil {
 				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventTurnStart, Actor: ap.GetName()})
 			}
-			runMainPhase(g, ap, casts, log)
+			runMainPhase(g, ap, casts, log, metrics)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseCombat:
-			runCombatPhase(g, ap, log)
+			runCombatPhase(g, ap, log, metrics)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseEnd:
 			offerOpponentPriority(g, ap, priority)
@@ -47,7 +50,7 @@ func stepOneEDHTurn(g *game.Game, seats []EDHSeat, casts []int, priority Priorit
 		if milledThisTurn {
 			markMillIfApplicable(ap)
 		}
-		recordEliminations(g, log, ap)
+		recordEliminations(g, log, ap, metrics)
 		g.AdvancePhase()
 		if survivors(g) <= 1 {
 			return survivors(g) >= 1
@@ -84,11 +87,14 @@ func offerOpponentPriority(g *game.Game, ap *game.Player, h PriorityHandler) {
 // player is observed as lost. Tracking lives in the closure-free way:
 // we just inspect HasLost and avoid duplicate emission by checking the
 // last event of the matching kind for that actor.
-func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player) {
-	if log == nil {
+func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player, metrics *edhMetrics) {
+	if log == nil && metrics == nil {
 		return
 	}
-	existing := log.Events()
+	var existing []EDHEvent
+	if log != nil {
+		existing = log.Events()
+	}
 	already := map[string]bool{}
 	for _, e := range existing {
 		if e.Kind == EventPlayerEliminated {
@@ -99,14 +105,24 @@ func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player) {
 		if !p.HasLost() || already[p.GetName()] {
 			continue
 		}
-		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(g.GetCurrentPhase()), Kind: EventPlayerEliminated, Actor: p.GetName()})
+		loserIdx := indexOfPlayer(g, p)
+		if metrics != nil && !metrics.recordPlayerLost(loserIdx) {
+			continue
+		}
+		if log != nil {
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(g.GetCurrentPhase()), Kind: EventPlayerEliminated, Actor: p.GetName()})
+		}
+		if p != ap && metrics != nil {
+			metrics.recordElimination(indexOfPlayer(g, ap))
+		}
 	}
 }
 
 // runMainPhase plays one land, casts the commander when possible, and
 // summons creatures in hand if mana allows. Optional log
 // records every public action so a replay can be reproduced.
-func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) {
+func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics) {
+	idx := indexOfPlayer(g, ap)
 	for _, c := range ap.Hand {
 		if c.IsLand() {
 			if _, err := g.PlayLand(ap, c.Name); err != nil {
@@ -115,12 +131,14 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) 
 			if log != nil {
 				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventLandPlay, Actor: ap.GetName(), Detail: c.Name})
 			}
+			if metrics != nil {
+				metrics.recordLand(idx)
+			}
 			break
 		}
 	}
-	tapLandsForMainPhaseMana(ap)
+	tapManaSourcesForMainPhaseMana(g, ap)
 
-	idx := indexOfPlayer(g, ap)
 	if idx >= 0 && len(ap.CommandZone) > 0 {
 		name := ap.CommandZone[0].Name
 		var cmdrCard game.SimpleCard
@@ -132,14 +150,19 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) 
 		}
 		if ap.CanPayForCommander(cmdrCard) {
 			if ap.PayForCommander(cmdrCard) {
+				manaSpent := manaSpentForCommander(ap, cmdrCard)
 				perm := ap.CastCommander(name)
 				if perm == nil {
 					return
 				}
 				perm.SetEnteredTurn(g.GetTurnNumber())
 				casts[idx]++
+				storm := 0
+				if metrics != nil {
+					storm = metrics.recordSpell(idx, manaSpent, true)
+				}
 				if log != nil {
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: name})
+					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
 				}
 			}
 		}
@@ -148,17 +171,28 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) 
 	again := true
 	for again {
 		again = false
+		tapManaSourcesForMainPhaseMana(g, ap)
 		for _, c := range ap.Hand {
-			if !c.IsCreature() || !ap.CanPayForCard(c) {
+			if !isCastablePermanent(c) || !ap.CanPayForCard(c) {
 				continue
 			}
 			if !ap.PayForCard(c) {
 				continue
 			}
-			if perm, err := g.SummonCreature(ap, c.Name); err == nil && perm != nil {
+			manaSpent := manaSpentForCard(c)
+			perm, err := castPermanentCard(g, ap, c)
+			if err == nil && perm != nil {
 				perm.SetEnteredTurn(g.GetTurnNumber())
+				storm := 0
+				if metrics != nil {
+					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature())
+				}
 				if log != nil {
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCreatureSummon, Actor: ap.GetName(), Detail: c.Name})
+					kind := EventPermanentCast
+					if c.IsCreature() {
+						kind = EventCreatureSummon
+					}
+					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
 				}
 			}
 			again = true
@@ -169,18 +203,52 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog) 
 	bridge.AutoActivateMainPhaseAbilities(g)
 }
 
-func tapLandsForMainPhaseMana(ap *game.Player) {
+func isCastablePermanent(c game.SimpleCard) bool {
+	return c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()
+}
+
+func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.Permanent, error) {
+	if c.IsCreature() {
+		return g.SummonCreature(ap, c.Name)
+	}
+	return g.CastPermanent(ap, c.Name)
+}
+
+func eventDetail(name string, manaSpent, storm int) string {
+	return name + " | mana=" + intString(manaSpent) + " storm=" + intString(storm)
+}
+
+func intString(v int) string {
+	if v == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for v > 0 {
+		i--
+		buf[i] = byte('0' + v%10)
+		v /= 10
+	}
+	return string(buf[i:])
+}
+
+func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player) {
 	demand := aggregateMainPhaseManaDemand(ap)
-	for _, perm := range ap.GetLands() {
+	for _, perm := range ap.Battlefield {
 		if perm.IsTapped() {
 			continue
 		}
-		mt, ok := landManaChoice(perm.GetSource(), demand)
-		if !ok {
+		produced := chooseManaProduction(perm.GetSource(), demand)
+		if len(produced) == 0 {
+			continue
+		}
+		if perm.IsCreature() && perm.GetEnteredTurn() == g.GetTurnNumber() && !perm.HasKeyword(game.KWHaste) {
 			continue
 		}
 		perm.Tap()
-		ap.AddManaToPool(mt, 1)
+		for mt, n := range produced {
+			ap.AddManaToPool(mt, n)
+		}
 	}
 }
 
@@ -193,7 +261,7 @@ func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
 		demand.Add(game.Any, ap.CommanderTax(c.Name))
 	}
 	for _, c := range ap.Hand {
-		if !c.IsCreature() {
+		if !isCastablePermanent(c) {
 			continue
 		}
 		for mt, n := range c.GetManaCost() {
@@ -203,36 +271,53 @@ func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
 	return demand
 }
 
-func landManaChoice(c game.SimpleCard, demand game.Mana) (game.ManaType, bool) {
-	choices := landManaChoices(c)
-	if len(choices) == 0 {
-		return "", false
+func chooseManaProduction(c game.SimpleCard, demand game.Mana) game.Mana {
+	options := manaProductionOptions(c)
+	if len(options) == 0 {
+		return nil
 	}
-	best := choices[0]
-	bestNeed := demand[best]
-	for _, mt := range choices[1:] {
-		if demand[mt] > bestNeed {
-			best = mt
-			bestNeed = demand[mt]
+	best := options[0]
+	bestNeed := manaDemandScore(best, demand)
+	for _, opt := range options[1:] {
+		if score := manaDemandScore(opt, demand); score > bestNeed {
+			best = opt
+			bestNeed = score
 		}
 	}
-	return best, true
+	return best
 }
 
-func landManaChoices(c game.SimpleCard) []game.ManaType {
+func manaDemandScore(produced game.Mana, demand game.Mana) int {
+	score := 0
+	for mt, n := range produced {
+		if demand[mt] > 0 {
+			score += n * (demand[mt] + 1)
+		} else if demand[game.Any] > 0 {
+			score += n
+		}
+	}
+	return score
+}
+
+func manaProductionOptions(c game.SimpleCard) []game.Mana {
 	text := strings.ToLower(c.Name + " " + c.TypeLine + " " + c.OracleText)
-	seen := map[game.ManaType]bool{}
-	var out []game.ManaType
+	if !c.IsLand() && !strings.Contains(text, "{t}") && !strings.Contains(text, "tap") {
+		return nil
+	}
+	var out []game.Mana
 	add := func(mt game.ManaType, needles ...string) {
 		for _, needle := range needles {
 			if strings.Contains(text, strings.ToLower(needle)) {
-				if !seen[mt] {
-					seen[mt] = true
-					out = append(out, mt)
-				}
+				out = append(out, game.Mana{mt: 1})
 				return
 			}
 		}
+	}
+	if strings.Contains(text, "one mana of any color") || strings.Contains(text, "one mana of any type") {
+		return []game.Mana{{game.White: 1}, {game.Blue: 1}, {game.Black: 1}, {game.Red: 1}, {game.Green: 1}}
+	}
+	if strings.Contains(text, "{c}{c}") {
+		out = append(out, game.Mana{game.Colorless: 2})
 	}
 	add(game.White, "plains", "{w}")
 	add(game.Blue, "island", "{u}")
@@ -243,20 +328,15 @@ func landManaChoices(c game.SimpleCard) []game.ManaType {
 	return out
 }
 
-// summonByName wraps Player.SummonCreature so callers can avoid the
-// extra Hand lookup when the card is already known.
-func summonByName(p *game.Player, name string) (*game.Permanent, error) {
-	return p.SummonCreature(name)
-}
-
 // runCombatPhase declares all eligible attackers against the most
 // threatening living opponent (Phase 4) and resolves combat damage.
 // Falls back to seat-order rotation when threat scores are tied.
-func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog) {
+func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *edhMetrics) {
 	defender := chooseAttackTarget(g, ap)
 	if defender == nil {
 		return
 	}
+	beforeLife := defender.GetLifeTotal()
 	declared := 0
 	for _, perm := range ap.GetCreatures() {
 		if perm.IsTapped() {
@@ -270,8 +350,12 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog) {
 		}
 	}
 	g.ResolveCombatDamage()
+	damage := max(0, beforeLife-defender.GetLifeTotal())
+	if metrics != nil {
+		metrics.recordCombatDamage(indexOfPlayer(g, ap), damage)
+	}
 	if log != nil && declared > 0 {
-		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventCombatResolved, Actor: ap.GetName(), Target: defender.GetName()})
+		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventCombatResolved, Actor: ap.GetName(), Target: defender.GetName(), Detail: "damage=" + intString(damage)})
 	}
 }
 

@@ -149,12 +149,13 @@ func loadSeats(deckFiles []string, cardDB *card.CardDB) []simulation.EDHSeat {
 // a commander it is registered; otherwise the player is seated at 40
 // life with no commander but the rest of the EDH plumbing still applies.
 func loadEDHSeat(path string, cardDB deck.CardDatabase) (simulation.EDHSeat, error) {
-	if cmdr, main, side, err := deck.ImportCommanderDeckfileWithSideboard(path, cardDB); err == nil {
-		c := toSimpleCard(cmdr)
+	if cmdrs, main, side, err := deck.ImportCommanderDeckfileWithCommanders(path, cardDB); err == nil {
+		commanders := simpleCards(cmdrs)
+		primary := commanders[0]
 		return simulation.EDHSeat{
 			DeckPath: path, DeckName: main.Name,
 			Library: librarySimpleCards(main), Sideboard: librarySimpleCards(side),
-			Commander: &c,
+			Commanders: commanders, Commander: &primary,
 		}, nil
 	}
 	main, side, err := deck.ImportDeckfile(path, cardDB)
@@ -168,8 +169,12 @@ func loadEDHSeat(path string, cardDB deck.CardDatabase) (simulation.EDHSeat, err
 }
 
 func librarySimpleCards(d deck.Deck) []game.SimpleCard {
-	out := make([]game.SimpleCard, len(d.Cards))
-	for i, c := range d.Cards {
+	return simpleCards(d.Cards)
+}
+
+func simpleCards(cards []card.Card) []game.SimpleCard {
+	out := make([]game.SimpleCard, len(cards))
+	for i, c := range cards {
 		out[i] = toSimpleCard(c)
 	}
 	return out
@@ -238,6 +243,11 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, mu *
 		mu.Lock()
 		defer mu.Unlock()
 		return edh.DeckStats()
+	})
+	server.SetEDHSummaryProvider(func() simulation.EDHSummary {
+		mu.Lock()
+		defer mu.Unlock()
+		return edh.Summary()
 	})
 	server.SetEDHGamesProvider(func() []simulation.EDHGameRecord {
 		mu.Lock()

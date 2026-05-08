@@ -131,8 +131,11 @@ func TestServer_HandleEDHResults_Enabled(t *testing.T) {
 		return []simulation.EDHDeckStats{{
 			DeckName: "Atraxa", CommanderName: "Atraxa, Praetors' Voice",
 			Games: 3, Wins: 2, Losses: 1, WinRate: 66.6, AvgFinalLife: 12.0,
-			CommanderDamageKOs: 1,
+			CommanderDamageKOs: 1, AvgManaSpent: 12.3, MaxStormCount: 4,
 		}}
+	})
+	server.SetEDHSummaryProvider(func() simulation.EDHSummary {
+		return simulation.EDHSummary{TotalGames: 3, HighestStormCount: 4, TotalManaSpent: 37}
 	})
 	req := httptest.NewRequest("GET", "/api/edh-results", nil)
 	w := httptest.NewRecorder()
@@ -152,6 +155,9 @@ func TestServer_HandleEDHResults_Enabled(t *testing.T) {
 	if resp.Decks[0].CommanderDamageKOs != 1 {
 		t.Errorf("expected 1 commander dmg KO, got %d", resp.Decks[0].CommanderDamageKOs)
 	}
+	if resp.Summary.HighestStormCount != 4 || resp.Summary.TotalManaSpent != 37 {
+		t.Errorf("unexpected EDH summary: %+v", resp.Summary)
+	}
 }
 
 func TestServer_HandleEDHGames_Enabled(t *testing.T) {
@@ -159,7 +165,7 @@ func TestServer_HandleEDHGames_Enabled(t *testing.T) {
 	server := NewServer(snapshotFromResults(r), 0)
 	server.SetEDHGamesProvider(func() []simulation.EDHGameRecord {
 		return []simulation.EDHGameRecord{{
-			Turns: 7, Winner: "Deck A",
+			Turns: 7, Winner: "Deck A", MaxStormCount: 3, TotalManaSpent: 18,
 			Players: []simulation.EDHPlayerRecord{{DeckName: "Deck A"}},
 			Events:  []simulation.EDHEvent{{Kind: simulation.EventGameEnd}},
 		}}
@@ -178,6 +184,9 @@ func TestServer_HandleEDHGames_Enabled(t *testing.T) {
 	}
 	if resp.Games[0].Winner != "Deck A" || len(resp.Games[0].Events) != 1 {
 		t.Fatalf("unexpected game payload: %+v", resp.Games[0])
+	}
+	if resp.Games[0].MaxStormCount != 3 || resp.Games[0].TotalManaSpent != 18 {
+		t.Fatalf("missing tuning metrics: %+v", resp.Games[0])
 	}
 }
 

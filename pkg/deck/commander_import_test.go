@@ -34,6 +34,16 @@ func newCommanderMockDB() *MockCardDB {
 			Name: "Sol Ring", CMC: 1, ManaCost: "{1}",
 			TypeLine: "Artifact", ColorIdentity: []string{},
 		},
+		"Thrasios, Triton Hero": {
+			Name: "Thrasios, Triton Hero", CMC: 2, ManaCost: "{G}{U}",
+			TypeLine: "Legendary Creature — Merfolk Wizard",
+			Colors:   []string{"G", "U"}, ColorIdentity: []string{"G", "U"},
+		},
+		"Tymna the Weaver": {
+			Name: "Tymna the Weaver", CMC: 3, ManaCost: "{1}{W}{B}",
+			TypeLine: "Legendary Creature — Human Cleric",
+			Colors:   []string{"W", "B"}, ColorIdentity: []string{"W", "B"},
+		},
 	}
 	return &MockCardDB{cards: cards}
 }
@@ -157,5 +167,90 @@ Sideboard
 	_, _, _, err = ImportCommanderDeckfileWithSideboard(offColor, db)
 	if err == nil || !strings.Contains(err.Error(), "color identity") {
 		t.Fatalf("expected sideboard color identity error, got %v", err)
+	}
+}
+
+func TestImportCommanderDeckfile_CockatriceDCK(t *testing.T) {
+	db := newCommanderMockDB()
+	path := writeTempDeck(t, `NAME:krenko test
+1 [FDN:204] Goblin Guide
+2 [KTK:262] Mountain
+SB: 1 [FDN:204] Krenko, Mob Boss
+LAYOUT MAIN:(1,1)(NONE,false,50)|([FDN:204])
+`)
+	cmd, main, side, err := ImportCommanderDeckfileWithSideboard(path, db)
+	if err != nil {
+		t.Fatalf("expected cockatrice import, got %v", err)
+	}
+	if cmd.Name != "Krenko, Mob Boss" || main.Name != "krenko test" || main.Size() != 3 || side.Size() != 0 {
+		t.Fatalf("unexpected import cmd=%s name=%s main=%d side=%d", cmd.Name, main.Name, main.Size(), side.Size())
+	}
+}
+
+func TestImportCommanderDeckfile_MoxfieldTXT(t *testing.T) {
+	db := newCommanderMockDB()
+	path := writeTempDeck(t, `1 Goblin Guide
+1 Mountain
+
+SIDEBOARD:
+1 Sol Ring
+
+1 Krenko, Mob Boss
+`)
+	cmd, main, side, err := ImportCommanderDeckfileWithSideboard(path, db)
+	if err != nil {
+		t.Fatalf("expected moxfield import, got %v", err)
+	}
+	if cmd.Name != "Krenko, Mob Boss" || main.Size() != 2 || side.Size() != 1 {
+		t.Fatalf("unexpected import cmd=%s main=%d side=%d", cmd.Name, main.Size(), side.Size())
+	}
+}
+
+func TestImportCommanderDeckfile_UnknownCommanderStillImported(t *testing.T) {
+	db := newCommanderMockDB()
+	path := writeTempDeck(t, `1 [FDN:204] Goblin Guide
+1 [KTK:262] Mountain
+SB: 1 [NEW:1] New Preview Commander
+`)
+	cmd, main, side, err := ImportCommanderDeckfileWithSideboard(path, db)
+	if err != nil {
+		t.Fatalf("expected unknown commander name to import, got %v", err)
+	}
+	if cmd.Name != "New Preview Commander" || main.Size() != 2 || side.Size() != 0 {
+		t.Fatalf("unexpected import cmd=%s main=%d side=%d", cmd.Name, main.Size(), side.Size())
+	}
+}
+
+func TestImportCommanderDeckfileWithCommanders_PartnersUseCombinedIdentity(t *testing.T) {
+	db := newCommanderMockDB()
+	path := writeTempDeck(t, `1 Llanowar Elves
+1 Sol Ring
+
+1 Thrasios, Triton Hero
+1 Tymna the Weaver
+`)
+	commanders, main, side, err := ImportCommanderDeckfileWithCommanders(path, db)
+	if err != nil {
+		t.Fatalf("expected partner import, got %v", err)
+	}
+	if len(commanders) != 2 || commanders[0].Name != "Thrasios, Triton Hero" || commanders[1].Name != "Tymna the Weaver" {
+		t.Fatalf("unexpected commanders: %+v", commanders)
+	}
+	if main.Size() != 2 || side.Size() != 0 {
+		t.Fatalf("unexpected main=%d side=%d", main.Size(), side.Size())
+	}
+}
+
+func TestImportDeckfile_KeepsSBPrefixAsSideboard(t *testing.T) {
+	db := newCommanderMockDB()
+	path := writeTempDeck(t, `1 [FDN:204] Goblin Guide
+SB: 1 [FDN:204] Krenko, Mob Boss
+`)
+	main, side, err := ImportDeckfile(path, db)
+	if err != nil {
+		t.Fatalf("unexpected import error: %v", err)
+	}
+	if main.Size() != 1 || side.Size() != 1 || side.Cards[0].Name != "Krenko, Mob Boss" {
+		t.Fatalf("unexpected main=%d side=%d", main.Size(), side.Size())
 	}
 }

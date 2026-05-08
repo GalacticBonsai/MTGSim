@@ -68,10 +68,10 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Static, `Other\s+creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump others", ap.parseStaticPumpOthers)
 
 	// Modal spells - improved patterns
-	ap.addPattern(Activated, `Choose one —.*`, DrawCards, "Modal spell", ap.parseModalSpell)
-	ap.addPattern(Activated, `Choose two —.*`, DrawCards, "Modal spell - choose two", ap.parseModalSpellTwo)
-	ap.addPattern(Activated, `Choose three.*`, DrawCards, "Modal spell - choose three", ap.parseModalSpellThree)
-	ap.addPattern(Activated, `Choose any number —.*`, DrawCards, "Modal spell - choose any", ap.parseModalSpellAny)
+	ap.addPattern(Activated, `Choose one —.*`, ChooseMode, "Modal spell", ap.parseModalSpell)
+	ap.addPattern(Activated, `Choose two —.*`, ChooseMode, "Modal spell - choose two", ap.parseModalSpellTwo)
+	ap.addPattern(Activated, `Choose three.*`, ChooseMode, "Modal spell - choose three", ap.parseModalSpellThree)
+	ap.addPattern(Activated, `Choose any number —.*`, ChooseMode, "Modal spell - choose any", ap.parseModalSpellAny)
 
 	// Variable X-cost abilities
 	ap.addPattern(Activated, `\{X\}.*:\s*Draw\s+X\s+cards?`, DrawCards, "X-cost draw", ap.parseXCostDraw)
@@ -94,7 +94,7 @@ func (ap *AbilityParser) initializePatterns() {
 	// Additional spell effects for common cards
 	ap.addPattern(Activated, `Add\s+\{([WUBRGC])\}\{([WUBRGC])\}\{([WUBRGC])\}\.?`, AddMana, "Triple mana", ap.parseTripleMana)
 	ap.addPattern(Activated, `Prevent\s+all\s+combat\s+damage\s+that\s+would\s+be\s+dealt\s+this\s+turn`, PreventDamage, "Fog effect", ap.parseFogEffect)
-	ap.addPattern(Activated, `Take\s+an\s+extra\s+turn\s+after\s+this\s+one`, DrawCards, "Extra turn", ap.parseExtraTurn) // Using DrawCards as placeholder
+	ap.addPattern(Activated, `Take\s+an\s+extra\s+turn\s+after\s+this\s+one`, TakeExtraTurn, "Extra turn", ap.parseExtraTurn)
 	ap.addPattern(Activated, `Create\s+(\d+)\s+(\d+)/(\d+)\s+.*\s+creature\s+tokens?`, CreateToken, "Token creation", ap.parseTokenCreation)
 
 	// X-cost spell effects
@@ -801,7 +801,7 @@ func (ap *AbilityParser) parseModalSpell(matches []string, fullText string) (*Ab
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Type:        ChooseMode,
 				Value:       1,
 				Duration:    Instant,
 				Description: "Choose one modal effect",
@@ -817,7 +817,7 @@ func (ap *AbilityParser) parseModalSpellTwo(matches []string, fullText string) (
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Type:        ChooseMode,
 				Value:       2,
 				Duration:    Instant,
 				Description: "Choose two modal effects",
@@ -833,7 +833,7 @@ func (ap *AbilityParser) parseModalSpellThree(matches []string, fullText string)
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:        DrawCards, // Placeholder - would need more complex parsing
+				Type:        ChooseMode,
 				Value:       3,
 				Duration:    Instant,
 				Description: "Choose three modal effects",
@@ -849,8 +849,8 @@ func (ap *AbilityParser) parseModalSpellAny(matches []string, fullText string) (
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:        DrawCards, // Placeholder - would need more complex parsing
-				Value:       0,         // Variable
+				Type:        ChooseMode,
+				Value:       0, // Variable
 				Duration:    Instant,
 				Description: "Choose any number of modal effects",
 			},
@@ -1358,7 +1358,7 @@ func (ap *AbilityParser) parseExtraTurn(matches []string, fullText string) (*Abi
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:        DrawCards, // Placeholder effect type
+				Type:        TakeExtraTurn,
 				Value:       1,
 				Duration:    Instant,
 				Description: "Take an extra turn after this one",

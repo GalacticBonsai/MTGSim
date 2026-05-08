@@ -143,7 +143,8 @@ func TestRunMainPhase_TapsLandsAndPaysCreatureCosts(t *testing.T) {
 	p1.AddCardToHand(game.SimpleCard{Name: "Bear", TypeLine: "Creature", Power: "2", Toughness: "2", ManaCost: "{G}"})
 	p1.AddCardToHand(game.SimpleCard{Name: "Elk", TypeLine: "Creature", Power: "3", Toughness: "3", ManaCost: "{2}{G}"})
 
-	runMainPhase(g, p1, []int{0, 0}, nil)
+	m := newEDHMetrics(2)
+	runMainPhase(g, p1, []int{0, 0}, nil, m)
 
 	if len(p1.GetLands()) != 1 || !p1.GetLands()[0].IsTapped() {
 		t.Fatalf("expected Forest to be played and tapped for mana")
@@ -154,5 +155,40 @@ func TestRunMainPhase_TapsLandsAndPaysCreatureCosts(t *testing.T) {
 	}
 	if p1.FindCardInHand("Elk") < 0 {
 		t.Fatalf("unaffordable Elk should remain in hand")
+	}
+	if got := m.players[0]; got.LandsPlayed != 1 || got.CreaturesCast != 1 || got.SpellsCast != 1 || got.ManaSpent != 1 || got.MaxStormCount != 1 {
+		t.Fatalf("unexpected main-phase metrics: %+v", got)
+	}
+}
+
+func TestRunMainPhase_CastsManaRockAndUsesItForPermanent(t *testing.T) {
+	p1 := game.NewPlayer("A", 40)
+	p2 := game.NewPlayer("B", 40)
+	g := game.NewGame(p1, p2)
+	p1.AddCardToHand(game.SimpleCard{Name: "Forest", TypeLine: "Basic Land — Forest"})
+	p1.AddCardToHand(game.SimpleCard{Name: "Sol Ring", TypeLine: "Artifact", ManaCost: "{1}", OracleText: "{T}: Add {C}{C}."})
+	p1.AddCardToHand(game.SimpleCard{Name: "Steel Golem", TypeLine: "Artifact Creature", Power: "3", Toughness: "4", ManaCost: "{2}"})
+
+	log := NewEDHEventLog()
+	m := newEDHMetrics(2)
+	runMainPhase(g, p1, []int{0, 0}, log, m)
+
+	if p1.FindCardInHand("Sol Ring") >= 0 || p1.FindCardInHand("Steel Golem") >= 0 {
+		t.Fatalf("expected Sol Ring and Steel Golem to be cast; hand=%+v", p1.Hand)
+	}
+	artifacts := 0
+	for _, perm := range p1.Battlefield {
+		if perm.GetSource().IsArtifact() {
+			artifacts++
+		}
+	}
+	if artifacts < 2 || len(p1.GetCreatures()) != 1 {
+		t.Fatalf("expected mana rock plus artifact creature on battlefield")
+	}
+	if got := m.players[0]; got.CardsPlayed != 3 || got.SpellsCast != 2 || got.CreaturesCast != 1 || got.ManaSpent != 3 || got.MaxStormCount != 2 {
+		t.Fatalf("unexpected permanent metrics: %+v", got)
+	}
+	if events := log.Events(); len(events) < 3 || events[1].Kind != EventPermanentCast || events[2].Kind != EventCreatureSummon {
+		t.Fatalf("expected permanent then creature events, got %+v", events)
 	}
 }
