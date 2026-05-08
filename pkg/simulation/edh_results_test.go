@@ -81,3 +81,23 @@ func TestEDHResults_Empty(t *testing.T) {
 		t.Fatalf("expected empty deck stats on fresh aggregator")
 	}
 }
+
+func TestEDHResults_RecentGamesNewestFirstAndCopied(t *testing.T) {
+	r := NewEDHResults()
+	r.RecordGame(EDHGameRecord{Turns: 3, Winner: "A", Players: []EDHPlayerRecord{{DeckName: "A"}}})
+	r.RecordGame(EDHGameRecord{Turns: 4, Winner: "B", Players: []EDHPlayerRecord{{DeckName: "B"}}, Events: []EDHEvent{{Kind: EventGameEnd}}})
+
+	recent := r.RecentGames(2)
+	if len(recent) != 2 {
+		t.Fatalf("expected 2 recent games, got %d", len(recent))
+	}
+	if recent[0].Winner != "B" || recent[1].Winner != "A" {
+		t.Fatalf("expected newest-first order, got %+v", recent)
+	}
+	recent[0].Players[0].DeckName = "mutated"
+	recent[0].Events[0].Kind = EventTurnStart
+	again := r.RecentGames(1)
+	if again[0].Players[0].DeckName != "B" || again[0].Events[0].Kind != EventGameEnd {
+		t.Fatalf("RecentGames should return copies, got %+v", again[0])
+	}
+}

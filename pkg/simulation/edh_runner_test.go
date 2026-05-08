@@ -134,3 +134,25 @@ func TestEDHResults_FromSimulatedGame(t *testing.T) {
 		t.Fatalf("expected 2 decks in aggregate, got %d", len(stats))
 	}
 }
+
+func TestRunMainPhase_TapsLandsAndPaysCreatureCosts(t *testing.T) {
+	p1 := game.NewPlayer("A", 40)
+	p2 := game.NewPlayer("B", 40)
+	g := game.NewGame(p1, p2)
+	p1.AddCardToHand(game.SimpleCard{Name: "Forest", TypeLine: "Basic Land — Forest"})
+	p1.AddCardToHand(game.SimpleCard{Name: "Bear", TypeLine: "Creature", Power: "2", Toughness: "2", ManaCost: "{G}"})
+	p1.AddCardToHand(game.SimpleCard{Name: "Elk", TypeLine: "Creature", Power: "3", Toughness: "3", ManaCost: "{2}{G}"})
+
+	runMainPhase(g, p1, []int{0, 0}, nil)
+
+	if len(p1.GetLands()) != 1 || !p1.GetLands()[0].IsTapped() {
+		t.Fatalf("expected Forest to be played and tapped for mana")
+	}
+	creatures := p1.GetCreatures()
+	if len(creatures) != 1 || creatures[0].GetName() != "Bear" {
+		t.Fatalf("expected only affordable Bear to be summoned, got %+v", creatures)
+	}
+	if p1.FindCardInHand("Elk") < 0 {
+		t.Fatalf("unaffordable Elk should remain in hand")
+	}
+}

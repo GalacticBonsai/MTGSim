@@ -84,6 +84,7 @@ func (g *Game) removeDamageFromPermanents() {
 
 // AdvancePhase steps to the next phase; on cleanup step completion, rotate to next player's turn.
 func (g *Game) AdvancePhase() {
+	g.clearManaPools()
 	switch g.currentPhase {
 	case PhaseUntap:
 		g.currentPhase = PhaseUpkeep
@@ -99,11 +100,9 @@ func (g *Game) AdvancePhase() {
 		g.currentPhase = PhaseEnd
 	case PhaseEnd:
 		g.currentPhase = PhaseCleanup
-	case PhaseCleanup:
-		// cleanup step: remove damage from permanents
-		g.removeDamageFromPermanents()
-		// end of turn -> next player
 		g.clearUntilEndOfTurnEffects()
+	case PhaseCleanup:
+		// end of turn -> next player
 		if len(g.players) > 0 {
 			g.currentIdx = (g.currentIdx + 1) % len(g.players)
 			g.activeIdx = g.currentIdx
@@ -111,6 +110,14 @@ func (g *Game) AdvancePhase() {
 		g.currentPhase = PhaseUntap
 		if g.currentIdx == 0 { // wrapped around to first player
 			g.turnNumber++
+		}
+	}
+}
+
+func (g *Game) clearManaPools() {
+	for _, pl := range g.players {
+		if pl != nil {
+			pl.ClearManaPool()
 		}
 	}
 }

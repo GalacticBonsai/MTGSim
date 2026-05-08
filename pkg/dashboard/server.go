@@ -21,10 +21,14 @@ type ResultsProvider func() []simulation.Result
 // when nil the dashboard falls back to the 1v1 legacy view only.
 type EDHResultsProvider func() []simulation.EDHDeckStats
 
+// EDHGamesProvider returns recent EDH pod records for replay/event-log views.
+type EDHGamesProvider func() []simulation.EDHGameRecord
+
 // Server serves the dashboard.
 type Server struct {
 	provider    ResultsProvider
 	edhProvider EDHResultsProvider
+	edhGames    EDHGamesProvider
 	port        int
 	mux         *http.ServeMux
 }
@@ -43,6 +47,9 @@ func NewServer(provider ResultsProvider, port int) *Server {
 // only enabled when a non-nil provider has been set.
 func (s *Server) SetEDHProvider(p EDHResultsProvider) { s.edhProvider = p }
 
+// SetEDHGamesProvider attaches a recent-pod provider for /api/edh-games.
+func (s *Server) SetEDHGamesProvider(p EDHGamesProvider) { s.edhGames = p }
+
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
 	s.registerRoutes()
@@ -52,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/results", s.handleResults)
 	s.mux.HandleFunc("/api/edh-results", s.handleEDHResults)
+	s.mux.HandleFunc("/api/edh-games", s.handleEDHGames)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -102,8 +110,8 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 }
 
 type edhResultsResponse struct {
-	Enabled bool                       `json:"enabled"`
-	Decks   []simulation.EDHDeckStats  `json:"decks"`
+	Enabled bool                      `json:"enabled"`
+	Decks   []simulation.EDHDeckStats `json:"decks"`
 }
 
 // handleEDHResults returns per-deck EDH aggregates if an EDH provider
@@ -115,6 +123,20 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(edhResultsResponse{Enabled: true, Decks: s.edhProvider()})
+}
+
+type edhGamesResponse struct {
+	Enabled bool                       `json:"enabled"`
+	Games   []simulation.EDHGameRecord `json:"games"`
+}
+
+func (s *Server) handleEDHGames(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.edhGames == nil {
+		_ = json.NewEncoder(w).Encode(edhGamesResponse{Enabled: false})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(edhGamesResponse{Enabled: true, Games: s.edhGames()})
 }
 
 // handleHealth returns server health.
@@ -202,13 +224,26 @@ const htmlDashboard = `
 						<th>Win Rate</th>
 						<th>Avg Life</th>
 						<th>Cmdr Dmg KOs</th>
+							<th>Life KOs</th>
+							<th>Mill KOs</th>
+							<th>Avg Cmdr Casts</th>
 						<th>Avg Mulls</th>
 					</tr>
 				</thead>
 				<tbody id="edhDecksBody">
-					<tr><td colspan="9" class="loading">Loading...</td></tr>
+						<tr><td colspan="12" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
+
+				<h3>Recent EDH Pods</h3>
+				<table class="table" id="edhGames">
+					<thead>
+						<tr><th>Winner</th><th>Turns</th><th>Players</th><th>Events</th><th>Last Event</th></tr>
+					</thead>
+					<tbody id="edhGamesBody">
+						<tr><td colspan="5" class="loading">Loading...</td></tr>
+					</tbody>
+				</table>
 		</div>
 	</div>
 
@@ -263,14 +298,40 @@ const htmlDashboard = `
 					+ '<td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td>'
 					+ '<td>' + (d.avg_final_life || 0).toFixed(1) + '</td>'
 					+ '<td>' + d.commander_damage_kos + '</td>'
+					+ '<td>' + d.life_loss_kos + '</td>'
+					+ '<td>' + d.mill_kos + '</td>'
+					+ '<td>' + (d.avg_commander_casts || 0).toFixed(2) + '</td>'
 					+ '<td>' + (d.avg_mulligans || 0).toFixed(2) + '</td>'
 					+ '</tr>';
 			}
-			document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="9">No data</td></tr>';
+				document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="12">No data</td></tr>';
 		}
 
+			async function loadEDHGames() {
+				try {
+					const res = await fetch('/api/edh-games');
+					const data = await res.json();
+					if (data.enabled) renderEDHGames(data.games || []);
+				} catch (err) {
+					console.error('Error loading EDH games:', err);
+				}
+			}
+
+			function renderEDHGames(games) {
+				let html = '';
+				for (let g of games) {
+					const players = (g.Players || []).map(p => p.DeckName + (p.Eliminated ? ' ✗' : ' ✓')).join(', ');
+					const events = g.Events || [];
+					const last = events.length ? events[events.length - 1].kind : '-';
+					html += '<tr><td>' + (g.Winner || 'Draw') + '</td><td>' + g.Turns + '</td><td>' + players + '</td><td>' + events.length + '</td><td>' + last + '</td></tr>';
+				}
+				document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="5">No recent pods</td></tr>';
+			}
+
 		setInterval(loadResults, 5000);
+			setInterval(loadEDHGames, 5000);
 		loadResults();
+			loadEDHGames();
 	</script>
 </body>
 </html>

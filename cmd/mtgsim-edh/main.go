@@ -6,7 +6,6 @@
 package main
 
 import (
-
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -169,6 +168,7 @@ func toSimpleCard(c card.Card) game.SimpleCard {
 	return game.SimpleCard{
 		Name: c.Name, TypeLine: c.TypeLine, Power: c.Power,
 		Toughness: c.Toughness, OracleText: c.OracleText, Colors: c.Colors,
+		ManaCost: c.ManaCost,
 	}
 }
 
@@ -226,6 +226,11 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, mu *
 		mu.Lock()
 		defer mu.Unlock()
 		return edh.DeckStats()
+	})
+	server.SetEDHGamesProvider(func() []simulation.EDHGameRecord {
+		mu.Lock()
+		defer mu.Unlock()
+		return edh.RecentGames(10)
 	})
 	go func() {
 		if err := server.Start(); err != nil {

@@ -55,14 +55,17 @@ func (g *Game) ApplyStateBasedActions() {
 	// 3) Legend rule (CR 704.5k): If a player controls two or more legendary permanents with the same name, that player chooses one of them, and the rest are put into their owners' graveyards.
 	g.applyLegendRule()
 
-	// 4) Player 0 or less life loses
+	// 4) Planeswalker uniqueness rule (CR 704.5n): If a player controls two or more planeswalkers with the same planeswalker type, that player chooses one of them, and the rest are put into their owners' graveyards.
+	g.applyPlaneswalkerUniquenessRule()
+
+	// 5) Player 0 or less life loses
 	for _, pl := range g.players {
 		if pl.GetLifeTotal() <= 0 {
 			pl.lost = true
 		}
 	}
 
-	// 5) CR 704.5u: a player who has been dealt 21 or more combat
+	// 6) CR 704.5u: a player who has been dealt 21 or more combat
 	// damage by the same commander over the course of the game loses.
 	for _, pl := range g.players {
 		if pl.MaxCommanderDamageReceived() >= 21 {
@@ -93,6 +96,28 @@ func (g *Game) applyLegendRule() {
 			}
 		}
 		for _, perms := range nameCounts {
+			if len(perms) > 1 {
+				// Keep the first one, destroy the rest
+				for i := 1; i < len(perms); i++ {
+					g.handleDies(perms[i])
+				}
+			}
+		}
+	}
+}
+
+// applyPlaneswalkerUniquenessRule implements CR 704.5n: If a player controls two or more planeswalkers with the same planeswalker type, that player chooses one of them, and the rest are put into their owners' graveyards.
+// For simulation purposes, we arbitrarily keep the first one encountered.
+func (g *Game) applyPlaneswalkerUniquenessRule() {
+	for _, pl := range g.players {
+		typeCounts := make(map[string][]*Permanent)
+		for _, perm := range pl.Battlefield {
+			if perm.IsPlaneswalker() {
+				// Simplified: use the name as the planeswalker type
+				typeCounts[perm.GetName()] = append(typeCounts[perm.GetName()], perm)
+			}
+		}
+		for _, perms := range typeCounts {
 			if len(perms) > 1 {
 				// Keep the first one, destroy the rest
 				for i := 1; i < len(perms); i++ {

@@ -17,7 +17,7 @@ type Player struct {
 	Exile       []SimpleCard
 	CommandZone []SimpleCard
 
-	manaPool map[ManaType]int
+	manaPool *ManaPool
 
 	// Commander bookkeeping (CR 903). Names of cards designated as this
 	// player's commander(s); cast count from the command zone (for tax,
@@ -39,7 +39,7 @@ func NewPlayer(name string, startingLife int) *Player {
 		Graveyard:               []SimpleCard{},
 		Exile:                   []SimpleCard{},
 		CommandZone:             []SimpleCard{},
-		manaPool:                map[ManaType]int{},
+		manaPool:                NewManaPool(),
 		commanderNames:          map[string]bool{},
 		commanderCastCount:      map[string]int{},
 		commanderDamageReceived: map[string]int{},
@@ -191,7 +191,7 @@ func (p *Player) GetCreatures() []*Permanent {
 	return out
 }
 
-// GetLands returns land permanents you control.
+// GetLands returns land permanents controlled by the player.
 func (p *Player) GetLands() []*Permanent {
 	out := []*Permanent{}
 	for _, perm := range p.Battlefield {
@@ -202,14 +202,39 @@ func (p *Player) GetLands() []*Permanent {
 	return out
 }
 
+// CanPayForCard checks if the player can pay the mana cost of the given card.
+func (p *Player) CanPayForCard(c SimpleCard) bool {
+	cost := c.GetManaCost()
+	return p.manaPool.CanPay(cost)
+}
+
+// PayForCard pays the mana cost of the given card if possible.
+func (p *Player) PayForCard(c SimpleCard) bool {
+	cost := c.GetManaCost()
+	return p.manaPool.Pay(cost)
+}
+
+// CanPayForCommander checks the printed commander cost plus commander tax.
+func (p *Player) CanPayForCommander(c SimpleCard) bool {
+	cost := c.GetManaCost()
+	cost.Add(Any, p.CommanderTax(c.Name))
+	return p.manaPool.CanPay(cost)
+}
+
+// PayForCommander pays the printed commander cost plus commander tax.
+func (p *Player) PayForCommander(c SimpleCard) bool {
+	cost := c.GetManaCost()
+	cost.Add(Any, p.CommanderTax(c.Name))
+	return p.manaPool.Pay(cost)
+}
+
 // Mana pool basics (detailed payment in Task 2)
-func (p *Player) GetManaPool() map[ManaType]int { return p.manaPool }
+func (p *Player) GetManaPool() map[ManaType]int { return p.manaPool.pool }
 func (p *Player) AddManaToPool(mt ManaType, n int) {
 	if n <= 0 {
 		return
 	}
-	if p.manaPool == nil {
-		p.manaPool = map[ManaType]int{}
-	}
-	p.manaPool[mt] = p.manaPool[mt] + n
+	p.manaPool.Add(mt, n)
 }
+
+func (p *Player) ClearManaPool() { p.manaPool.Clear() }
