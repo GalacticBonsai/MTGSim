@@ -15,6 +15,7 @@ type EDHSeat struct {
 	DeckPath  string
 	DeckName  string
 	Library   []game.SimpleCard
+	Sideboard []game.SimpleCard
 	Commander *game.SimpleCard // nil if the deck has no commander designated
 	Mulligans int              // mulligans the player will take before the game starts
 }
@@ -149,5 +150,3 @@ func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit boo
 	rec.Winner = winner
 	return rec
 }
-
-

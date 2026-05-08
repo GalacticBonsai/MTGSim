@@ -8,7 +8,10 @@ type SimpleCard struct {
 	Toughness  string
 	OracleText string
 	Colors     []string
-	ManaCost   string
+	// ColorIdentity is used by Commander/EDH import and sideboard variant
+	// automation to keep generated lists legal under CR 903.4.
+	ColorIdentity []string
+	ManaCost      string
 }
 
 func (c SimpleCard) IsLand() bool         { return contains(c.TypeLine, "Land") }
