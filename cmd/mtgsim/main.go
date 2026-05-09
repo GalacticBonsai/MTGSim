@@ -759,6 +759,20 @@ func buildGameFromDecks(d1, d2 deck.Deck) (*game.Game, *game.Player, *game.Playe
 	return g, p1, p2
 }
 
+// gameStateSnapshot returns a string representation of the current game state
+// excluding turn and phase numbers so it can be used to detect meaningful progress
+// across individual phase actions.
+func gameStateSnapshot(g *game.Game) string {
+	var b strings.Builder
+	for _, p := range g.GetPlayersRaw() {
+		fmt.Fprintf(&b, "%s:L%d,lost:%v,Lib%d,Hand%d,BF%d,G%d,E%d;",
+			p.GetName(), p.GetLifeTotal(), p.HasLost(),
+			len(p.Library), len(p.Hand), len(p.Battlefield),
+			len(p.Graveyard), len(p.Exile))
+	}
+	return b.String()
+}
+
 // Play a single game with phases, mana, and costs enforced.
 // Returns the winner, loser, a draw flag, turn count, and duration.
 func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.CardDB) (winner *game.Player, loser *game.Player, isDraw bool, turns int, dur time.Duration) {
@@ -775,7 +789,24 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 	adapter := &abilityStackAdapter{sce: sce, gs: gs, cardDB: cardDB}
 	g.SetStack(adapter)
 
+	lastState := ""
+	unchangedPhases := 0
+	const maxUnchangedPhases = 12
+
 	for g.GetTurnNumber() <= maxTurns {
+		// Detect stale game state before each phase action
+		currentState := gameStateSnapshot(g)
+		if currentState == lastState {
+			unchangedPhases++
+			if unchangedPhases >= maxUnchangedPhases {
+				logger.LogMeta("STUCK LOOP: no state change for %d consecutive phases, breaking. snapshot=%s", unchangedPhases, currentState)
+				break
+			}
+		} else {
+			unchangedPhases = 0
+			lastState = currentState
+		}
+
 		ap := g.GetActivePlayerRaw()
 		dp := opponentOf(g, ap)
 		phase := g.GetCurrentPhase()

@@ -95,9 +95,6 @@ jobs:
       - name: Build mtgsim-edh
         run: go build -v -o mtgsim-edh${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim-edh
 
-      - name: Build stack_demo
-        run: go build -v -o stack_demo${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/stack_demo
-
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
@@ -106,5 +103,4 @@ jobs:
             mtgsim*
             mtgsim-dashboard*
             mtgsim-edh*
-            stack_demo*
           if-no-files-found: error

@@ -3,6 +3,7 @@ package simulation
 import (
 	"strings"
 
+	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
@@ -30,6 +31,7 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 		if currentState == lastState {
 			unchangedActions++
 			if unchangedActions >= maxUnchangedActions {
+				logger.LogMeta("STUCK LOOP: no state change for %d consecutive actions, breaking. snapshot=%s", unchangedActions, currentState)
 				return survivors(g) >= 1, true
 			}
 		} else {

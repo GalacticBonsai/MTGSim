@@ -30,7 +30,6 @@ jobs:
               GOOS=$os GOARCH=$arch go build -o release/mtgsim-$os-$arch$ext ./cmd/mtgsim
               GOOS=$os GOARCH=$arch go build -o release/mtgsim-dashboard-$os-$arch$ext ./cmd/mtgsim-dashboard
               GOOS=$os GOARCH=$arch go build -o release/mtgsim-edh-$os-$arch$ext ./cmd/mtgsim-edh
-              GOOS=$os GOARCH=$arch go build -o release/stack_demo-$os-$arch$ext ./cmd/stack_demo
             done
           done
 
@@ -44,8 +43,7 @@ jobs:
               tar -czf mtgsim-$os-$arch.tar.gz \
                 mtgsim-$os-$arch$ext \
                 mtgsim-dashboard-$os-$arch$ext \
-                mtgsim-edh-$os-$arch$ext \
-                stack_demo-$os-$arch$ext
+                mtgsim-edh-$os-$arch$ext
             done
           done
 

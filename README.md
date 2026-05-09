@@ -8,14 +8,13 @@
 
 MTGSim lets you import decklists, simulate thousands of games, and analyze performance — from quick 1v1 smoke tests to full multiplayer EDH pods with structured replay export. Everything runs locally with a cached Scryfall card database and ships with a built-in web dashboard.
 
-## Four commands, four levels of fidelity
+## Three commands, three levels of fidelity
 
 | Command | What it does | Best for |
 |---|---|---|
 | `mtgsim` | 1v1 simulator with stats, sideboards, and confidence intervals | Smoke-testing and comparing tuned lists |
 | `mtgsim-edh` | Multiplayer Commander pods (2–6 players) | EDH meta analysis |
 | `mtgsim-dashboard` | Live web dashboard for results | Real-time browsing |
-| `stack_demo` | Stack / priority demo | Understanding the engine |
 
 ## Feature highlights
 
@@ -101,7 +100,6 @@ Replay files land in `replays/pod-0001.json`, `replays/pod-0002.json`, etc.
 go build -o mtgsim          ./cmd/mtgsim
 go build -o mtgsim-dashboard ./cmd/mtgsim-dashboard
 go build -o mtgsim-edh      ./cmd/mtgsim-edh
-go build -o stack_demo       ./cmd/stack_demo
 ```
 
 ## Command overview
@@ -111,7 +109,6 @@ go build -o stack_demo       ./cmd/stack_demo
 | `mtgsim` | 1v1 simulator with stats and CI | `-games`, `-decks`, `-swap`, `-v`, `-log` |
 | `mtgsim-dashboard` | Runs simulations and serves dashboard UI | `-games`, `-decks`, `-port`, `-keep-alive`, `-log` |
 | `mtgsim-edh` | Headless multiplayer EDH / Commander runner | `-games`, `-pod`, `-decks`, `-max-turns`, `-mulligans`, `-replay`, `-sideboard-variants`, `-sideboard-swaps`, `-port`, `-keep-alive`, `-seed`, `-log` |
-| `stack_demo` | Demonstrates stack / priority interactions | no flags |
 
 ### `mtgsim`
 
@@ -167,14 +164,6 @@ Notable flags:
 - `-keep-alive`: keep dashboard alive after simulations finish (default `true`)
 
 Important note: because the default EDH deck root is `decks`, `mtgsim-edh` will recurse through every subdirectory under `decks/`. If you want only Commander lists, prefer `-decks=decks/edh`.
-
-### `stack_demo`
-
-`stack_demo` demonstrates spell casting, priority passing, counterspells, stack resolution, and sorcery timing restrictions.
-
-```sh
-./stack_demo
-```
 
 ## Dashboard & API
 
@@ -270,8 +259,7 @@ MTGSim/
 ├── cmd/                  # CLI entry points
 │   ├── mtgsim/
 │   ├── mtgsim-dashboard/
-│   ├── mtgsim-edh/
-│   └── stack_demo/
+│   └── mtgsim-edh/
 ├── pkg/
 │   ├── ability/          # Ability parsing, targeting, stack, priority, AI glue
 │   ├── bridge/           # Bridges between game state and ability systems
