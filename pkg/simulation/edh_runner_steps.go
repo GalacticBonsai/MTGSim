@@ -8,16 +8,35 @@ import (
 )
 
 // stepOneEDHTurn drives the active player through a complete turn using
-// the simplified runner AI. Returns false if no players are alive after
-// the turn finishes. priority is invoked at instant-speed windows so
-// future AI can respond on opponents' turns; log is optional.
-func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *EDHEventLog, metrics *edhMetrics) bool {
+// the simplified runner AI. Returns (anyAlive, stuck) where anyAlive is
+// false if no players are alive after the turn finishes, and stuck is
+// true if the game state did not progress for maxUnchangedActions
+// consecutive phase actions. priority is invoked at instant-speed windows
+// so future AI can respond on opponents' turns; log is optional.
+func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *EDHEventLog, metrics *edhMetrics) (bool, bool) {
 	startTurn := g.GetTurnNumber()
 	milledThisTurn := false
 	if metrics != nil {
 		metrics.resetTurn()
 	}
+
+	lastState := ""
+	unchangedActions := 0
+	const maxUnchangedActions = 12
+
 	for {
+		// Detect stale game state before each phase action
+		currentState := edhActionStateSnapshot(g)
+		if currentState == lastState {
+			unchangedActions++
+			if unchangedActions >= maxUnchangedActions {
+				return survivors(g) >= 1, true
+			}
+		} else {
+			unchangedActions = 0
+			lastState = currentState
+		}
+
 		ap := g.GetActivePlayerRaw()
 		switch g.GetCurrentPhase() {
 		case game.PhaseUntap:
@@ -53,13 +72,13 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 		recordEliminations(g, log, ap, metrics)
 		g.AdvancePhase()
 		if survivors(g) <= 1 {
-			return survivors(g) >= 1
+			return survivors(g) >= 1, false
 		}
 		if g.GetTurnNumber() != startTurn {
 			break
 		}
 	}
-	return survivors(g) >= 1
+	return survivors(g) >= 1, false
 }
 
 // offerOpponentPriority walks each living non-active opponent in APNAP

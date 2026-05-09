@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -75,11 +76,13 @@ type Player struct {
 
 // Game represents a Magic: The Gathering game.
 type Game struct {
-	Players    []*Player
-	turnNumber int
-	cardDB     *card.CardDB
-	winner     *Player
-	loser      *Player
+	Players          []*Player
+	turnNumber       int
+	cardDB           *card.CardDB
+	winner           *Player
+	loser            *Player
+	lastState        string
+	unchangedActions int
 }
 
 // NewGame creates a new game instance.
@@ -153,7 +156,23 @@ func (g *Game) Start() (*Player, *Player) {
 		logger.LogPlayer("Turn %d: %s's turn", g.turnNumber, currentPlayer.Name)
 
 		// Execute the turn
-		g.executeTurn(currentPlayer)
+		if !g.executeTurn(currentPlayer) {
+			logger.LogMeta("Game state unchanged for %d actions, breaking loop", maxUnchangedActions)
+			// Choose the player with the highest life as winner
+			g.winner = g.Players[0]
+			for _, p := range g.Players[1:] {
+				if p.LifeTotal > g.winner.LifeTotal {
+					g.winner = p
+				}
+			}
+			for _, p := range g.Players {
+				if p != g.winner {
+					g.loser = p
+					break
+				}
+			}
+			return g.winner, g.loser
+		}
 
 		// Check for game end conditions
 		if g.checkGameEnd() {
@@ -172,31 +191,60 @@ func (g *Game) Start() (*Player, *Player) {
 	return g.Players[0], g.Players[1]
 }
 
-// executeTurn executes a complete turn for the given player
-func (g *Game) executeTurn(player *Player) {
+const maxUnchangedActions = 12
+
+// executeTurn executes a complete turn for the given player.
+// Returns false if the game has become stuck (no state change for maxUnchangedActions actions).
+func (g *Game) executeTurn(player *Player) bool {
 	// Reset land drops for the new turn
 	g.resetLandDrops(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// Untap step
 	g.untapStep(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// Upkeep step
 	g.upkeepStep(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// Draw step
 	g.drawStep(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// Main phase 1
 	g.mainPhase(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// Combat phase
 	g.combatPhase(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// Main phase 2
 	g.mainPhase(player)
+	if !g.checkProgress() {
+		return false
+	}
 
 	// End step
 	g.endStep(player)
+	if !g.checkProgress() {
+		return false
+	}
+
+	return true
 }
 
 // checkGameEnd checks if the game has ended and sets winner/loser
@@ -828,4 +876,34 @@ func (g *Game) wasInCombatWith(creature1, creature2 *Permanent) bool {
 		}
 	}
 	return false
+}
+
+
+// gameStateSnapshot returns a string representation of the current game state
+// used to detect if the game is making progress across turns.
+func (g *Game) gameStateSnapshot() string {
+	var b strings.Builder
+	for _, p := range g.Players {
+		fmt.Fprintf(&b, "%s:L%d,H%d,D%d,G%d,E%d,C%d,N%d,A%d,P%d,L%d;",
+			p.Name, p.LifeTotal, len(p.Hand), len(p.Deck.Cards), len(p.Graveyard),
+			len(p.Exile), len(p.Creatures), len(p.Enchantments), len(p.Artifacts),
+			len(p.Planeswalkers), len(p.Lands))
+	}
+	return b.String()
+}
+
+// checkProgress checks whether the game state has changed since the last action.
+// If no state change is detected for maxUnchangedActions consecutive actions, it returns false.
+func (g *Game) checkProgress() bool {
+	currentState := g.gameStateSnapshot()
+	if currentState == g.lastState {
+		g.unchangedActions++
+		if g.unchangedActions >= maxUnchangedActions {
+			return false
+		}
+	} else {
+		g.unchangedActions = 0
+		g.lastState = currentState
+	}
+	return true
 }
