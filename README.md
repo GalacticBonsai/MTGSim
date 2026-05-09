@@ -8,12 +8,11 @@
 
 MTGSim lets you import decklists, simulate thousands of games, and analyze performance — from quick 1v1 smoke tests to full multiplayer EDH pods with structured replay export. Everything runs locally with a cached Scryfall card database and ships with a built-in web dashboard.
 
-## Five commands, five levels of fidelity
+## Four commands, four levels of fidelity
 
 | Command | What it does | Best for |
 |---|---|---|
-| `mtgsim` | Fast 1v1 batch simulator | Smoke-testing deck ideas |
-| `mtgstats` | Mana-aware 1v1 stats with confidence intervals | Comparing tuned lists |
+| `mtgsim` | 1v1 simulator with stats, sideboards, and confidence intervals | Smoke-testing and comparing tuned lists |
 | `mtgsim-edh` | Multiplayer Commander pods (2–6 players) | EDH meta analysis |
 | `mtgsim-dashboard` | Live web dashboard for results | Real-time browsing |
 | `stack_demo` | Stack / priority demo | Understanding the engine |
@@ -29,8 +28,7 @@ MTGSim lets you import decklists, simulate thousands of games, and analyze perfo
 
 ## Quick decision guide
 
-- **Quick 1v1 smoke test** → `mtgsim`
-- **Richer 1v1 analysis with mana enforcement** → `mtgstats`
+- **1v1 analysis with confidence intervals** → `mtgsim`
 - **EDH pod testing & replay export** → `mtgsim-edh`
 - **Browser-based metrics** → `mtgsim-dashboard`
 
@@ -48,34 +46,10 @@ cd MTGSim
 
 On first run the simulator checks for `cardDB.json` in the repo root. If it is missing, it downloads the pinned Scryfall oracle snapshot and caches it locally automatically.
 
-### 1️⃣ Run a quick 1v1 batch
+### 1️⃣ Run a 1v1 batch
 
 ```sh
-go run ./cmd/mtgsim -games=100 -decks=decks/welcome -log=META
-```
-
-**Typical output:**
-
-```text
-META: Loading card database...
-META: Card database loaded with 28418 cards
-META: Found 5 deck files
-META: Starting simulation of 100 games...
-META: Simulation completed.
-┌────────────────────────────────┐
-│ Top 3 Decks by Win Rate    │
-├────────────────────────────────┤
-│ 1. Red Deck       62.0%   │
-│ 2. Green Deck     58.0%   │
-│ 3. Blue Deck      45.0%   │
-└────────────────────────────────┘
-Simulated 100 games in 0.42s: 238 games/sec
-```
-
-### 2️⃣ Run detailed 1v1 statistics
-
-```sh
-go run ./cmd/mtgstats -games=100 -decks=decks/1v1 -v=1
+go run ./cmd/mtgsim -games=100 -decks=decks/1v1 -v=1
 ```
 
 **Typical output snippet:**
@@ -93,7 +67,7 @@ Avg Turns: 8.4
 Final Life P1: avg=12.3 min=0 max=20 | P2: avg=8.1 min=0 max=20
 ```
 
-### 3️⃣ Launch the live dashboard
+### 2️⃣ Launch the live dashboard
 
 ```sh
 go run ./cmd/mtgsim-dashboard -games=200 -decks=decks/1v1 -port=8080
@@ -101,7 +75,7 @@ go run ./cmd/mtgsim-dashboard -games=200 -decks=decks/1v1 -port=8080
 
 Then open **http://localhost:8080** in your browser. The page auto-refreshes every 5 seconds as games finish.
 
-### 4️⃣ Run a 4-player EDH pod batch with replay export
+### 3️⃣ Run a 4-player EDH pod batch with replay export
 
 ```sh
 go run ./cmd/mtgsim-edh -games=25 -pod=4 -decks=decks/edh \
@@ -125,7 +99,6 @@ Replay files land in `replays/pod-0001.json`, `replays/pod-0002.json`, etc.
 
 ```sh
 go build -o mtgsim          ./cmd/mtgsim
-go build -o mtgstats        ./cmd/mtgstats
 go build -o mtgsim-dashboard ./cmd/mtgsim-dashboard
 go build -o mtgsim-edh      ./cmd/mtgsim-edh
 go build -o stack_demo       ./cmd/stack_demo
@@ -135,35 +108,20 @@ go build -o stack_demo       ./cmd/stack_demo
 
 | Command | Purpose | Important flags |
 |---|---|---|
-| `mtgsim` | Fast 1v1 simulator | `-games`, `-decks`, `-log` |
-| `mtgstats` | Detailed 1v1 stats runner | `-games`, `-decks`, `-swap`, `-v`, `-log` |
+| `mtgsim` | 1v1 simulator with stats and CI | `-games`, `-decks`, `-swap`, `-v`, `-log` |
 | `mtgsim-dashboard` | Runs simulations and serves dashboard UI | `-games`, `-decks`, `-port`, `-keep-alive`, `-log` |
 | `mtgsim-edh` | Headless multiplayer EDH / Commander runner | `-games`, `-pod`, `-decks`, `-max-turns`, `-mulligans`, `-replay`, `-sideboard-variants`, `-sideboard-swaps`, `-port`, `-keep-alive`, `-seed`, `-log` |
 | `stack_demo` | Demonstrates stack / priority interactions | no flags |
 
 ### `mtgsim`
 
-Quick two-player batch simulator.
+Two-player batch simulator with full mana enforcement, stack-based casting, aggregate metrics, and Wilson-score confidence intervals.
 
 ```sh
 ./mtgsim -games=250 -decks=decks/welcome -log=META
 ```
 
 Flags:
-
-- `-games N`: number of games to simulate (default `1`)
-- `-decks DIR`: deck directory to scan recursively (default `decks/1v1`)
-- `-log LEVEL`: `META`, `GAME`, `PLAYER`, or `CARD` (default `CARD`)
-
-### `mtgstats`
-
-More detailed 1v1 analysis runner. Compared with `mtgsim`, this path enforces mana payment for its spell-casting flow, tracks aggregate metrics, and prints Wilson-score confidence intervals.
-
-```sh
-./mtgstats -games=200 -decks=decks/1v1 -swap=2 -v=1
-```
-
-Notable flags:
 
 - `-games N`: number of games to simulate (default `100`)
 - `-decks DIR`: recursively scanned deck directory (default `decks/1v1`)
@@ -311,7 +269,6 @@ Commander imports validate card color identity against the designated commander(
 MTGSim/
 ├── cmd/                  # CLI entry points
 │   ├── mtgsim/
-│   ├── mtgstats/
 │   ├── mtgsim-dashboard/
 │   ├── mtgsim-edh/
 │   └── stack_demo/
@@ -376,7 +333,7 @@ The `pkg/ability` and `pkg/bridge` packages extend this with stack handling, tar
 
 ## Current limitations
 
-- **Simulation fidelity** — `mtgsim` is intentionally a fast batch simulator, not a full competitive MTG AI. `mtgstats` adds mana enforcement and confidence intervals, but both use heuristics rather than exhaustive search.
+- **Simulation fidelity** — `mtgsim` is a batch simulator, not a full competitive MTG AI. It uses heuristics rather than exhaustive search.
 - **Instant-speed interaction** — The EDH runner auto-plays lands, commanders, castable non-instant permanents, combat, and main-phase abilities. Rich instant-speed play is not enabled by default.
 - **Opponent priority** — The EDH opponent-priority hook exists, but the default handler is a no-op. Custom priority handlers can be wired in via `pkg/game`.
 - **Replay playback** — JSON replays are write-only today. A deterministic replay-import CLI is not yet implemented.
@@ -394,8 +351,7 @@ go vet ./...
 If you want a quick manual smoke test, these are the highest-signal commands:
 
 ```sh
-go run ./cmd/mtgsim -games=10 -decks=decks/welcome
-go run ./cmd/mtgstats -games=10 -decks=decks/1v1
+go run ./cmd/mtgsim -games=10 -decks=decks/1v1
 go run ./cmd/mtgsim-edh -games=2 -pod=4 -decks=decks/edh -port=0
 ```
 
