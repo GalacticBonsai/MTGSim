@@ -58,20 +58,21 @@ func (g *Game) ApplyStateBasedActions() {
 	// 4) Planeswalker uniqueness rule (CR 704.5n): If a player controls two or more planeswalkers with the same planeswalker type, that player chooses one of them, and the rest are put into their owners' graveyards.
 	g.applyPlaneswalkerUniquenessRule()
 
-	// 5) Player 0 or less life loses
+	// 5) Player 0 or less life loses (CR 704.5a)
 	for _, pl := range g.players {
-		if pl.GetLifeTotal() <= 0 {
-			pl.lost = true
+		if pl.GetLifeTotal() <= 0 && !pl.HasLost() {
+			pl.Lose("life_loss")
 		}
 	}
 
 	// 6) CR 704.5u: a player who has been dealt 21 or more combat
 	// damage by the same commander over the course of the game loses.
 	for _, pl := range g.players {
-		if pl.MaxCommanderDamageReceived() >= 21 {
-			pl.lost = true
+		if pl.MaxCommanderDamageReceived() >= 21 && !pl.HasLost() {
+			pl.Lose("commander_damage")
 		}
 	}
+
 }
 
 func (g *Game) onBattlefield(p *Permanent) bool {

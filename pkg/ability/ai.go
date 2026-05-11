@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mtgsim/mtgsim/internal/logger"
+	"github.com/mtgsim/mtgsim/pkg/combo"
 )
 
 // AbilityPriority represents the priority level for different ability types.
@@ -21,20 +22,28 @@ const (
 
 // AIDecisionMaker makes decisions about when and how to activate abilities.
 type AIDecisionMaker struct {
-	engine     *ExecutionEngine
-	priorities map[EffectType]AbilityPriority
-	rng        *rand.Rand
+	engine       *ExecutionEngine
+	priorities   map[EffectType]AbilityPriority
+	rng          *rand.Rand
+	comboIndices map[string]*combo.Index // keyed by player/deck name
 }
 
 // NewAIDecisionMaker creates a new AI decision maker.
 func NewAIDecisionMaker(engine *ExecutionEngine) *AIDecisionMaker {
 	ai := &AIDecisionMaker{
-		engine:     engine,
-		priorities: make(map[EffectType]AbilityPriority),
-		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
+		engine:       engine,
+		priorities:   make(map[EffectType]AbilityPriority),
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		comboIndices: make(map[string]*combo.Index),
 	}
 	ai.initializePriorities()
 	return ai
+}
+
+// SetComboIndex attaches a combo index for a specific player so the AI can
+// prioritize that player's combo pieces.
+func (ai *AIDecisionMaker) SetComboIndex(playerName string, ci *combo.Index) {
+	ai.comboIndices[playerName] = ci
 }
 
 // initializePriorities sets up the default priority levels for different effect types.
@@ -63,14 +72,16 @@ func (ai *AIDecisionMaker) initializePriorities() {
 
 // DecisionContext provides context for AI decision making.
 type DecisionContext struct {
-	Player            AbilityPlayer
-	Opponents         []AbilityPlayer
-	Phase             string
-	AvailableMana     int
-	HandSize          int
-	BoardState        BoardState
-	ThreatLevel       int
-	CanCastMoreSpells bool
+	Player              AbilityPlayer
+	Opponents           []AbilityPlayer
+	Phase               string
+	AvailableMana       int
+	HandSize            int
+	BoardState          BoardState
+	ThreatLevel         int
+	CanCastMoreSpells   bool
+	ComboPiecesInHand   []string // card names in hand that are combo pieces
+	MissingComboPieces  []string // card names that would complete a partial combo
 }
 
 // BoardState represents the current state of the battlefield.
@@ -81,6 +92,12 @@ type BoardState struct {
 	OpponentPower     int
 	MyLands           int
 	OpponentLands     int
+	MyArtifacts       int
+	MyEnchantments    int
+	OpponentArtifacts int
+	OpponentEnchantments int
+	MyUtilityPerms    int // high-utility non-creature permanents (combo, lock, stax)
+	OpponentLockPerms int // opponent permanents that disrupt our strategy
 }
 
 // ShouldActivateAbilities determines if the AI should look for abilities to activate.
@@ -254,9 +271,35 @@ func (ai *AIDecisionMaker) scoreEffectInContext(effect Effect, context DecisionC
 	case DestroyPermanent:
 		// Removal is more valuable when opponent has threats
 		if context.BoardState.OpponentCreatures > 0 {
-			return 4.0
+			score := 4.0
+			// Extra value for destroying lock pieces
+			if context.BoardState.OpponentLockPerms > 0 {
+				score += 3.0
+			}
+			return score
 		}
 		return 1.0
+
+	case SearchLibrary:
+		// Tutoring is high priority when we have few cards or need combo pieces
+		if context.HandSize < 3 {
+			return 5.0
+		}
+		if context.BoardState.MyUtilityPerms == 0 {
+			return 3.5 // likely need to find ramp/combo engine
+		}
+		// Boost tutoring significantly when we hold combo pieces and are missing a key card.
+		if len(context.MissingComboPieces) > 0 && len(context.ComboPiecesInHand) > 0 {
+			return 6.0
+		}
+		return 2.0
+
+	case TapUntap:
+		// Tapping opponent lock pieces is valuable
+		if context.BoardState.OpponentLockPerms > 0 {
+			return 3.0
+		}
+		return 0.5
 
 	default:
 		return 1.0
@@ -369,7 +412,42 @@ func (ai *AIDecisionMaker) ActivateAbilitiesForPlayer(player AbilityPlayer, phas
 func (ai *AIDecisionMaker) BuildDecisionContext(player AbilityPlayer, opponents []AbilityPlayer, phase string) DecisionContext {
 	ctx := ai.buildDecisionContext(player, phase)
 	ctx.Opponents = opponents
+
+	// Populate opponent board state for synergy-aware targeting
+	for _, opp := range opponents {
+		ctx.BoardState.OpponentCreatures += len(opp.GetCreatures())
+		ctx.BoardState.OpponentLands += len(opp.GetLands())
+		for range opp.GetCreatures() {
+			ctx.BoardState.OpponentPower += 2
+		}
+		ctx.BoardState.OpponentLockPerms += estimateLockPermanents(opp)
+	}
+	ctx.BoardState.MyUtilityPerms = estimateUtilityPermanents(player)
+
+	if ctx.BoardState.OpponentLockPerms > 0 {
+		ctx.ThreatLevel += 3
+	}
+
+	// Populate combo awareness if a combo index is attached.
+	if ci := ai.comboIndices[player.GetName()]; ci != nil {
+		handNames := handCardNames(player)
+		ctx.ComboPiecesInHand = ci.ComboPiecesInHand(handNames)
+		ctx.MissingComboPieces = ci.MissingPiecesForHand(handNames)
+	}
+
 	return ctx
+}
+
+// handCardNames extracts card names from a player's hand.
+func handCardNames(player AbilityPlayer) []string {
+	hand := player.GetHand()
+	names := make([]string, 0, len(hand))
+	for _, c := range hand {
+		if s, ok := c.(interface{ GetName() string }); ok {
+			names = append(names, s.GetName())
+		}
+	}
+	return names
 }
 
 // ChooseTargetsFor exposes target selection for a given (parsed) ability using the AI logic.
@@ -423,6 +501,65 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		ThreatLevel:       threatLevel,
 		CanCastMoreSpells: availableMana >= 2 && len(player.GetHand()) > 0,
 	}
+}
+
+// estimateUtilityPermanents returns a rough count of high-utility non-creature
+// permanents controlled by the player (artifacts/enchantments).
+func estimateUtilityPermanents(player AbilityPlayer) int {
+	utility := 0
+	// Lands are not utility for this heuristic; artifacts/enchantments are.
+	for _, perm := range player.GetLands() {
+		if p, ok := perm.(AbilityPermanent); ok {
+			name := p.GetName()
+			if isHighUtilityPermanent(name) {
+				utility++
+			}
+		}
+	}
+	return utility
+}
+
+// estimateLockPermanents counts opponent permanents that disrupt our strategy.
+func estimateLockPermanents(opponent AbilityPlayer) int {
+	lock := 0
+	for _, perm := range opponent.GetLands() {
+		if p, ok := perm.(AbilityPermanent); ok {
+			name := p.GetName()
+			if isLockPiece(name) {
+				lock++
+			}
+		}
+	}
+	return lock
+}
+
+// isHighUtilityPermanent heuristically detects combo-enablers and engines.
+func isHighUtilityPermanent(name string) bool {
+	switch name {
+	case "Sol Ring", "Mana Crypt", "Grim Monolith", "Basalt Monolith",
+		"Gilded Lotus", "Thran Dynamo", "Chrome Mox", "Mox Diamond",
+		"Mind's Eye", "Rhystic Study", "Mystic Remora",
+		"Sylvan Library", "Sensei's Divining Top", "Skullclamp",
+		"Ashnod's Altar", "Phyrexian Altar", "Earthcraft",
+		"Intruder Alarm", "Training Grounds":
+		return true
+	}
+	return false
+}
+
+// isLockPiece heuristically detects stax/prison pieces that shut down strategies.
+func isLockPiece(name string) bool {
+	switch name {
+	case "Null Rod", "Stony Silence", "Collector Ouphe", "Kataki, War's Wage",
+		"Rule of Law", "Eidolon of Rhetoric", "Arcane Laboratory",
+		"Blood Moon", "Magus of the Moon", "Contamination",
+		"Trinisphere", "Sphere of Resistance", "Thorn of Amethyst",
+		"Thalia, Guardian of Thraben", "Glowrider", "Vryn Wingmare",
+		"Armageddon", "Ravages of War", "Smokestack", "Tangle Wire",
+		"Static Orb", "Winter Orb":
+		return true
+	}
+	return false
 }
 
 // chooseTargets chooses targets for an ability using enhanced targeting validation.
@@ -552,16 +689,56 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		return nil
 	}
 
+	// Helper: check if a card name is a combo piece for a given player name.
+	isComboPieceFor := func(name, playerName string) bool {
+		if ci := ai.comboIndices[playerName]; ci != nil {
+			return ci.IsComboPiece(name)
+		}
+		return false
+	}
+
+	// Helper: check if a card name is a combo piece for any opponent.
+	isOpponentComboPiece := func(name string) bool {
+		for _, opp := range context.Opponents {
+			if isComboPieceFor(name, opp.GetName()) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// Simple strategy: prefer opponents for harmful effects, self for beneficial effects
 	switch effect.Type {
-	case DealDamage, DestroyPermanent, LoseLife:
-		// Prefer opponent targets
+	case DealDamage, DestroyPermanent, LoseLife, TapUntap:
+		// Prefer opponent targets, especially lock pieces or combo pieces when destroying/tapping
 		for _, target := range validTargets {
 			if player, ok := target.(AbilityPlayer); ok {
 				if player.GetName() != context.Player.GetName() {
 					return target
 				}
 			}
+		}
+		// For permanents: prefer opponent combo pieces, then lock pieces
+		for _, target := range validTargets {
+			if permanent, ok := target.(AbilityPermanent); ok {
+				if permanent.GetController().GetName() != context.Player.GetName() {
+					if isOpponentComboPiece(permanent.GetName()) {
+						return target
+					}
+				}
+			}
+		}
+		for _, target := range validTargets {
+			if permanent, ok := target.(AbilityPermanent); ok {
+				if permanent.GetController().GetName() != context.Player.GetName() {
+					if isLockPiece(permanent.GetName()) {
+						return target
+					}
+				}
+			}
+		}
+		// Fallback: any opponent permanent
+		for _, target := range validTargets {
 			if permanent, ok := target.(AbilityPermanent); ok {
 				if permanent.GetController().GetName() != context.Player.GetName() {
 					return target
@@ -569,13 +746,34 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 			}
 		}
 	case DrawCards, GainLife, PumpCreature:
-		// Prefer own targets
+		// Prefer own targets; for pump, prefer our combo-enabling creatures
 		for _, target := range validTargets {
 			if player, ok := target.(AbilityPlayer); ok {
 				if player.GetName() == context.Player.GetName() {
 					return target
 				}
 			}
+		}
+		// Prefer protecting our combo pieces, then utility permanents
+		for _, target := range validTargets {
+			if permanent, ok := target.(AbilityPermanent); ok {
+				if permanent.GetController().GetName() == context.Player.GetName() {
+					if isComboPieceFor(permanent.GetName(), context.Player.GetName()) {
+						return target
+					}
+				}
+			}
+		}
+		for _, target := range validTargets {
+			if permanent, ok := target.(AbilityPermanent); ok {
+				if permanent.GetController().GetName() == context.Player.GetName() {
+					if isHighUtilityPermanent(permanent.GetName()) {
+						return target
+					}
+				}
+			}
+		}
+		for _, target := range validTargets {
 			if permanent, ok := target.(AbilityPermanent); ok {
 				if permanent.GetController().GetName() == context.Player.GetName() {
 					return target

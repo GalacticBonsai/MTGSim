@@ -49,8 +49,8 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseDraw:
 			if g.GetTurnNumber() > 1 || ap != g.GetPlayerByIndex(0) {
-				if ap.Draw(1) == 0 {
-					ap.SetLifeTotal(0) // CR 704.5b: empty-library draw loss proxy
+				if ap.Draw(1) == 0 && len(ap.Library) == 0 {
+					ap.Lose("deckout") // CR 704.5b: empty-library draw loss
 					milledThisTurn = true
 				}
 			}

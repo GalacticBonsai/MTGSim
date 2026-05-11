@@ -26,7 +26,11 @@ go.work.sum
 
 # generated decks
 decks/Generated
+
+#downloaded code
 cardDB.json
+.cache
+card_library.json
 
 # imported decklists (non-.deck exports)
 decks/edh/*.dck

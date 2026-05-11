@@ -10,6 +10,9 @@ type Player struct {
 	life int
 	lost bool
 
+	// lossReason tracks why this player lost (e.g., life_loss, commander_damage, mill, effect)
+	lossReason string
+
 	Library     []SimpleCard
 	Hand        []SimpleCard
 	Battlefield []*Permanent
@@ -50,6 +53,19 @@ func (p *Player) GetName() string       { return p.name }
 func (p *Player) GetLifeTotal() int     { return p.life }
 func (p *Player) SetLifeTotal(life int) { p.life = life }
 func (p *Player) HasLost() bool         { return p.lost }
+func (p *Player) GetLossReason() string { return p.lossReason }
+func (p *Player) SetLossReason(r string) { p.lossReason = r }
+
+// Lose marks the player as lost with the given reason.
+func (p *Player) Lose(reason string) {
+	p.lost = true
+	if reason != "" {
+		p.lossReason = reason
+	}
+}
+
+// DeckedOut returns true if the player's library is empty and they would lose from attempting to draw.
+func (p *Player) DeckedOut() bool { return len(p.Library) == 0 }
 
 func (p *Player) GetHand() []SimpleCard      { return p.Hand }
 func (p *Player) AddCardToHand(c SimpleCard) { p.Hand = append(p.Hand, c) }

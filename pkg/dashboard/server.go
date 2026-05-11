@@ -447,7 +447,8 @@ const htmlDashboard = `
 							name: name,
 							casts: perf.casts,
 							wins: perf.wins,
-							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0
+							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0,
+							image_url: perf.image_url || ''
 						});
 					}
 				}
@@ -456,7 +457,8 @@ const htmlDashboard = `
 			cards = cards.slice(0, 100);
 			let html = '';
 			for (let c of cards) {
-				html += '<tr><td>' + c.deck + '</td><td>' + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+				let img = c.image_url ? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;" alt="">' : '';
+				html += '<tr><td>' + c.deck + '</td><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
 			}
 			document.getElementById('topCardsBody').innerHTML = html || '<tr><td colspan="5">No cards with enough sample size yet</td></tr>';
 		}
@@ -481,7 +483,8 @@ const htmlDashboard = `
 							name: name,
 							casts: perf.casts,
 							wins: perf.wins,
-							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0
+							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0,
+							image_url: perf.image_url || ''
 						});
 					}
 				}
@@ -489,7 +492,8 @@ const htmlDashboard = `
 				rows = rows.slice(0, 100);
 				let html = '';
 				for (let c of rows) {
-					html += '<tr><td>' + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+					let img = c.image_url ? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;" alt="">' : '';
+					html += '<tr><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
 				}
 				document.getElementById('cardLibraryBody').innerHTML = html || '<tr><td colspan="4">No cards with enough sample size yet</td></tr>';
 			}

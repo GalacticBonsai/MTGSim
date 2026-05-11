@@ -21,6 +21,7 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/dashboard"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/scryfall"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
@@ -101,6 +102,24 @@ func main() {
 		}
 	}()
 
+	// Initialize Scryfall client for image enrichment.
+	scryfallClient := scryfall.NewClient()
+	imageCache := map[string]string{}
+
+	// Enrich existing card library images from the card database.
+	for name := range cardLib.Cards {
+		if c, ok := cardDB.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
+			cardLib.SetImageURL(name, c.ImageURIs.Normal)
+			imageCache[name] = c.ImageURIs.Normal
+			continue
+		}
+		cd, err := scryfallClient.GetCardByName(name)
+		if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
+			cardLib.SetImageURL(name, cd.ImageURIs.Normal)
+			imageCache[name] = cd.ImageURIs.Normal
+		}
+	}
+
 	if *port > 0 {
 		startDashboard(legacyResults, edhResults, cardLib, &mu, *port)
 	}
@@ -142,6 +161,23 @@ func main() {
 		}
 		if (i+1)%10 == 0 {
 			logger.LogMeta("Completed %d/%d pods", i+1, *games)
+		}
+	}
+
+	// Backfill image URLs for any newly recorded cards.
+	for name := range cardLib.Cards {
+		if _, ok := imageCache[name]; ok {
+			continue
+		}
+		if c, ok := cardDB.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
+			cardLib.SetImageURL(name, c.ImageURIs.Normal)
+			imageCache[name] = c.ImageURIs.Normal
+			continue
+		}
+		cd, err := scryfallClient.GetCardByName(name)
+		if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
+			cardLib.SetImageURL(name, cd.ImageURIs.Normal)
+			imageCache[name] = cd.ImageURIs.Normal
 		}
 	}
 
