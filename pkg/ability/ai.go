@@ -65,9 +65,14 @@ func (ai *AIDecisionMaker) initializePriorities() {
 	// Creature pumping is situational
 	ai.priorities[PumpCreature] = PriorityMedium
 
-	// Utility effects are lower priority
+	// Card advantage / board development
+	ai.priorities[SearchLibrary] = PriorityHigh
+	ai.priorities[CreateToken] = PriorityMedium
+
+	// Disruption / utility effects
+	ai.priorities[DiscardCards] = PriorityHigh
 	ai.priorities[TapUntap] = PriorityLow
-	ai.priorities[SearchLibrary] = PriorityLow
+	ai.priorities[PreventDamage] = PriorityLow
 }
 
 // DecisionContext provides context for AI decision making.
@@ -709,7 +714,7 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 
 	// Simple strategy: prefer opponents for harmful effects, self for beneficial effects
 	switch effect.Type {
-	case DealDamage, DestroyPermanent, LoseLife, TapUntap:
+	case DealDamage, DestroyPermanent, LoseLife, TapUntap, DiscardCards:
 		// Prefer opponent targets, especially lock pieces or combo pieces when destroying/tapping
 		for _, target := range validTargets {
 			if player, ok := target.(AbilityPlayer); ok {

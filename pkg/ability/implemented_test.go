@@ -3,6 +3,8 @@ package ability
 import (
 	"encoding/json"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/mtgsim/mtgsim/pkg/card"
@@ -165,6 +167,10 @@ func TestComputeImplementationReport(t *testing.T) {
 	t.Logf("Total: %d, Implemented: %d, Unimplemented: %d (%.1f%%)",
 		report.TotalCards, report.ImplementedCount, report.UnimplementedCount, report.Percentage)
 
+	for _, bucket := range report.FailureReasons {
+		t.Logf("Failure bucket: %s = %d", bucket.Category, bucket.Count)
+	}
+
 	if report.TotalCards == 0 {
 		t.Fatal("expected non-zero total cards")
 	}
@@ -182,4 +188,90 @@ func TestComputeImplementationReport(t *testing.T) {
 		t.Fatalf("Failed to save implementation cache: %v", err)
 	}
 }
+func TestAnalyzeParserFailures(t *testing.T) {
+	paths := []string{card.CardDBFile, "../../" + card.CardDBFile}
+	var dbPath string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			dbPath = p
+			break
+		}
+	}
+	if dbPath == "" {
+		t.Skip("cardDB.json not present, skipping integration test")
+	}
+
+	data, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to read card database: %v", err)
+	}
+	var cards []card.Card
+	if err := json.Unmarshal(data, &cards); err != nil {
+		t.Fatalf("Failed to parse card database: %v", err)
+	}
+
+	firstWordCounts := make(map[string]int)
+	keywordCounts := make(map[string]int)
+	sampleTexts := make(map[string][]string)
+	const maxSamples = 3
+
+	for _, c := range cards {
+		impl, reason := testCardImplementation(c)
+		if !impl && strings.Contains(reason, "parser failed") {
+			oracle := strings.TrimSpace(c.OracleText)
+			if oracle == "" {
+				continue
+			}
+			// Get first word of first sentence
+			sentences := strings.Split(oracle, ".")
+			firstSentence := strings.TrimSpace(sentences[0])
+			words := strings.Fields(firstSentence)
+			if len(words) > 0 {
+				firstWord := strings.ToLower(words[0])
+				firstWordCounts[firstWord]++
+				if len(sampleTexts[firstWord]) < maxSamples {
+					sampleTexts[firstWord] = append(sampleTexts[firstWord], firstSentence)
+				}
+			}
+
+			// Check for common keywords
+			lower := strings.ToLower(oracle)
+			keywords := []string{"mill", "exile", "scry", "counter", "kicker", "flashback", "equip", "lifelink", "trample", "flying", "haste", "vigilance", "deathtouch", "menace", "reach", "hexproof", "indestructible", "ward", "prowess", "cascade", "convoke", "delve", "dredge", "persist", "undying", "unearth", "bloodthirst", "annihilator", "morph", "manifest", "embalm", "eternalize", "aftermath", "adventure", "mutate", "foretell", "strive", "rebound", "suspend", "madness", "flash", "defender", "double strike", "first strike", "protection", "regenerate", "fear", "intimidate", "shadow", "shroud", "infect", "wither", "poisonous", "storm", "buyback", "replicate", "splice", "transmute"}
+			for _, kw := range keywords {
+				if strings.Contains(lower, kw) {
+					keywordCounts[kw]++
+				}
+			}
+		}
+	}
+
+	// Sort and log top first words
+	t.Logf("=== Top first words in parser failures ===")
+	type wordCount struct {
+		word  string
+		count int
+	}
+	var wcs []wordCount
+	for w, c := range firstWordCounts {
+		wcs = append(wcs, wordCount{w, c})
+	}
+	sort.Slice(wcs, func(i, j int) bool { return wcs[i].count > wcs[j].count })
+	for i := 0; i < 30 && i < len(wcs); i++ {
+		t.Logf("  %s: %d", wcs[i].word, wcs[i].count)
+		for _, sample := range sampleTexts[wcs[i].word] {
+			t.Logf("    - %s", sample)
+		}
+	}
+
+	t.Logf("=== Top keywords in parser failures ===")
+	var kcs []wordCount
+	for k, c := range keywordCounts {
+		kcs = append(kcs, wordCount{k, c})
+	}
+	sort.Slice(kcs, func(i, j int) bool { return kcs[i].count > kcs[j].count })
+	for i := 0; i < 20 && i < len(kcs); i++ {
+		t.Logf("  %s: %d", kcs[i].word, kcs[i].count)
+	}
+}
+
 

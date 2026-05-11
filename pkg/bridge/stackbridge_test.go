@@ -49,6 +49,10 @@ func (gs *tdGameState) DealDamage(source any, target any, amount int)        {}
 func (gs *tdGameState) DrawCards(abil.AbilityPlayer, int)                    {}
 func (gs *tdGameState) GainLife(abil.AbilityPlayer, int)                     {}
 func (gs *tdGameState) LoseLife(abil.AbilityPlayer, int)                     {}
+func (gs *tdGameState) DiscardCards(abil.AbilityPlayer, int)                 {}
+func (gs *tdGameState) SearchLibrary(abil.AbilityPlayer, int)                {}
+func (gs *tdGameState) CreateToken(abil.AbilityPlayer, game.SimpleCard)      {}
+func (gs *tdGameState) PreventDamage(any, int)                               {}
 
 // --- Tests ---
 

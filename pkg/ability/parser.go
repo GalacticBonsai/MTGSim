@@ -115,6 +115,35 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `Gain\s+control\s+of\s+target\s+creature\s+until\s+end\s+of\s+turn.*Untap\s+that\s+creature.*`, ChangeControl, "Act of Treason style", ap.parseActOfTreason)
 	ap.addPattern(Activated, `Target\s+creature\s+you\s+control\s+deals\s+damage\s+equal\s+to\s+its\s+power\s+to\s+target\s+creature\s+you\s+don'?t\s+control`, SourcePowerDamage, "Rabid Bite style", ap.parseRabidBite)
 
+	// Tap/Untap effects
+	ap.addPattern(Activated, `Tap\s+target\s+(creature|permanent|land|artifact|enchantment|planeswalker)`, TapUntap, "Tap single target", ap.parseTapTarget)
+	ap.addPattern(Activated, `Tap\s+all\s+(creatures|lands|permanents|artifacts|enchantments|planeswalkers)`, TapUntap, "Tap all of type", ap.parseTapAll)
+	ap.addPattern(Activated, `Untap\s+target\s+(creature|permanent|land|artifact|enchantment|planeswalker)`, TapUntap, "Untap single target", ap.parseUntapTarget)
+	ap.addPattern(Activated, `Untap\s+all\s+(creatures|lands|permanents|artifacts|enchantments|planeswalkers)\s+you\s+control`, TapUntap, "Untap all controlled", ap.parseUntapAllControlled)
+	ap.addPattern(Activated, `\{T\}:\s*Target\s+creature\s+doesn't\s+untap\s+during\s+its\s+controller's\s+next\s+untap\s+step`, TapUntap, "Freeze target creature", ap.parseFreezeTarget)
+
+	// Discard effects
+	ap.addPattern(Activated, `Target\s+player\s+discards\s+(a|two|three|four|five|\d+)\s+cards?`, DiscardCards, "Target player discards", ap.parseTargetPlayerDiscard)
+	ap.addPattern(Activated, `Target\s+opponent\s+discards\s+(a|two|three|four|five|\d+)\s+cards?`, DiscardCards, "Target opponent discards", ap.parseTargetOpponentDiscard)
+	ap.addPattern(Activated, `Each\s+player\s+discards\s+(a|two|three|four|five|\d+)\s+cards?`, DiscardCards, "Each player discards", ap.parseEachPlayerDiscard)
+	ap.addPattern(Activated, `Target\s+creature'?s?\s+controller\s+discards\s+(a|two|three|four|five|\d+)\s+cards?`, DiscardCards, "Controller discards", ap.parseControllerDiscard)
+	ap.addPattern(Triggered, `When(ever)?\s+.*\s+deals\s+combat\s+damage\s+to\s+a\s+player,\s+that\s+player\s+discards\s+(a|two|three|four|five|\d+)\s+cards?`, DiscardCards, "Combat damage discard trigger", ap.parseCombatDamageDiscard)
+
+	// Search library effects
+	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+a\s+basic\s+land\s+card`, SearchLibrary, "Search basic land", ap.parseSearchBasicLand)
+	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+a\s+land\s+card`, SearchLibrary, "Search any land", ap.parseSearchLand)
+	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+up\s+to\s+(\d+)\s+basic\s+land\s+cards?`, SearchLibrary, "Search multiple basic lands", ap.parseSearchMultipleBasicLands)
+	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+a\s+card`, SearchLibrary, "Search any card", ap.parseSearchAnyCard)
+	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+.*\s+and\s+put\s+(it|them)\s+onto\s+the\s+battlefield`, SearchLibrary, "Search to battlefield", ap.parseSearchToBattlefield)
+
+	// Conditional abilities - activated/static
+	ap.addPattern(Activated, `If\s+you\s+control\s+a\s+(.*),\s*(.*)`, DrawCards, "Conditional control permanent", ap.parseConditionalControl)
+	ap.addPattern(Activated, `If\s+an\s+opponent\s+controls\s+more\s+creatures\s+than\s+you,\s*(.*)`, DealDamage, "Conditional opponent creatures", ap.parseConditionalOpponentCreatures)
+	ap.addPattern(Activated, `If\s+you\s+have\s+no\s+cards\s+in\s+hand,\s*(.*)`, DealDamage, "Conditional hellbent", ap.parseConditionalHellbent)
+
+	// Conditional ETB triggers
+	ap.addPattern(Triggered, `When\s+.*\s+enters\s+the\s+battlefield,\s+if\s+you\s+control\s+a\s+(.*),\s*(.*)`, DrawCards, "Conditional ETB control", ap.parseConditionalETBControl)
+
 }
 
 // addPattern adds a new pattern to the parser.
@@ -1368,10 +1397,168 @@ func (ap *AbilityParser) parseExtraTurn(matches []string, fullText string) (*Abi
 	}, nil
 }
 
+func (ap *AbilityParser) parseConditionalControl(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	conditionValue := matches[1]
+	effectText := strings.TrimSpace(matches[2])
+
+	// Determine effect type from the effect clause
+	effectType, value := ap.inferEffectFromText(effectText)
+
+	return &Ability{
+		Name: "Conditional Control",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type: effectType,
+				Value: value,
+				Duration: Instant,
+				Conditions: []Condition{
+					{Type: ControlPermanentType, Value: conditionValue},
+				},
+				Description: effectText,
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseConditionalOpponentCreatures(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	effectText := strings.TrimSpace(matches[1])
+	effectType, value := ap.inferEffectFromText(effectText)
+
+	return &Ability{
+		Name: "Conditional Opponent Creatures",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type: effectType,
+				Value: value,
+				Duration: Instant,
+				Conditions: []Condition{
+					{Type: OpponentHasMoreCreatures},
+				},
+				Description: effectText,
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseConditionalHellbent(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	effectText := strings.TrimSpace(matches[1])
+	effectType, value := ap.inferEffectFromText(effectText)
+
+	return &Ability{
+		Name: "Conditional Hellbent",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type: effectType,
+				Value: value,
+				Duration: Instant,
+				Conditions: []Condition{
+					{Type: NoCardsInHand},
+				},
+				Description: effectText,
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseConditionalETBControl(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	conditionValue := matches[1]
+	effectText := strings.TrimSpace(matches[2])
+	effectType, value := ap.inferEffectFromText(effectText)
+
+	return &Ability{
+		Name: "Conditional ETB Control",
+		Type: Triggered,
+		TriggerCondition: EntersTheBattlefield,
+		Effects: []Effect{
+			{
+				Type: effectType,
+				Value: value,
+				Duration: Instant,
+				Conditions: []Condition{
+					{Type: ControlPermanentType, Value: conditionValue},
+				},
+				Description: effectText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) inferEffectFromText(text string) (EffectType, int) {
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "draw") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return DrawCards, count
+	}
+	if strings.Contains(lower, "damage") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return DealDamage, count
+	}
+	if strings.Contains(lower, "gain") && strings.Contains(lower, "life") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return GainLife, count
+	}
+	if strings.Contains(lower, "create") && strings.Contains(lower, "token") {
+		return CreateToken, 1
+	}
+	if strings.Contains(lower, "search") && strings.Contains(lower, "library") {
+		return SearchLibrary, 1
+	}
+	if strings.Contains(lower, "destroy") {
+		return DestroyPermanent, 1
+	}
+	if strings.Contains(lower, "counter") && strings.Contains(lower, "spell") {
+		return CounterSpell, 1
+	}
+	if strings.Contains(lower, "discard") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return DiscardCards, count
+	}
+	if strings.Contains(lower, "return") && strings.Contains(lower, "hand") {
+		return ReturnToHand, 1
+	}
+	if strings.Contains(lower, "prevent") && strings.Contains(lower, "damage") {
+		return PreventDamage, 0
+	}
+	return DealDamage, 1 // Default fallback
+}
+
 func (ap *AbilityParser) parseTokenCreation(matches []string, fullText string) (*Ability, error) {
 	count := ap.parseIntValue(matches[1])
 	power := ap.parseIntValue(matches[2])
 	toughness := ap.parseIntValue(matches[3])
+
+	// Encode count, power, toughness into Value: count*1000000 + power*1000 + toughness
+	encodedValue := count*1000000 + power*1000 + toughness
 
 	return &Ability{
 		Name: "Token Creation",
@@ -1379,7 +1566,7 @@ func (ap *AbilityParser) parseTokenCreation(matches []string, fullText string) (
 		Effects: []Effect{
 			{
 				Type:        CreateToken,
-				Value:       count,
+				Value:       encodedValue,
 				Duration:    Instant,
 				Description: "Create " + matches[1] + " " + matches[2] + "/" + matches[3] + " creature tokens (power: " + strconv.Itoa(power) + ", toughness: " + strconv.Itoa(toughness) + ")",
 			},
@@ -1524,5 +1711,303 @@ func (ap *AbilityParser) parseRabidBite(matches []string, fullText string) (*Abi
 			},
 		},
 		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+
+// --- Phase 1: Tap/Untap parsers ---
+
+func (ap *AbilityParser) parseTapTarget(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+	return &Ability{
+		Name: "Tap Target",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     TapUntap,
+				Value:    1, // positive => tap
+				Duration: Instant,
+				Targets:  []Target{{Type: targetType, Required: true, Count: 1}},
+				Description: "Tap target " + matches[1],
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTapAll(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+	return &Ability{
+		Name: "Tap All",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     TapUntap,
+				Value:    1, // positive => tap
+				Duration: Instant,
+				Targets:  []Target{{Type: targetType, Required: false, Count: 0}}, // mass effect
+				Description: "Tap all " + matches[1],
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseUntapTarget(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+	return &Ability{
+		Name: "Untap Target",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     TapUntap,
+				Value:    -1, // negative => untap
+				Duration: Instant,
+				Targets:  []Target{{Type: targetType, Required: true, Count: 1}},
+				Description: "Untap target " + matches[1],
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseUntapAllControlled(matches []string, fullText string) (*Ability, error) {
+	targetType := ap.parseTargetType(matches[1])
+	return &Ability{
+		Name: "Untap All Controlled",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     TapUntap,
+				Value:    -1,
+				Duration: Instant,
+				Targets:  []Target{{Type: targetType, Required: false, Count: 0}},
+				Description: "Untap all " + matches[1] + " you control",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseFreezeTarget(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Freeze Target",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:     TapUntap,
+				Value:    1,
+				Duration: Instant,
+				Targets:  []Target{{Type: CreatureTarget, Required: true, Count: 1}},
+				Description: "Target creature doesn't untap during its controller's next untap step",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+// --- Phase 1: Discard parsers ---
+
+func (ap *AbilityParser) parseDiscardCount(s string) int {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "a", "an", "one":
+		return 1
+	case "two":
+		return 2
+	case "three":
+		return 3
+	case "four":
+		return 4
+	case "five":
+		return 5
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return 1
+}
+
+func (ap *AbilityParser) parseTargetPlayerDiscard(matches []string, fullText string) (*Ability, error) {
+	count := ap.parseDiscardCount(matches[1])
+	return &Ability{
+		Name: "Target Player Discards",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DiscardCards,
+				Value:       count,
+				Duration:    Instant,
+				Targets:     []Target{{Type: PlayerTarget, Required: true, Count: 1}},
+				Description: "Target player discards " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetOpponentDiscard(matches []string, fullText string) (*Ability, error) {
+	count := ap.parseDiscardCount(matches[1])
+	return &Ability{
+		Name: "Target Opponent Discards",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DiscardCards,
+				Value:       count,
+				Duration:    Instant,
+				Targets:     []Target{{Type: PlayerTarget, Required: true, Count: 1}},
+				Description: "Target opponent discards " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseEachPlayerDiscard(matches []string, fullText string) (*Ability, error) {
+	count := ap.parseDiscardCount(matches[1])
+	return &Ability{
+		Name: "Each Player Discards",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DiscardCards,
+				Value:       count,
+				Duration:    Instant,
+				Targets:     []Target{{Type: PlayerTarget, Required: false, Count: 0}}, // each is non-targeting
+				Description: "Each player discards " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseControllerDiscard(matches []string, fullText string) (*Ability, error) {
+	count := ap.parseDiscardCount(matches[1])
+	return &Ability{
+		Name: "Controller Discards",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DiscardCards,
+				Value:       count,
+				Duration:    Instant,
+				Targets:     []Target{{Type: CreatureTarget, Required: true, Count: 1}}, // target creature whose controller discards
+				Description: "Target creature's controller discards " + matches[1] + " cards",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseCombatDamageDiscard(matches []string, fullText string) (*Ability, error) {
+	count := ap.parseDiscardCount(matches[2])
+	return &Ability{
+		Name: "Combat Damage Discard",
+		Type: Triggered,
+		TriggerCondition: DealsCombatDamage,
+		Effects: []Effect{
+			{
+				Type:        DiscardCards,
+				Value:       count,
+				Duration:    Instant,
+				Targets:     []Target{{Type: PlayerTarget, Required: false, Count: 0}}, // player damaged
+				Description: "That player discards " + matches[2] + " cards",
+			},
+		},
+		IsOptional: false,
+	}, nil
+}
+
+// --- Phase 1: Search library parsers ---
+
+func (ap *AbilityParser) parseSearchBasicLand(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Search Basic Land",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        SearchLibrary,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: NoTarget, Required: false, Count: 0}},
+				Description: "Search your library for a basic land card",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSearchLand(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Search Land",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        SearchLibrary,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: NoTarget, Required: false, Count: 0}},
+				Description: "Search your library for a land card",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSearchMultipleBasicLands(matches []string, fullText string) (*Ability, error) {
+	count := 1
+	if len(matches) > 1 {
+		if n, err := strconv.Atoi(matches[1]); err == nil {
+			count = n
+		}
+	}
+	return &Ability{
+		Name: "Search Multiple Basic Lands",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        SearchLibrary,
+				Value:       count,
+				Duration:    Instant,
+				Targets:     []Target{{Type: NoTarget, Required: false, Count: 0}},
+				Description: "Search your library for up to " + matches[1] + " basic land cards",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSearchAnyCard(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Search Any Card",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        SearchLibrary,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: NoTarget, Required: false, Count: 0}},
+				Description: "Search your library for a card",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseSearchToBattlefield(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Search To Battlefield",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        SearchLibrary,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: NoTarget, Required: false, Count: 0}},
+				Description: fullText,
+			},
+		},
+		TimingRestriction: AnyTime,
 	}, nil
 }

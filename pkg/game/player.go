@@ -244,6 +244,37 @@ func (p *Player) PayForCommander(c SimpleCard) bool {
 	return p.manaPool.Pay(cost)
 }
 
+// Discard moves n cards from hand to graveyard.
+func (p *Player) Discard(n int) []SimpleCard {
+	if n > len(p.Hand) {
+		n = len(p.Hand)
+	}
+	discarded := make([]SimpleCard, n)
+	copy(discarded, p.Hand[:n])
+	p.Hand = p.Hand[n:]
+	p.Graveyard = append(p.Graveyard, discarded...)
+	return discarded
+}
+
+// SearchLibraryToHand moves up to n cards from library to hand.
+func (p *Player) SearchLibraryToHand(n int) []SimpleCard {
+	if n > len(p.Library) {
+		n = len(p.Library)
+	}
+	found := make([]SimpleCard, n)
+	copy(found, p.Library[:n])
+	p.Library = p.Library[n:]
+	p.Hand = append(p.Hand, found...)
+	return found
+}
+
+// PutTokenOnBattlefield creates a token permanent and adds it to the battlefield.
+func (p *Player) PutTokenOnBattlefield(token SimpleCard) *Permanent {
+	perm := NewPermanent(token, p, p)
+	p.Battlefield = append(p.Battlefield, perm)
+	return perm
+}
+
 // Mana pool basics (detailed payment in Task 2)
 func (p *Player) GetManaPool() map[ManaType]int { return p.manaPool.pool }
 func (p *Player) AddManaToPool(mt ManaType, n int) {

@@ -27,6 +27,12 @@ type UnimplementedCard struct {
 	Reason string `json:"reason"`
 }
 
+// FailureBucket counts how many cards failed for a given reason category.
+type FailureBucket struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+}
+
 // ImplementationReport is the complete classification snapshot.
 type ImplementationReport struct {
 	TotalCards         int                 `json:"total_cards"`
@@ -37,6 +43,24 @@ type ImplementationReport struct {
 	BySet              []Bucket            `json:"by_set"`
 	ByType             []Bucket            `json:"by_type"`
 	UnimplementedCards []UnimplementedCard `json:"unimplemented_cards"`
+	FailureReasons     []FailureBucket     `json:"failure_reasons"`
+}
+
+// categorizeReason groups a raw failure reason into a coarse bucket.
+func categorizeReason(reason string) string {
+	if strings.Contains(reason, "parser failed") || strings.Contains(reason, "parse error") {
+		return "Parser Failure"
+	}
+	if strings.Contains(reason, "unsupported effect") {
+		return "Unsupported Effect"
+	}
+	if strings.Contains(reason, "unsupported condition") {
+		return "Unsupported Condition"
+	}
+	if strings.Contains(reason, "unsupported target restriction") {
+		return "Unsupported Target Restriction"
+	}
+	return "Other"
 }
 
 // ComputeImplementationStatus evaluates every card in the database and
@@ -49,6 +73,7 @@ func ComputeImplementationStatus(db *CardDB, evaluator ImplementationEvaluator) 
 	setBuckets := map[string]*Bucket{}
 	setCounts := map[string]int{}
 	typeBuckets := map[string]*Bucket{}
+	failureCounts := map[string]int{}
 
 	for _, c := range all {
 		impl, reason := evaluator.EvaluateCard(c)
@@ -64,6 +89,7 @@ func ComputeImplementationStatus(db *CardDB, evaluator ImplementationEvaluator) 
 				Type:   simplifyType(c.TypeLine),
 				Reason: reason,
 			})
+			failureCounts[categorizeReason(reason)]++
 		}
 
 		cb := classifyColor(c.ColorIdentity)
@@ -97,6 +123,13 @@ func ComputeImplementationStatus(db *CardDB, evaluator ImplementationEvaluator) 
 	if report.TotalCards > 0 {
 		report.Percentage = float64(report.ImplementedCount) / float64(report.TotalCards) * 100
 	}
+
+	for cat, count := range failureCounts {
+		report.FailureReasons = append(report.FailureReasons, FailureBucket{Category: cat, Count: count})
+	}
+	sort.Slice(report.FailureReasons, func(i, j int) bool {
+		return report.FailureReasons[i].Count > report.FailureReasons[j].Count
+	})
 
 	sort.Slice(report.UnimplementedCards, func(i, j int) bool {
 		return report.UnimplementedCards[i].Name < report.UnimplementedCards[j].Name

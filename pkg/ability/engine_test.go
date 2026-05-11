@@ -86,6 +86,34 @@ func (m *mockGameState) LoseLife(player AbilityPlayer, amount int) {
 	}
 }
 
+func (m *mockGameState) DiscardCards(player AbilityPlayer, count int) {
+	if mp, ok := player.(*mockPlayer); ok {
+		for i := 0; i < count; i++ {
+			if len(mp.hand) > 0 {
+				mp.hand = mp.hand[:len(mp.hand)-1]
+			}
+		}
+	}
+}
+
+func (m *mockGameState) SearchLibrary(player AbilityPlayer, count int) {
+	if mp, ok := player.(*mockPlayer); ok {
+		for i := 0; i < count; i++ {
+			mp.hand = append(mp.hand, "SearchedCard")
+		}
+	}
+}
+
+func (m *mockGameState) CreateToken(controller AbilityPlayer, token game.SimpleCard) {
+	if mp, ok := controller.(*mockPlayer); ok {
+		mp.creatures = append(mp.creatures, "Token")
+	}
+}
+
+func (m *mockGameState) PreventDamage(target any, amount int) {
+	// No-op for mock
+}
+
 type mockPlayer struct {
 	name      string
 	life      int

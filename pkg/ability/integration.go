@@ -178,6 +178,22 @@ func (ga *GameAdapter) LoseLife(player AbilityPlayer, amount int) {
 	player.SetLifeTotal(currentLife - amount)
 }
 
+func (ga *GameAdapter) DiscardCards(player AbilityPlayer, count int) {
+	// No-op: legacy adapter cannot manipulate hand through PlayerInterface
+}
+
+func (ga *GameAdapter) SearchLibrary(player AbilityPlayer, count int) {
+	// No-op: legacy adapter cannot manipulate library through PlayerInterface
+}
+
+func (ga *GameAdapter) CreateToken(controller AbilityPlayer, token game.SimpleCard) {
+	// No-op: legacy adapter cannot create tokens through PlayerInterface
+}
+
+func (ga *GameAdapter) PreventDamage(target any, amount int) {
+	// No-op: legacy adapter has no prevention support
+}
+
 // PlayerAdapter adapts existing player structures to the ability system.
 type PlayerAdapter struct {
 	player  PlayerInterface

@@ -100,7 +100,11 @@ func (t *ImplementationTracker) CheckDeck(deckCards []card.Card, db *card.CardDB
 }
 
 // EvaluateAllInDB scans every card in the database and records its status.
+// It forces a full re-evaluation, ignoring any cached results.
 func (t *ImplementationTracker) EvaluateAllInDB(db *card.CardDB) {
+	t.mu.Lock()
+	t.entries = make(map[string]ImplementationStatus)
+	t.mu.Unlock()
 	for _, c := range db.ListAll() {
 		_, _ = t.EvaluateCard(c)
 	}
@@ -166,7 +170,25 @@ func testCardImplementation(c card.Card) (bool, string) {
 	for _, ab := range abilities {
 		for _, eff := range ab.Effects {
 			if !CanExecuteEffect(eff.Type) {
-				return false, fmt.Sprintf("unsupported effect: %v", eff.Type)
+				return false, fmt.Sprintf("unsupported effect: %s", eff.Type.String())
+			}
+			for _, cond := range eff.Conditions {
+				if !CanExecuteCondition(cond.Type) {
+					return false, fmt.Sprintf("unsupported condition: %s", cond.Type.String())
+				}
+			}
+			for _, tgt := range eff.Targets {
+				if tgt.Enhanced != nil {
+					for _, r := range tgt.Enhanced.Restrictions {
+						if !CanExecuteTargetRestriction(r.Type) {
+							return false, fmt.Sprintf("unsupported target restriction: %v", r.Type)
+						}
+					}
+				}
+				for _, r := range tgt.Restrictions {
+					// Basic restrictions are strings; only Enhanced restrictions carry typed data.
+					_ = r
+				}
 			}
 		}
 	}

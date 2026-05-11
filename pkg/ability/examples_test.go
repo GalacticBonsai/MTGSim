@@ -56,8 +56,8 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:              "Sakura-Tribe Elder",
 			oracleText:        "Sacrifice Sakura-Tribe Elder: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle your library.",
-			expectedAbilities: 0, // Complex ability not yet supported
-			description:       "Complex sacrifice ability",
+			expectedAbilities: 1, // Search library ability now parsed
+			description:       "Sacrifice search ability",
 		},
 		{
 			name:              "Elvish Archdruid",

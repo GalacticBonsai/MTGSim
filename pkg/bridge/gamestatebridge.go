@@ -137,3 +137,25 @@ func (b *AbilityGameState) LoseLife(player abil.AbilityPlayer, amount int) {
 	}
 	b.G.ApplyStateBasedActions()
 }
+
+func (b *AbilityGameState) DiscardCards(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		pa.P.Discard(count)
+	}
+}
+
+func (b *AbilityGameState) SearchLibrary(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		pa.P.SearchLibraryToHand(count)
+	}
+}
+
+func (b *AbilityGameState) CreateToken(controller abil.AbilityPlayer, token game.SimpleCard) {
+	if pa, ok := controller.(*playerAdapter); ok {
+		pa.P.PutTokenOnBattlefield(token)
+	}
+}
+
+func (b *AbilityGameState) PreventDamage(target any, amount int) {
+	b.G.AddDamagePrevention(target, amount)
+}

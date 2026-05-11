@@ -2,6 +2,8 @@
 package ability
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
@@ -63,6 +65,78 @@ const (
 	TakeExtraTurn     // Extra-turn effects; execution engines may queue an additional turn
 )
 
+// String returns the human-readable name of an EffectType.
+func (et EffectType) String() string {
+	switch et {
+	case DrawCards:
+		return "DrawCards"
+	case DealDamage:
+		return "DealDamage"
+	case GainLife:
+		return "GainLife"
+	case LoseLife:
+		return "LoseLife"
+	case AddMana:
+		return "AddMana"
+	case PumpCreature:
+		return "PumpCreature"
+	case DestroyPermanent:
+		return "DestroyPermanent"
+	case CounterSpell:
+		return "CounterSpell"
+	case SearchLibrary:
+		return "SearchLibrary"
+	case DiscardCards:
+		return "DiscardCards"
+	case ReturnToHand:
+		return "ReturnToHand"
+	case CreateToken:
+		return "CreateToken"
+	case TapUntap:
+		return "TapUntap"
+	case ChangeControl:
+		return "ChangeControl"
+	case PreventDamage:
+		return "PreventDamage"
+	case SourcePowerDamage:
+		return "SourcePowerDamage"
+	case ChooseMode:
+		return "ChooseMode"
+	case TakeExtraTurn:
+		return "TakeExtraTurn"
+	default:
+		return fmt.Sprintf("EffectType(%d)", et)
+	}
+}
+
+// String returns the human-readable name of a ConditionType.
+func (ct ConditionType) String() string {
+	switch ct {
+	case NoCondition:
+		return "NoCondition"
+	case ControlPermanentType:
+		return "ControlPermanentType"
+	case HaveMoreLifeThanOpponent:
+		return "HaveMoreLifeThanOpponent"
+	case OpponentHasMoreCreatures:
+		return "OpponentHasMoreCreatures"
+	case NoCardsInHand:
+		return "NoCardsInHand"
+	case KickerPaid:
+		return "KickerPaid"
+	case UnlessPaysMana:
+		return "UnlessPaysMana"
+	case HaveMoreLandsThanOpponent:
+		return "HaveMoreLandsThanOpponent"
+	case HaveMoreCardsInHandThanOpponent:
+		return "HaveMoreCardsInHandThanOpponent"
+	case ControlCreatureWithPowerGreater:
+		return "ControlCreatureWithPowerGreater"
+	default:
+		return fmt.Sprintf("ConditionType(%d)", ct)
+	}
+}
+
 // TimingRestriction represents when an ability can be activated.
 type TimingRestriction int
 
@@ -108,14 +182,36 @@ const (
 	CardInHandTarget
 )
 
+// ConditionType represents a condition that must be met for an effect.
+type ConditionType int
+
+const (
+	NoCondition ConditionType = iota
+	ControlPermanentType
+	HaveMoreLifeThanOpponent
+	OpponentHasMoreCreatures
+	NoCardsInHand
+	KickerPaid
+	UnlessPaysMana
+	HaveMoreLandsThanOpponent
+	HaveMoreCardsInHandThanOpponent
+	ControlCreatureWithPowerGreater
+)
+
+// Condition represents a specific condition for an effect.
+type Condition struct {
+	Type  ConditionType
+	Value string // e.g., "Forest", "3"
+}
+
 // Effect represents the effect of an ability.
 type Effect struct {
 	Type        EffectType
 	Value       int // Amount of damage, cards drawn, etc.
 	Duration    EffectDuration
 	Targets     []Target
-	Conditions  []string // Additional conditions for the effect
-	Description string   // Human-readable description
+	Conditions  []Condition // Additional conditions for the effect
+	Description string      // Human-readable description
 }
 
 // EffectDuration represents how long an effect lasts.

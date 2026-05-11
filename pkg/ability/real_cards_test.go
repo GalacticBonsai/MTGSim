@@ -3,6 +3,8 @@ package ability
 
 import (
 	"testing"
+
+	"github.com/mtgsim/mtgsim/pkg/scryfall"
 )
 
 // RealMTGCard represents actual MTG card data for testing
@@ -511,5 +513,28 @@ func testProdigalPyromancerAbility(t *testing.T, abilities []*Ability) {
 	effect := ability.Effects[0]
 	if effect.Type != DealDamage {
 		t.Errorf("Prodigal Pyromancer effect should be DealDamage, got %v", effect.Type)
+	}
+}
+
+// TestScryfallRulingsIntegration validates that we can fetch Scryfall rulings
+// for key cards and that the rulings are non-empty. This ensures the
+// rulings pipeline is functional for future edge-case regression tests.
+func TestScryfallRulingsIntegration(t *testing.T) {
+	client := scryfall.NewClient()
+
+	cards := []string{"Lightning Bolt", "Counterspell", "Sakura-Tribe Elder"}
+	for _, name := range cards {
+		t.Run(name, func(t *testing.T) {
+			rulings, err := client.GetRulingsByName(name)
+			if err != nil {
+				// Scryfall may be unavailable; skip rather than fail.
+				t.Skipf("Skipping %s: could not fetch rulings: %v", name, err)
+			}
+			if len(rulings) == 0 {
+				t.Logf("No rulings returned for %s (this is okay for cards with no published rulings)", name)
+			} else {
+				t.Logf("%s has %d rulings; first ruling: %s", name, len(rulings), rulings[0].Comment)
+			}
+		})
 	}
 }

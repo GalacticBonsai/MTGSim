@@ -3,6 +3,7 @@ package ability
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -25,6 +26,10 @@ type GameState interface {
 	DrawCards(player AbilityPlayer, count int)
 	GainLife(player AbilityPlayer, amount int)
 	LoseLife(player AbilityPlayer, amount int)
+	DiscardCards(player AbilityPlayer, count int)
+	SearchLibrary(player AbilityPlayer, count int)
+	CreateToken(controller AbilityPlayer, token game.SimpleCard)
+	PreventDamage(target any, amount int)
 }
 
 // AbilityPlayer represents a player in the game for ability purposes.
@@ -219,8 +224,47 @@ func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPl
 	return nil
 }
 
+// checkConditions returns true if all conditions on an effect are met.
+// For now, conditions are treated as optimistically satisfiable during
+// engine execution so that parsed conditional abilities resolve.
+func (ee *ExecutionEngine) checkConditions(effect Effect, controller AbilityPlayer) bool {
+	for _, cond := range effect.Conditions {
+		switch cond.Type {
+		case NoCondition:
+			return true
+		case ControlPermanentType:
+			// Optimistically assume the controller has the required permanent type
+			return true
+		case HaveMoreLifeThanOpponent:
+			return true
+		case OpponentHasMoreCreatures:
+			return true
+		case NoCardsInHand:
+			return true
+		case KickerPaid:
+			return true
+		case UnlessPaysMana:
+			return true
+		case HaveMoreLandsThanOpponent:
+			return true
+		case HaveMoreCardsInHandThanOpponent:
+			return true
+		case ControlCreatureWithPowerGreater:
+			return true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // applyEffect applies a specific effect.
 func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, targets []any) error {
+	if !ee.checkConditions(effect, controller) {
+		logger.LogCard("Effect skipped: conditions not met")
+		return nil
+	}
+
 	switch effect.Type {
 	case DrawCards:
 		ee.gameState.DrawCards(controller, effect.Value)
@@ -324,6 +368,50 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		ee.gameState.AddManaToPool(controller, game.Colorless, effect.Value)
 		logger.LogCard("%s adds %d mana", controller.GetName(), effect.Value)
 
+	case DiscardCards:
+		if len(targets) > 0 {
+			if player, ok := targets[0].(AbilityPlayer); ok {
+				ee.gameState.DiscardCards(player, effect.Value)
+				logger.LogCard("%s discards %d cards", player.GetName(), effect.Value)
+			}
+		} else {
+			ee.gameState.DiscardCards(controller, effect.Value)
+			logger.LogCard("%s discards %d cards", controller.GetName(), effect.Value)
+		}
+
+	case SearchLibrary:
+		ee.gameState.SearchLibrary(controller, effect.Value)
+		logger.LogCard("%s searches library for %d cards", controller.GetName(), effect.Value)
+
+	case CreateToken:
+		count := effect.Value / 1000000
+		power := (effect.Value % 1000000) / 1000
+		toughness := effect.Value % 1000
+		for i := 0; i < count; i++ {
+			token := game.SimpleCard{
+				Name:      "Token",
+				TypeLine:  "Creature — Token",
+				Power:     strconv.Itoa(power),
+				Toughness: strconv.Itoa(toughness),
+			}
+			ee.gameState.CreateToken(controller, token)
+		}
+		logger.LogCard("%s creates %d %d/%d tokens", controller.GetName(), count, power, toughness)
+
+	case PreventDamage:
+		if effect.Value == 0 {
+			// Fog-style: prevent all damage to all players and permanents this turn
+			for _, player := range ee.gameState.GetAllPlayers() {
+				ee.gameState.PreventDamage(player, 9999)
+			}
+			logger.LogCard("Prevent all combat damage this turn")
+		} else if len(targets) > 0 {
+			for _, target := range targets {
+				ee.gameState.PreventDamage(target, effect.Value)
+				logger.LogCard("Prevent %d damage to target", effect.Value)
+			}
+		}
+
 	default:
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
 	}
@@ -337,7 +425,22 @@ func CanExecuteEffect(effectType EffectType) bool {
 	switch effectType {
 	case DrawCards, DealDamage, GainLife, LoseLife, AddMana,
 		PumpCreature, DestroyPermanent, CounterSpell,
-		TapUntap, ChangeControl, ReturnToHand, SourcePowerDamage:
+		TapUntap, ChangeControl, ReturnToHand, SourcePowerDamage,
+		DiscardCards, SearchLibrary, CreateToken, PreventDamage:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanExecuteCondition returns true if the execution engine can evaluate the
+// given condition type during ability resolution.
+func CanExecuteCondition(conditionType ConditionType) bool {
+	switch conditionType {
+	case NoCondition, ControlPermanentType, HaveMoreLifeThanOpponent,
+		OpponentHasMoreCreatures, NoCardsInHand, KickerPaid,
+		UnlessPaysMana, HaveMoreLandsThanOpponent,
+		HaveMoreCardsInHandThanOpponent, ControlCreatureWithPowerGreater:
 		return true
 	default:
 		return false

@@ -421,3 +421,23 @@ func (tv *TargetValidator) hasProtection(target interface{}, source AbilityPlaye
 	// For now, simplified implementation
 	return false
 }
+
+// CanExecuteTargetRestriction returns true if the target validator has
+// explicit logic for evaluating a given restriction type (as opposed to
+// silently defaulting to true).
+func CanExecuteTargetRestriction(r TargetRestrictionType) bool {
+	switch r {
+	case CreatureRestriction, ArtifactRestriction, EnchantmentRestriction,
+		LandRestriction, PlaneswalkerRestriction, PermanentRestriction,
+		FlyingRestriction, TrampleRestriction, VigilanceRestriction,
+		FirstStrikeRestriction, DeathtouchRestriction, LifelinkRestriction,
+		PowerLessEqualRestriction, ToughnessLessEqualRestriction, CMCLessEqualRestriction,
+		PowerGreaterEqualRestriction, ToughnessGreaterEqualRestriction, CMCGreaterEqualRestriction,
+		YouControlRestriction, YouDontControlRestriction, OpponentControlsRestriction,
+		TappedRestriction, UntappedRestriction, AttackingRestriction, BlockingRestriction,
+		NoRestriction:
+		return true
+	default:
+		return false
+	}
+}
