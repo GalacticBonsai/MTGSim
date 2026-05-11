@@ -395,15 +395,15 @@ const htmlDashboard = `
 				<div class="loading">Loading...</div>
 			</div>
 			<h3>By Color</h3>
-			<div class="chart-container" id="implByColor" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+			<div class="chart-container" id="implByColor" style="max-width:600px;margin:0 auto;">
 				<div class="loading">Loading...</div>
 			</div>
 			<h3>By Set</h3>
-			<div class="chart-container" id="implBySet" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+			<div class="chart-container" id="implBySet" style="max-width:600px;margin:0 auto;">
 				<div class="loading">Loading...</div>
 			</div>
 			<h3>By Type</h3>
-			<div class="chart-container" id="implByType" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+			<div class="chart-container" id="implByType" style="max-width:600px;margin:0 auto;">
 				<div class="loading">Loading...</div>
 			</div>
 			<h3>Unimplemented Cards</h3>
@@ -607,15 +607,26 @@ const htmlDashboard = `
 				document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="9">No recent pods</td></tr>';
 			}
 
-			function renderDonut(label, impl, total) {
-				const r = 50;
-				const c = 2 * Math.PI * r;
+			function renderStackedBar(label, impl, total) {
 				const pct = total > 0 ? (impl / total * 100) : 0;
-				const dashImpl = (pct / 100) * c;
-				const dashUnimpl = c - dashImpl;
-				const offset = -c * 0.25; // start at top
-				let tooltip = label + ': ' + impl + ' implemented out of ' + total + ' cards (' + pct.toFixed(1) + '%)';
-				return '<div style="text-align:center;min-width:100px;" title="' + tooltip + '"><svg width="120" height="120" style="margin:0 auto;display:block;"><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#141829" stroke-width="14"/><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#e74c3c" stroke-width="14" stroke-dasharray="' + c + '" stroke-dashoffset="' + offset + '"/><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#5a6dd8" stroke-width="14" stroke-dasharray="' + dashImpl + ' ' + dashUnimpl + '" stroke-dashoffset="' + offset + '"/></svg><div style="font-size:12px;margin-top:4px;">' + label + '</div><div style="font-size:11px;color:#888;">' + impl + '/' + total + ' (' + pct.toFixed(1) + '%)</div></div>';
+				const unimpl = total - impl;
+				const implPct = pct.toFixed(1);
+				const unimplPct = total > 0 ? ((unimpl / total) * 100).toFixed(1) : '0.0';
+				let tooltip = label + ': ' + impl + ' implemented out of ' + total + ' cards (' + implPct + '%)';
+				return '<div style="margin-bottom:10px;" title="' + tooltip + '">' +
+					'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+						'<span style="font-size:13px;color:#fff;font-weight:600;">' + label + '</span>' +
+						'<span style="font-size:12px;color:#888;">' + impl + '/' + total + ' (' + implPct + '%)</span>' +
+					'</div>' +
+					'<div style="width:100%;height:18px;background:#141829;border-radius:4px;overflow:hidden;display:flex;">' +
+						'<div style="width:' + implPct + '%;height:100%;background:#5a6dd8;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;white-space:nowrap;overflow:hidden;">' + (impl > 0 ? impl : '') + '</div>' +
+						'<div style="width:' + unimplPct + '%;height:100%;background:#e74c3c;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;white-space:nowrap;overflow:hidden;">' + (unimpl > 0 ? unimpl : '') + '</div>' +
+					'</div>' +
+					'<div style="display:flex;justify-content:space-between;margin-top:2px;">' +
+						'<span style="font-size:10px;color:#5a6dd8;">implemented</span>' +
+						'<span style="font-size:10px;color:#e74c3c;">remaining: ' + unimpl + '</span>' +
+					'</div>' +
+				'</div>';
 			}
 
 			let implSortKey = 'name', implSortAsc = true;
@@ -684,19 +695,19 @@ const htmlDashboard = `
 
 				let colorHtml = '';
 				for (let b of (report.by_color || [])) {
-					colorHtml += renderDonut(b.name, b.implemented, b.total);
+					colorHtml += renderStackedBar(b.name, b.implemented, b.total);
 				}
 				document.getElementById('implByColor').innerHTML = colorHtml || '<div class="loading">No data</div>';
 
 				let setHtml = '';
 				for (let b of (report.by_set || [])) {
-					setHtml += renderDonut(b.name, b.implemented, b.total);
+					setHtml += renderStackedBar(b.name, b.implemented, b.total);
 				}
 				document.getElementById('implBySet').innerHTML = setHtml || '<div class="loading">No data</div>';
 
 				let typeHtml = '';
 				for (let b of (report.by_type || [])) {
-					typeHtml += renderDonut(b.name, b.implemented, b.total);
+					typeHtml += renderStackedBar(b.name, b.implemented, b.total);
 				}
 				document.getElementById('implByType').innerHTML = typeHtml || '<div class="loading">No data</div>';
 
