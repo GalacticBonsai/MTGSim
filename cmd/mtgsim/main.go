@@ -27,7 +27,7 @@ var (
 	swapNFlag      = flag.Int("swap", 0, "Number of sideboard cards to swap into the main deck each game")
 	verbosityFlag  = flag.Int("v", 1, "Verbosity: 0=minimal, 1=summary, 2=per-game details")
 	logLevelFlag   = flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
-	cardStatsFlag  = flag.String("card-stats", "", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
+	cardStatsFlag  = flag.String("card-stats", "card_library.json", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
 )
 
 // Stats accumulators

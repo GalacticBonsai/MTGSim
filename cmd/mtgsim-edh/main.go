@@ -38,7 +38,7 @@ func main() {
 	replayDir := flag.String("replay", "", "Directory to write per-pod replay JSON (empty = disabled)")
 	sideboardVariants := flag.Int("sideboard-variants", 0, "Generated sideboard variants per imported deck (0 = disabled)")
 	sideboardSwaps := flag.Int("sideboard-swaps", 3, "Cards swapped per generated sideboard variant")
-	cardStatsFlag := flag.String("card-stats", "", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
+	cardStatsFlag := flag.String("card-stats", "card_library.json", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
