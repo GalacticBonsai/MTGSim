@@ -89,10 +89,18 @@ func LoadCardDatabase() (*CardDB, error) {
 }
 
 // downloadAndParseJSON downloads card data from the given URL and parses it.
+// Uses a proper User-Agent header as required by Scryfall's API policy.
 func downloadAndParseJSON(url string) ([]Card, error) {
 	log.Printf("META: Downloading JSON from %s", url)
 
-	resp, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("User-Agent", "MTGSim/1.0 (github.com/mtgsim/mtgsim)")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download JSON: %v", err)
 	}

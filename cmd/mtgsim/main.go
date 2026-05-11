@@ -15,8 +15,10 @@ import (
 	abil "github.com/mtgsim/mtgsim/pkg/ability"
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/card"
+	"github.com/mtgsim/mtgsim/pkg/combo"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/scryfall"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
@@ -842,7 +844,7 @@ func gameStateSnapshot(g *game.Game) string {
 
 // Play a single game with phases, mana, and costs enforced.
 // Returns the winner, loser, a draw flag, turn count, duration, and per-player card casts.
-func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.CardDB) (winner *game.Player, loser *game.Player, isDraw bool, turns int, dur time.Duration, casts map[string]map[string]int) {
+func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.CardDB, p1Combo, p2Combo *combo.Index) (winner *game.Player, loser *game.Player, isDraw bool, turns int, dur time.Duration, casts map[string]map[string]int) {
 	_ = verbosity
 	start := time.Now()
 	landDropUsed := map[*game.Player]bool{}
@@ -854,6 +856,12 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 	exec := abil.NewExecutionEngine(gs)
 	sce := abil.NewSpellCastingEngine(gs, exec)
 	ai := abil.NewAIDecisionMaker(exec)
+	if p1Combo != nil {
+		ai.SetComboIndex(p1.GetName(), p1Combo)
+	}
+	if p2Combo != nil {
+		ai.SetComboIndex(p2.GetName(), p2Combo)
+	}
 	adapter := &abilityStackAdapter{sce: sce, gs: gs, cardDB: cardDB}
 	g.SetStack(adapter)
 
@@ -1081,6 +1089,54 @@ func wilson95(wins, total int) (float64, float64) {
 	return center - radius, center + radius
 }
 
+// deckCardNames extracts unique card names from a deck.
+func deckCardNames(d deck.Deck) []string {
+	seen := make(map[string]bool, len(d.Cards))
+	out := make([]string, 0, len(d.Cards))
+	for _, c := range d.Cards {
+		if !seen[c.Name] {
+			seen[c.Name] = true
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// buildComboIndex lazily builds (or returns a cached) combo index for a deck.
+func buildComboIndex(d deck.Deck, client *combo.Client, cache map[string]*combo.Index) *combo.Index {
+	if ci, ok := cache[d.Name]; ok {
+		return ci
+	}
+	names := deckCardNames(d)
+	result, err := client.FindMyCombos(names, nil)
+	if err != nil {
+		return nil
+	}
+	ci := combo.NewIndex(result, names)
+	cache[d.Name] = ci
+	return ci
+}
+
+// enrichCardLibraryImages backfills image URLs from the card database.
+func enrichCardLibraryImages(lib *stats.CardLibrary, db *card.CardDB, sfClient *scryfall.Client, cache map[string]string) {
+	for name := range lib.Cards {
+		if url, ok := cache[name]; ok && url != "" {
+			lib.SetImageURL(name, url)
+			continue
+		}
+		if c, ok := db.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
+			lib.SetImageURL(name, c.ImageURIs.Normal)
+			cache[name] = c.ImageURIs.Normal
+			continue
+		}
+		cd, err := sfClient.GetCardByName(name)
+		if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
+			lib.SetImageURL(name, cd.ImageURIs.Normal)
+			cache[name] = cd.ImageURIs.Normal
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 	logger.SetLogLevel(logger.ParseLogLevel(*logLevelFlag))
@@ -1104,6 +1160,14 @@ func main() {
 		os.Exit(1)
 	}
 	logger.LogMeta("Card database loaded with %d cards", cardDB.Size())
+
+	// Initialize combo and scryfall clients.
+	comboClient := combo.NewClient()
+	scryfallClient := scryfall.NewClient()
+
+	// Cache combo indices and image URLs by deck path to avoid repeated work.
+	deckComboCache := map[string]*combo.Index{}
+	deckImageCache := map[string]string{}
 
 	// Discover deck files
 	deckFiles := []string{}
@@ -1157,7 +1221,9 @@ func main() {
 
 		// build and play
 		g, p1, p2 := buildGameFromDecks(m1, m2)
-		winner, loser, isDraw, turns, dur, gameCasts := playOneGame(g, p1, p2, *verbosityFlag, cardDB)
+		p1Combo := buildComboIndex(m1, comboClient, deckComboCache)
+		p2Combo := buildComboIndex(m2, comboClient, deckComboCache)
+		winner, loser, isDraw, turns, dur, gameCasts := playOneGame(g, p1, p2, *verbosityFlag, cardDB, p1Combo, p2Combo)
 
 		if !isDraw {
 			// stats update
@@ -1200,6 +1266,9 @@ func main() {
 				i+1, p1.GetName(), p2.GetName(), winnerName, turns, dur.Truncate(time.Millisecond), p1.GetLifeTotal(), p2.GetLifeTotal())
 		}
 	}
+	// Backfill image URLs into the persistent card library.
+	enrichCardLibraryImages(cardLib, cardDB, scryfallClient, deckImageCache)
+
 	elapsed := time.Since(startAll)
 
 	// Summary output
@@ -1287,8 +1356,8 @@ func main() {
 		}
 	}
 
-	// Global Card Library
-	if *verbosityFlag >= 1 && *cardStatsFlag != "" {
+	// Global Card Library (suppressed when running more than 100 games)
+	if *verbosityFlag >= 1 && *cardStatsFlag != "" && *gamesFlag <= 100 {
 		fmt.Println()
 		fmt.Println("Global Card Library (All Runs)")
 		fmt.Printf("%-40s %8s %8s %9s\n", "Card", "Casts", "Wins", "Win%")

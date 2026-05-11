@@ -7,6 +7,18 @@ import (
 	"strings"
 )
 
+// ImageURIs holds available image sizes for a card (populated from Scryfall).
+// When displaying images, do not crop the copyright or artist name,
+// and do not add watermarks or distort the image per Scryfall's policy.
+type ImageURIs struct {
+	Small      string `json:"small,omitempty"`
+	Normal     string `json:"normal,omitempty"`
+	Large      string `json:"large,omitempty"`
+	PNG        string `json:"png,omitempty"`
+	ArtCrop    string `json:"art_crop,omitempty"`
+	BorderCrop string `json:"border_crop,omitempty"`
+}
+
 // Card represents a Magic: The Gathering card with all its properties.
 type Card struct {
 	Name            string            `json:"name,omitempty"`
@@ -35,6 +47,7 @@ type Card struct {
 	CollectorNumber string            `json:"collector_number,omitempty"`
 	Rarity          string            `json:"rarity,omitempty"`
 	Artist          string            `json:"artist,omitempty"`
+	ImageURIs       *ImageURIs        `json:"image_uris,omitempty"`
 }
 
 // Display prints the details of a Card instance in a single line.

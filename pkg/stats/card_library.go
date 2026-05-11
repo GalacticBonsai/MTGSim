@@ -10,8 +10,9 @@ import (
 // GlobalCardStats tracks aggregate cast and win data for a single card
 // across all simulations and decks.
 type GlobalCardStats struct {
-	Casts int `json:"casts"`
-	Wins  int `json:"wins"`
+	Casts    int    `json:"casts"`
+	Wins     int    `json:"wins"`
+	ImageURL string `json:"image_url,omitempty"`
 }
 
 // CardLibrary is a thread-safe, persistent collection of global card stats.
@@ -69,6 +70,18 @@ func (cl *CardLibrary) RecordCounts(cardName string, casts, wins int) {
 	s := cl.Cards[cardName]
 	s.Casts += casts
 	s.Wins += wins
+	cl.Cards[cardName] = s
+}
+
+// SetImageURL stores the canonical image URL for a card name.
+func (cl *CardLibrary) SetImageURL(cardName, url string) {
+	if cardName == "" || url == "" {
+		return
+	}
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	s := cl.Cards[cardName]
+	s.ImageURL = url
 	cl.Cards[cardName] = s
 }
 
