@@ -130,6 +130,10 @@ func (m *mockGameState) ReanimateCreature(player AbilityPlayer, card game.Simple
 	}
 }
 
+func (m *mockGameState) ScryLibrary(player AbilityPlayer, count int) {
+	// No-op for mock
+}
+
 type mockPlayer struct {
 	name      string
 	life      int

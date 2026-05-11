@@ -32,6 +32,7 @@ type GameState interface {
 	PreventDamage(target any, amount int)
 	MillCards(player AbilityPlayer, count int)
 	ReanimateCreature(player AbilityPlayer, card game.SimpleCard)
+	ScryLibrary(player AbilityPlayer, count int)
 }
 
 // AbilityPlayer represents a player in the game for ability purposes.
@@ -428,21 +429,56 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Take extra turn: %s", effect.Description)
 
 	case Exile:
-		// Exile effects are parsed for coverage.
-		logger.LogCard("Exile: %s", effect.Description)
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				owner := perm.GetOwner()
+				if owner != nil {
+					owner.DestroyPermanentToExile(perm)
+					logger.LogCard("Exiled %s", perm.GetName())
+				}
+			}
+		}
 
 	case MillCards:
 		ee.gameState.MillCards(controller, effect.Value)
 		logger.LogCard("%s mills %d cards", controller.GetName(), effect.Value)
 
 	case ScryCards:
-		logger.LogCard("Scry cards: %s", effect.Description)
+		ee.gameState.ScryLibrary(controller, effect.Value)
+		logger.LogCard("%s scries %d", controller.GetName(), effect.Value)
 
 	case AddCounters:
-		logger.LogCard("Add counters: %s", effect.Description)
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				counterType := "+1/+1"
+				if effect.Description != "" && strings.Contains(strings.ToLower(effect.Description), "loyalty") {
+					counterType = "loyalty"
+				}
+				perm.AddCounters(counterType, effect.Value)
+				logger.LogCard("Added %d %s counters to %s", effect.Value, counterType, perm.GetName())
+			}
+		}
 
 	case UntapPermanent:
-		logger.LogCard("Untap permanent: %s", effect.Description)
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				perm.Untap()
+				logger.LogCard("Untapped %s", perm.GetName())
+			}
+		} else {
+			// Untap all permanents controlled by player (e.g., Seedborn Muse)
+			for _, c := range controller.GetCreatures() {
+				if p, ok := c.(*game.Permanent); ok {
+					p.Untap()
+				}
+			}
+			for _, l := range controller.GetLands() {
+				if p, ok := l.(*game.Permanent); ok {
+					p.Untap()
+				}
+			}
+			logger.LogCard("Untapped all permanents for %s", controller.GetName())
+		}
 
 	case CopySpell:
 		logger.LogCard("Copy spell: %s", effect.Description)
@@ -454,9 +490,18 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Additional land: %s", effect.Description)
 
 	case SacrificePermanent:
-		logger.LogCard("Sacrifice: %s", effect.Description)
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				owner := perm.GetOwner()
+				if owner != nil {
+					owner.DestroyPermanent(perm)
+					logger.LogCard("Sacrificed %s", perm.GetName())
+				}
+			}
+		}
 
 	case ReanimateCreature:
+		// TODO: use actual target from graveyard once graveyard targeting is fully wired
 		token := game.SimpleCard{
 			Name:      "Reanimated Creature",
 			TypeLine:  "Creature",

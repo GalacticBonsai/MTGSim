@@ -29,6 +29,9 @@ type Permanent struct {
 	// Damage marked on the permanent for the current cleanup window.
 	damage int
 
+	// Counters on the permanent (e.g., +1/+1, loyalty, etc.)
+	counters map[string]int
+
 	// Temporary stat modifiers (Until end of turn). Retained for backward
 	// compatibility with callers that mutate P/T directly via AddTempBuff;
 	// these stack on top of the layered evaluation.
@@ -128,6 +131,22 @@ func (p *Permanent) clearTempPump()         { p.tempPowerMod = 0; p.tempToughnes
 // Exported wrappers for ability engine
 func (p *Permanent) AddTempBuff(dp, dt int) { p.addTempPump(dp, dt) }
 func (p *Permanent) ClearTempBuffs()        { p.clearTempPump() }
+
+// AddCounters adds counters of a given type to the permanent.
+func (p *Permanent) AddCounters(counterType string, count int) {
+	if p.counters == nil {
+		p.counters = make(map[string]int)
+	}
+	p.counters[counterType] += count
+}
+
+// GetCounters returns the number of counters of a given type on the permanent.
+func (p *Permanent) GetCounters(counterType string) int {
+	if p.counters == nil {
+		return 0
+	}
+	return p.counters[counterType]
+}
 
 // Minimal keyword setters/getters
 func (p *Permanent) SetFirstStrike(v bool)  { p.firstStrike = v }

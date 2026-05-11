@@ -226,6 +226,31 @@ func abilityCostToGameMana(c abil.Cost) game.Mana {
 	return gm
 }
 
+// manaToString converts a game.Mana cost back into a Scryfall-style mana cost string.
+func manaToString(m game.Mana) string {
+	var s strings.Builder
+	if n := m.Get(game.Any); n > 0 {
+		fmt.Fprintf(&s, "{%d}", n)
+	}
+	colors := []struct {
+		t game.ManaType
+		c string
+	}{
+		{game.White, "W"},
+		{game.Blue, "U"},
+		{game.Black, "B"},
+		{game.Red, "R"},
+		{game.Green, "G"},
+		{game.Colorless, "C"},
+	}
+	for _, col := range colors {
+		for i := 0; i < m.Get(col.t); i++ {
+			fmt.Fprintf(&s, "{%s}", col.c)
+		}
+	}
+	return s.String()
+}
+
 // Check if a mana pool can pay a cost (colored first, Any from remaining total)
 func poolCanPay(pool map[game.ManaType]int, cost game.Mana) bool {
 	if cost == nil {
@@ -332,11 +357,15 @@ type abilityStackAdapter struct {
 	cardDB *card.CardDB
 }
 
-func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, typeLine string, controller any, targets []any) error {
+func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, manaCost string, typeLine string, controller any, targets []any) error {
 	// Look up the real card from the database to include oracle/effects
 	cc, ok := a.cardDB.GetCardByName(name)
 	if !ok {
 		return fmt.Errorf("card not found: %s", name)
+	}
+	// Use the taxed mana cost passed from the caller if available
+	if manaCost != "" {
+		cc.ManaCost = manaCost
 	}
 	c, ok := controller.(abil.AbilityPlayer)
 	if !ok {
@@ -410,6 +439,14 @@ func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
 			_, _ = g.SummonCreature(ctrl, name)
 		} else if strings.Contains(tl, "Enchantment") || strings.Contains(tl, "Artifact") || strings.Contains(tl, "Planeswalker") {
 			_, _ = g.CastPermanent(ctrl, name)
+		} else if strings.Contains(tl, "Instant") || strings.Contains(tl, "Sorcery") {
+			// Non-permanent spells move from hand to graveyard on resolution
+			idx := ctrl.FindCardInHand(name)
+			if idx >= 0 {
+				card := ctrl.Hand[idx]
+				ctrl.Hand = append(ctrl.Hand[:idx], ctrl.Hand[idx+1:]...)
+				ctrl.Graveyard = append(ctrl.Graveyard, card)
+			}
 		}
 		g.ApplyStateBasedActions()
 	}
@@ -590,7 +627,6 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 	for {
 		bestIdx := -1
 		bestPow := -1
-		bestCost := game.Mana{}
 		var bestCard card.Card
 		for i, c := range p.Hand {
 			if !c.IsCreature() {
@@ -603,7 +639,6 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 					if pow > bestPow {
 						bestPow = pow
 						bestIdx = i
-						bestCost = cost
 						bestCard = cardData
 					}
 				}
@@ -612,16 +647,12 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 		if bestIdx < 0 {
 			break
 		}
-		// Pay and cast through the stack (do NOT remove from hand here)
-		if poolPay(p.GetManaPool(), bestCost) {
-			if err := g.CastSimpleSpell(bestCard.Name, int(bestCard.CMC), bestCard.ManaCost, bestCard.TypeLine, controller, nil); err != nil {
-				break
-			}
-			if ctrl, ok := controller.(*game.Player); ok {
-				recordCast(tracker, ctrl, bestCard.Name)
-			}
-		} else {
+		cost := taxedCost(p, bestCard, g)
+		if err := g.CastSimpleSpell(bestCard.Name, int(bestCard.CMC), manaToString(cost), bestCard.TypeLine, controller, nil); err != nil {
 			break
+		}
+		if ctrl, ok := controller.(*game.Player); ok {
+			recordCast(tracker, ctrl, bestCard.Name)
 		}
 	}
 }
@@ -642,10 +673,7 @@ func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB
 			if !poolCanPay(p.GetManaPool(), cost) {
 				continue
 			}
-			if !poolPay(p.GetManaPool(), cost) {
-				continue
-			}
-			if err := g.CastSimpleSpell(cardData.Name, int(cardData.CMC), cardData.ManaCost, cardData.TypeLine, controller, nil); err == nil {
+			if err := g.CastSimpleSpell(cardData.Name, int(cardData.CMC), manaToString(cost), cardData.TypeLine, controller, nil); err == nil {
 				castSomething = true
 				if ctrl, ok := controller.(*game.Player); ok {
 					recordCast(tracker, ctrl, cardData.Name)
@@ -692,7 +720,6 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 	selected := ai.ChooseAbilitiesToActivate(abilities, ctx)
 	for _, ab := range selected {
 		cd := cardByAbility[ab]
-		// Pay cost from game pool
 		gm := abilityCostToGameMana(ab.Cost)
 		if !poolCanPay(p.GetManaPool(), gm) {
 			continue
@@ -703,10 +730,7 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 		for _, t := range ts {
 			anyTargets = append(anyTargets, t)
 		}
-		if !poolPay(p.GetManaPool(), gm) {
-			continue
-		}
-		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, anyTargets)
 		if ctrl, ok := controller.(*game.Player); ok {
 			recordCast(tracker, ctrl, cd.Name)
 		}
@@ -759,10 +783,7 @@ func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.Ca
 		for _, t := range ts {
 			anyTargets = append(anyTargets, t)
 		}
-		if !poolPay(p.GetManaPool(), gm) {
-			continue
-		}
-		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, anyTargets)
 		if ctrl, ok := controller.(*game.Player); ok {
 			recordCast(tracker, ctrl, cd.Name)
 		}

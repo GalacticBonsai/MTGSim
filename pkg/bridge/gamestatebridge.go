@@ -175,3 +175,28 @@ func (b *AbilityGameState) ReanimateCreature(player abil.AbilityPlayer, card gam
 		pa.P.PutTokenOnBattlefield(card)
 	}
 }
+
+func (b *AbilityGameState) ScryLibrary(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		// Simple scry: look at top N, move bad ones to bottom
+		if count > len(pa.P.Library) {
+			count = len(pa.P.Library)
+		}
+		if count == 0 {
+			return
+		}
+		// Heuristic: keep lands and creatures on top, move other cards to bottom
+		var keep, bottom []game.SimpleCard
+		for i := 0; i < count; i++ {
+			c := pa.P.Library[i]
+			if c.IsLand() || c.IsCreature() {
+				keep = append(keep, c)
+			} else {
+				bottom = append(bottom, c)
+			}
+		}
+		// Rebuild library: remove scried cards, then prepend keep and append bottom
+		rest := pa.P.Library[count:]
+		pa.P.Library = append(append(keep, bottom...), rest...)
+	}
+}

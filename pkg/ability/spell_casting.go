@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/card"
+	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
 // SpellCastingEngine handles the casting of spells and their integration with the stack
@@ -255,8 +256,69 @@ func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, targets 
 }
 
 func (sce *SpellCastingEngine) paySpellCosts(spell *Spell, caster AbilityPlayer) error {
-	// Simplified cost payment - just check if player can pay
-	// TODO: Implement proper mana cost parsing and payment
+	if spell.ManaCost == "" {
+		return nil
+	}
+
+	cm := card.ParseManaCost(spell.ManaCost)
+	pool := caster.GetManaPool()
+
+	// Check specific colored and colorless costs first
+	specific := []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green, game.Colorless}
+	for _, t := range specific {
+		need := cm.Get(t)
+		if need == 0 {
+			continue
+		}
+		if pool[t] < need {
+			return fmt.Errorf("cannot pay %d %v for %s (have %d)", need, t, spell.Name, pool[t])
+		}
+	}
+
+	// Check generic (Any) cost
+	anyNeed := cm.Get(game.Any)
+	if anyNeed > 0 {
+		totalAvailable := 0
+		for _, v := range pool {
+			totalAvailable += v
+		}
+		totalSpecificNeed := 0
+		for _, t := range specific {
+			totalSpecificNeed += cm.Get(t)
+		}
+		if totalAvailable < totalSpecificNeed+anyNeed {
+			return fmt.Errorf("cannot pay total cost of %d for %s (have %d)", totalSpecificNeed+anyNeed, spell.Name, totalAvailable)
+		}
+	}
+
+	// Deduct specific colored/colorless costs
+	for _, t := range specific {
+		need := cm.Get(t)
+		if need > 0 {
+			pool[t] -= need
+		}
+	}
+
+	// Deduct generic costs greedily from remaining mana
+	for anyNeed > 0 {
+		found := false
+		for _, t := range specific {
+			if pool[t] > 0 {
+				pool[t]--
+				anyNeed--
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
+		}
+	}
+
+	if anyNeed > 0 {
+		return fmt.Errorf("could not pay full generic cost for %s", spell.Name)
+	}
+
 	logger.LogCard("%s pays costs for %s", caster.GetName(), spell.Name)
 	return nil
 }

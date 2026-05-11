@@ -884,3 +884,7 @@ func (g *gameSimulationState) ReanimateCreature(player AbilityPlayer, card game.
 		gamePlayer.creatures = append(gamePlayer.creatures, &gamePermanent{name: card.Name, power: 0, toughness: 0})
 	}
 }
+
+func (g *gameSimulationState) ScryLibrary(player AbilityPlayer, count int) {
+	// No-op for game simulation
+}

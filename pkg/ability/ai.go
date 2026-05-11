@@ -488,6 +488,19 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		boardState.MyCreaturePower += 2 // Assume average power of 2
 	}
 
+	// Populate opponents
+	var opponents []AbilityPlayer
+	for _, p := range ai.engine.gameState.GetAllPlayers() {
+		if p.GetName() != player.GetName() {
+			opponents = append(opponents, p)
+			boardState.OpponentCreatures += len(p.GetCreatures())
+			boardState.OpponentLands += len(p.GetLands())
+			for range p.GetCreatures() {
+				boardState.OpponentPower += 2
+			}
+		}
+	}
+
 	// Calculate threat level (simplified)
 	threatLevel := 0
 	if boardState.OpponentCreatures > boardState.MyCreatures {
@@ -499,6 +512,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 
 	return DecisionContext{
 		Player:            player,
+		Opponents:         opponents,
 		Phase:             phase,
 		AvailableMana:     availableMana,
 		HandSize:          len(player.GetHand()),
@@ -622,8 +636,12 @@ func (ai *AIDecisionMaker) chooseBasicTarget(targetReq Target, effect Effect, co
 	case CreatureTarget:
 		// Choose a creature (prefer opponent's creatures for damage, our creatures for pumping)
 		if effect.Type == DealDamage || effect.Type == DestroyPermanent {
-			// Target opponent's creatures (simplified)
-			return "opponent_creature"
+			for _, opp := range context.Opponents {
+				creatures := opp.GetCreatures()
+				if len(creatures) > 0 {
+					return creatures[0]
+				}
+			}
 		} else {
 			// Target our creatures
 			if len(context.Player.GetCreatures()) > 0 {
@@ -633,17 +651,19 @@ func (ai *AIDecisionMaker) chooseBasicTarget(targetReq Target, effect Effect, co
 	case PlayerTarget:
 		// Target opponent for damage, self for beneficial effects
 		if effect.Type == DealDamage || effect.Type == LoseLife {
-			return "opponent"
-		} else {
-			return context.Player
+			for _, opp := range context.Opponents {
+				return opp
+			}
 		}
+		return context.Player
 	case AnyTarget:
 		// Choose the most beneficial target
 		if effect.Type == DealDamage {
-			return "opponent"
-		} else {
-			return context.Player
+			for _, opp := range context.Opponents {
+				return opp
+			}
 		}
+		return context.Player
 	}
 	return nil
 }

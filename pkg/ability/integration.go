@@ -202,6 +202,10 @@ func (ga *GameAdapter) ReanimateCreature(player AbilityPlayer, card game.SimpleC
 	// No-op: legacy adapter cannot create tokens through PlayerInterface
 }
 
+func (ga *GameAdapter) ScryLibrary(player AbilityPlayer, count int) {
+	// No-op: legacy adapter cannot manipulate library through PlayerInterface
+}
+
 // PlayerAdapter adapts existing player structures to the ability system.
 type PlayerAdapter struct {
 	player  PlayerInterface
