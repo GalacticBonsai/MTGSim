@@ -202,19 +202,20 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			}
 			manaSpent := manaSpentForCard(c)
 			perm, err := castPermanentCard(g, ap, c)
-			if err == nil && perm != nil {
-				perm.SetEnteredTurn(g.GetTurnNumber())
-				storm := 0
-				if metrics != nil {
-					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature())
+			if err != nil || perm == nil {
+				continue
+			}
+			perm.SetEnteredTurn(g.GetTurnNumber())
+			storm := 0
+			if metrics != nil {
+				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature())
+			}
+			if log != nil {
+				kind := EventPermanentCast
+				if c.IsCreature() {
+					kind = EventCreatureSummon
 				}
-				if log != nil {
-					kind := EventPermanentCast
-					if c.IsCreature() {
-						kind = EventCreatureSummon
-					}
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
-				}
+				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
 			}
 			again = true
 			break
@@ -225,7 +226,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 }
 
 func isCastablePermanent(c game.SimpleCard) bool {
-	return c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()
+	return !c.IsLand() && (c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker())
 }
 
 func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.Permanent, error) {
