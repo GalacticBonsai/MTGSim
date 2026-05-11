@@ -60,6 +60,8 @@ func (m *mockStackGameState) DiscardCards(player AbilityPlayer, count int)  {}
 func (m *mockStackGameState) SearchLibrary(player AbilityPlayer, count int) {}
 func (m *mockStackGameState) CreateToken(controller AbilityPlayer, token game.SimpleCard) {}
 func (m *mockStackGameState) PreventDamage(target any, amount int)         {}
+func (m *mockStackGameState) MillCards(player AbilityPlayer, count int)     {}
+func (m *mockStackGameState) ReanimateCreature(player AbilityPlayer, card game.SimpleCard) {}
 
 // MockPlayer for testing
 type mockStackPlayer struct {

@@ -114,6 +114,22 @@ func (m *mockGameState) PreventDamage(target any, amount int) {
 	// No-op for mock
 }
 
+func (m *mockGameState) MillCards(player AbilityPlayer, count int) {
+	if mp, ok := player.(*mockPlayer); ok {
+		for i := 0; i < count && len(mp.library) > 0; i++ {
+			top := mp.library[0]
+			mp.library = mp.library[1:]
+			mp.graveyard = append(mp.graveyard, top)
+		}
+	}
+}
+
+func (m *mockGameState) ReanimateCreature(player AbilityPlayer, card game.SimpleCard) {
+	if mp, ok := player.(*mockPlayer); ok {
+		mp.creatures = append(mp.creatures, card)
+	}
+}
+
 type mockPlayer struct {
 	name      string
 	life      int
@@ -121,6 +137,8 @@ type mockPlayer struct {
 	manaPool  map[game.ManaType]int
 	creatures []interface{}
 	lands     []interface{}
+	library   []interface{}
+	graveyard []interface{}
 }
 
 func (m *mockPlayer) GetName() string {
@@ -149,6 +167,10 @@ func (m *mockPlayer) GetCreatures() []interface{} {
 
 func (m *mockPlayer) GetLands() []interface{} {
 	return m.lands
+}
+
+func (m *mockPlayer) GetGraveyard() []interface{} {
+	return m.graveyard
 }
 
 func (m *mockPlayer) CanPayCost(cost Cost) bool {
@@ -578,3 +600,22 @@ func TestExecutionEngine_ActivateManaAbilities(t *testing.T) {
 		t.Errorf("Expected 1 mana in pool, got %d", totalMana)
 	}
 }
+
+func TestHasValidTargetsBasic_CardInGraveyard(t *testing.T) {
+	player := &mockPlayer{
+		name:      "Alice",
+		graveyard: []interface{}{"DeadCreature"},
+	}
+	gs := &mockGameState{
+		players:       []AbilityPlayer{player},
+		currentPlayer: player,
+		isMainPhase:   true,
+	}
+	engine := NewExecutionEngine(gs)
+	target := Target{Type: CardInGraveyardTarget, Required: true}
+	if !engine.hasValidTargetsBasic(target, player) {
+		t.Error("expected hasValidTargetsBasic to return true for non-empty graveyard")
+	}
+}
+
+

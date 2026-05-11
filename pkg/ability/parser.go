@@ -2,6 +2,7 @@
 package ability
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -168,6 +169,22 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+up\s+to\s+(\d+)\s+basic\s+land\s+cards?`, SearchLibrary, "Search multiple basic lands", ap.parseSearchMultipleBasicLands)
 	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+a\s+card`, SearchLibrary, "Search any card", ap.parseSearchAnyCard)
 	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+.*\s+and\s+put\s+(it|them)\s+onto\s+the\s+battlefield`, SearchLibrary, "Search to battlefield", ap.parseSearchToBattlefield)
+
+	// Mill spells (modern wording)
+	ap.addPattern(Activated, `Target\s+player\s+mills\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+cards?`, MillCards, "Target player mills", ap.parseTargetPlayerMills)
+	ap.addPattern(Activated, `Each\s+player\s+mills\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+cards?`, MillCards, "Each player mills", ap.parseEachPlayerMills)
+
+	// Fetchlands: sacrifice-to-search-and-put-onto-battlefield
+	ap.addPattern(Activated, `\{T\},\s*Pay\s*1\s*life,\s*Sacrifice\s+[^:]+:\s*Search\s+your\s+library\s+for\s+a\s+.*\s+card.*put\s+it\s+onto\s+the\s+battlefield.*`, SearchLibrary, "Fetchland search", ap.parseFetchland)
+
+	// Reanimation from graveyard
+	ap.addPattern(Activated, `(?:Put|Return)\s+target\s+creature\s+card\s+from\s+(?:a|your)\s+graveyard\s+(?:onto\s+the\s+battlefield|to\s+the\s+battlefield).*`, ReanimateCreature, "Reanimate creature", ap.parseReanimate)
+
+	// Tutor to top of library
+	ap.addPattern(Activated, `Search\s+your\s+library\s+for\s+.*\s+card.*reveal\s+it.*then\s+shuffle.*put\s+that\s+card\s+on\s+top.*`, SearchLibrary, "Tutor to top", ap.parseTutorToTop)
+
+	// "This spell can't be countered" static rider
+	ap.addPattern(Static, `This\s+spell\s+can'?t\s+be\s+countered`, KeywordAbility, "Cannot be countered", ap.parseCantBeCountered)
 
 	// Conditional abilities - activated/static
 	ap.addPattern(Activated, `If\s+you\s+control\s+a\s+(.*),\s*(.*)`, DrawCards, "Conditional control permanent", ap.parseConditionalControl)
@@ -501,6 +518,10 @@ func (ap *AbilityParser) parseEnhancedTargets(ability *Ability, oracleText strin
 			// Try to match with enhanced targets
 			if j < len(enhancedTargets) {
 				enhanced := enhancedTargets[j]
+				// Don't overwrite graveyard/library targets with battlefield restrictions
+				if effect.Targets[j].Type == CardInGraveyardTarget || effect.Targets[j].Type == CardInHandTarget {
+					continue
+				}
 				ability.Effects[i].Targets[j].Enhanced = &enhanced
 			}
 		}
@@ -2641,8 +2662,35 @@ func makeTriggeredAbilityWithCondition(name string, effType EffectType, value in
 
 func parseIntOrOne(s string) int {
 	s = strings.ToLower(strings.TrimSpace(s))
-	if s == "a" || s == "" {
+	if s == "a" || s == "" || s == "one" {
 		return 1
+	}
+	if s == "two" {
+		return 2
+	}
+	if s == "three" {
+		return 3
+	}
+	if s == "four" {
+		return 4
+	}
+	if s == "five" {
+		return 5
+	}
+	if s == "six" {
+		return 6
+	}
+	if s == "seven" {
+		return 7
+	}
+	if s == "eight" {
+		return 8
+	}
+	if s == "nine" {
+		return 9
+	}
+	if s == "ten" {
+		return 10
 	}
 	v, _ := strconv.Atoi(s)
 	if v == 0 {
@@ -3134,6 +3182,120 @@ func (ap *AbilityParser) parseIfKeyword(matches []string, fullText string) (*Abi
 	return ap.parseStaticKeyword(matches, fullText)
 }
 
+// New parser functions for EDH unimplemented cards
+
+func (ap *AbilityParser) parseTargetPlayerMills(matches []string, fullText string) (*Ability, error) {
+	value := parseIntOrOne(matches[1])
+	return &Ability{
+		Name: "Target Player Mills",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        MillCards,
+				Value:       value,
+				Duration:    Instant,
+				Description: fmt.Sprintf("Target player mills %d cards", value),
+				Targets: []Target{
+					{Type: PlayerTarget, Required: true, Count: 1},
+				},
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseEachPlayerMills(matches []string, fullText string) (*Ability, error) {
+	value := parseIntOrOne(matches[1])
+	return &Ability{
+		Name: "Each Player Mills",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        MillCards,
+				Value:       value,
+				Duration:    Instant,
+				Description: fmt.Sprintf("Each player mills %d cards", value),
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseFetchland(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Fetchland Search",
+		Type: Activated,
+		Cost: Cost{
+			TapCost:  true,
+			LifeCost: 1,
+		},
+		Effects: []Effect{
+			{
+				Type:        LoseLife,
+				Value:       1,
+				Duration:    Instant,
+				Description: "Pay 1 life",
+			},
+			{
+				Type:        SearchLibrary,
+				Value:       1,
+				Duration:    Instant,
+				Description: "Search library and put onto battlefield",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseReanimate(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Reanimate",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ReanimateCreature,
+				Value:       0,
+				Duration:    Instant,
+				Description: "Put target creature card from a graveyard onto the battlefield",
+				Targets: []Target{
+					{Type: CardInGraveyardTarget, Required: true, Count: 1},
+				},
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseTutorToTop(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Tutor to Top",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        SearchLibrary,
+				Value:       1,
+				Duration:    Instant,
+				Description: "Search library and put card on top",
+			},
+		},
+		TimingRestriction: SorcerySpeed,
+	}, nil
+}
+
+func (ap *AbilityParser) parseCantBeCountered(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Cannot Be Countered",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        KeywordAbility,
+				Value:       0,
+				Duration:    Permanent,
+				Description: "This spell can't be countered",
+			},
+		},
+	}, nil
+}
 
 // parseSmartTrigger examines a trigger sentence and returns an Ability with a concrete
 // effect type inferred from keywords in the text. It never emits GenericEffect.

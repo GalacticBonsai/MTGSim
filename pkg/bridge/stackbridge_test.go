@@ -53,6 +53,8 @@ func (gs *tdGameState) DiscardCards(abil.AbilityPlayer, int)                 {}
 func (gs *tdGameState) SearchLibrary(abil.AbilityPlayer, int)                {}
 func (gs *tdGameState) CreateToken(abil.AbilityPlayer, game.SimpleCard)      {}
 func (gs *tdGameState) PreventDamage(any, int)                               {}
+func (gs *tdGameState) MillCards(abil.AbilityPlayer, int)                     {}
+func (gs *tdGameState) ReanimateCreature(abil.AbilityPlayer, game.SimpleCard) {}
 
 // --- Tests ---
 

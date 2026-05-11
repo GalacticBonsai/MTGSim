@@ -138,7 +138,9 @@ func (tp *TargetParser) createEnhancedTarget(sentence string, restrictions []Tar
 
 	// Determine basic target type
 	var targetType TargetType
-	if strings.Contains(sentence, "creature") {
+	if strings.Contains(sentence, "graveyard") && strings.Contains(sentence, "creature") {
+		targetType = CardInGraveyardTarget
+	} else if strings.Contains(sentence, "creature") {
 		targetType = CreatureTarget
 	} else if strings.Contains(sentence, "player") {
 		targetType = PlayerTarget

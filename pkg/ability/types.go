@@ -71,9 +71,10 @@ const (
 	AddCounters       // Put +1/+1 counters, proliferate, etc.
 	UntapPermanent    // Untap target permanent or all
 	CopySpell         // Copy target instant, sorcery, or permanent
-	CantAttackBlock   // Restriction: can't attack, can't block, etc.
-	AdditionalLand    // Play additional land(s)
+	CantAttackBlock    // Restriction: can't attack, can't block, etc.
+	AdditionalLand     // Play additional land(s)
 	SacrificePermanent // Sacrifice a permanent as cost or effect
+	ReanimateCreature  // Put target creature card from a graveyard onto the battlefield
 )
 
 // String returns the human-readable name of an EffectType.
@@ -135,6 +136,8 @@ func (et EffectType) String() string {
 		return "AdditionalLand"
 	case SacrificePermanent:
 		return "SacrificePermanent"
+	case ReanimateCreature:
+		return "ReanimateCreature"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}

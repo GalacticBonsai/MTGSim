@@ -30,6 +30,8 @@ type GameState interface {
 	SearchLibrary(player AbilityPlayer, count int)
 	CreateToken(controller AbilityPlayer, token game.SimpleCard)
 	PreventDamage(target any, amount int)
+	MillCards(player AbilityPlayer, count int)
+	ReanimateCreature(player AbilityPlayer, card game.SimpleCard)
 }
 
 // AbilityPlayer represents a player in the game for ability purposes.
@@ -430,7 +432,8 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Exile: %s", effect.Description)
 
 	case MillCards:
-		logger.LogCard("Mill cards: %s", effect.Description)
+		ee.gameState.MillCards(controller, effect.Value)
+		logger.LogCard("%s mills %d cards", controller.GetName(), effect.Value)
 
 	case ScryCards:
 		logger.LogCard("Scry cards: %s", effect.Description)
@@ -453,6 +456,16 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 	case SacrificePermanent:
 		logger.LogCard("Sacrifice: %s", effect.Description)
 
+	case ReanimateCreature:
+		token := game.SimpleCard{
+			Name:      "Reanimated Creature",
+			TypeLine:  "Creature",
+			Power:     "2",
+			Toughness: "2",
+		}
+		ee.gameState.ReanimateCreature(controller, token)
+		logger.LogCard("Reanimated creature from graveyard")
+
 	default:
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
 	}
@@ -470,7 +483,7 @@ func CanExecuteEffect(effectType EffectType) bool {
 		DiscardCards, SearchLibrary, CreateToken, PreventDamage,
 		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
 		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
-		CantAttackBlock, AdditionalLand, SacrificePermanent:
+		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature:
 		return true
 	default:
 		return false
@@ -586,6 +599,15 @@ func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, _ AbilityPlayer) 
 	case PlayerTarget:
 		// Players always exist
 		return true
+	case CardInGraveyardTarget:
+		for _, player := range ee.gameState.GetAllPlayers() {
+			if gp, ok := player.(interface{ GetGraveyard() []any }); ok {
+				if len(gp.GetGraveyard()) > 0 {
+					return true
+				}
+			}
+		}
+		return false
 	case AnyTarget:
 		// Check if any valid targets exist
 		for _, player := range ee.gameState.GetAllPlayers() {
@@ -623,6 +645,12 @@ func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []any {
 			targets = append(targets, player)
 			targets = append(targets, player.GetCreatures()...)
 			targets = append(targets, player.GetLands()...)
+		}
+	case CardInGraveyardTarget:
+		for _, player := range ee.gameState.GetAllPlayers() {
+			if gp, ok := player.(interface{ GetGraveyard() []any }); ok {
+				targets = append(targets, gp.GetGraveyard()...)
+			}
 		}
 	}
 
@@ -675,6 +703,8 @@ func (ee *ExecutionEngine) isValidBasicTarget(target any, targetReq Target) bool
 		return ee.targetValidator.isPermanent(target)
 	case AnyTarget:
 		return ee.targetValidator.isPlayer(target) || ee.targetValidator.isPermanent(target)
+	case CardInGraveyardTarget:
+		return target != nil
 	default:
 		return false
 	}

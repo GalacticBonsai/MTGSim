@@ -159,3 +159,19 @@ func (b *AbilityGameState) CreateToken(controller abil.AbilityPlayer, token game
 func (b *AbilityGameState) PreventDamage(target any, amount int) {
 	b.G.AddDamagePrevention(target, amount)
 }
+
+func (b *AbilityGameState) MillCards(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		for i := 0; i < count && len(pa.P.Library) > 0; i++ {
+			top := pa.P.Library[0]
+			pa.P.Library = pa.P.Library[1:]
+			pa.P.Graveyard = append(pa.P.Graveyard, top)
+		}
+	}
+}
+
+func (b *AbilityGameState) ReanimateCreature(player abil.AbilityPlayer, card game.SimpleCard) {
+	if pa, ok := player.(*playerAdapter); ok {
+		pa.P.PutTokenOnBattlefield(card)
+	}
+}

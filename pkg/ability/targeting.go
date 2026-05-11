@@ -139,6 +139,9 @@ func (tv *TargetValidator) isValidTargetType(target interface{}, targetType Targ
 		return tv.isPermanent(target)
 	case AnyTarget:
 		return tv.isPlayer(target) || tv.isPermanent(target)
+	case CardInGraveyardTarget:
+		// Graveyard targets are filtered by getPotentialTargets; accept any non-nil object
+		return target != nil
 	default:
 		return false
 	}
