@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mtgsim/mtgsim/pkg/simulation"
+	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
 // ResultsProvider returns a snapshot of the current simulation results.
@@ -27,14 +28,18 @@ type EDHGamesProvider func() []simulation.EDHGameRecord
 // EDHSummaryProvider returns global EDH telemetry for dashboard highlight cards.
 type EDHSummaryProvider func() simulation.EDHSummary
 
+// CardLibraryProvider returns the persistent global card stats library.
+type CardLibraryProvider func() map[string]stats.GlobalCardStats
+
 // Server serves the dashboard.
 type Server struct {
-	provider    ResultsProvider
-	edhProvider EDHResultsProvider
-	edhGames    EDHGamesProvider
-	edhSummary  EDHSummaryProvider
-	port        int
-	mux         *http.ServeMux
+	provider     ResultsProvider
+	edhProvider  EDHResultsProvider
+	edhGames     EDHGamesProvider
+	edhSummary   EDHSummaryProvider
+	cardLibrary  CardLibraryProvider
+	port         int
+	mux          *http.ServeMux
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
@@ -57,6 +62,9 @@ func (s *Server) SetEDHGamesProvider(p EDHGamesProvider) { s.edhGames = p }
 // SetEDHSummaryProvider attaches global EDH telemetry for /api/edh-results.
 func (s *Server) SetEDHSummaryProvider(p EDHSummaryProvider) { s.edhSummary = p }
 
+// SetCardLibraryProvider attaches a global card stats provider for /api/card-library.
+func (s *Server) SetCardLibraryProvider(p CardLibraryProvider) { s.cardLibrary = p }
+
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
 	s.registerRoutes()
@@ -67,6 +75,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/results", s.handleResults)
 	s.mux.HandleFunc("/api/edh-results", s.handleEDHResults)
 	s.mux.HandleFunc("/api/edh-games", s.handleEDHGames)
+	s.mux.HandleFunc("/api/card-library", s.handleCardLibrary)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -151,6 +160,20 @@ func (s *Server) handleEDHGames(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(edhGamesResponse{Enabled: true, Games: s.edhGames()})
 }
 
+type cardLibraryResponse struct {
+	Enabled bool                          `json:"enabled"`
+	Cards   map[string]stats.GlobalCardStats `json:"cards"`
+}
+
+func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.cardLibrary == nil {
+		_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: false})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: true, Cards: s.cardLibrary()})
+}
+
 // handleHealth returns server health.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -215,6 +238,7 @@ const htmlDashboard = `
 			<button class="tab-btn" onclick="showTab('edh-decks', this)">EDH Decks</button>
 			<button class="tab-btn" onclick="showTab('top-cards', this)">Top Cards</button>
 			<button class="tab-btn" onclick="showTab('recent-pods', this)">Recent Pods</button>
+			<button class="tab-btn" onclick="showTab('card-library', this)">Card Library</button>
 		</div>
 		<div id="overview" class="tab-content active">
 
@@ -307,6 +331,24 @@ const htmlDashboard = `
 					</tbody>
 				</table>
 		</div>
+
+		<div id="card-library" class="tab-content">
+			<h3>Global Card Library</h3>
+			<p style="color:#888; margin-bottom:10px;">Aggregated across all simulation runs. Cards with at least 5 casts.</p>
+			<table class="table" id="cardLibrary">
+				<thead>
+					<tr>
+						<th>Card</th>
+						<th>Casts</th>
+						<th>Wins</th>
+						<th>Win Rate</th>
+					</tr>
+				</thead>
+				<tbody id="cardLibraryBody">
+					<tr><td colspan="4" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
 	</div>
 
 	<script>
@@ -336,6 +378,15 @@ const htmlDashboard = `
 				}
 			} catch (err) {
 				console.error('Error loading EDH results:', err);
+			}
+			try {
+				const res = await fetch('/api/card-library');
+				const data = await res.json();
+				if (data.enabled) {
+					renderCardLibrary(data.cards || {});
+				}
+			} catch (err) {
+				console.error('Error loading card library:', err);
 			}
 		}
 
@@ -420,6 +471,27 @@ const htmlDashboard = `
 				html += '<div class="card"><h2>Combat Damage</h2><div class="value">' + (s.total_combat_damage || 0) + '</div><span class="unit">avg ' + (s.average_combat_damage || 0).toFixed(1) + '/pod</span></div>';
 				html += '<div class="card"><h2>Eliminations</h2><div class="value">' + (s.total_eliminations || 0) + '</div><span class="unit">avg ' + (s.average_eliminations || 0).toFixed(1) + '/pod</span></div>';
 				document.getElementById('edhSummary').innerHTML = html;
+			}
+
+			function renderCardLibrary(cards) {
+				let rows = [];
+				for (let [name, perf] of Object.entries(cards)) {
+					if (perf.casts >= 5) {
+						rows.push({
+							name: name,
+							casts: perf.casts,
+							wins: perf.wins,
+							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0
+						});
+					}
+				}
+				rows.sort((a, b) => b.winRate - a.winRate || b.casts - a.casts);
+				rows = rows.slice(0, 100);
+				let html = '';
+				for (let c of rows) {
+					html += '<tr><td>' + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+				}
+				document.getElementById('cardLibraryBody').innerHTML = html || '<tr><td colspan="4">No cards with enough sample size yet</td></tr>';
 			}
 
 			async function loadEDHGames() {

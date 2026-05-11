@@ -17,15 +17,17 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
 // CLI flags
 var (
-	gamesFlag     = flag.Int("games", 100, "Number of games to simulate")
-	decksDirFlag  = flag.String("decks", "decks/1v1", "Directory containing .deck files (searched recursively)")
-	swapNFlag     = flag.Int("swap", 0, "Number of sideboard cards to swap into the main deck each game")
-	verbosityFlag = flag.Int("v", 1, "Verbosity: 0=minimal, 1=summary, 2=per-game details")
-	logLevelFlag  = flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
+	gamesFlag      = flag.Int("games", 100, "Number of games to simulate")
+	decksDirFlag   = flag.String("decks", "decks/1v1", "Directory containing .deck files (searched recursively)")
+	swapNFlag      = flag.Int("swap", 0, "Number of sideboard cards to swap into the main deck each game")
+	verbosityFlag  = flag.Int("v", 1, "Verbosity: 0=minimal, 1=summary, 2=per-game details")
+	logLevelFlag   = flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
+	cardStatsFlag  = flag.String("card-stats", "", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
 )
 
 // Stats accumulators
@@ -1029,6 +1031,17 @@ func main() {
 	flag.Parse()
 	logger.SetLogLevel(logger.ParseLogLevel(*logLevelFlag))
 
+	cardLib, err := stats.LoadCardLibrary(*cardStatsFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading card stats library: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := cardLib.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving card stats library: %v\n", err)
+		}
+	}()
+
 	// Load card DB
 	logger.LogMeta("Loading card database...")
 	cardDB, err := card.LoadCardDatabase()
@@ -1115,9 +1128,12 @@ func main() {
 					perCard[pName][cName] = &cardPerf{}
 				}
 				perCard[pName][cName].casts += n
+				wins := 0
 				if !isDraw && winner != nil && winner.GetName() == pName {
 					perCard[pName][cName].wins += n
+					wins = n
 				}
+				cardLib.RecordCounts(cName, n, wins)
 			}
 		}
 
@@ -1214,6 +1230,16 @@ func main() {
 		})
 		for _, e := range entries {
 			fmt.Printf("%-35s %-30s %8d %8d %8.1f%%\n", truncate(e.deck, 35), truncate(e.name, 30), e.casts, e.wins, e.winRate)
+		}
+	}
+
+	// Global Card Library
+	if *verbosityFlag >= 1 && *cardStatsFlag != "" {
+		fmt.Println()
+		fmt.Println("Global Card Library (All Runs)")
+		fmt.Printf("%-40s %8s %8s %9s\n", "Card", "Casts", "Wins", "Win%")
+		for _, e := range cardLib.TopCards(5, 50) {
+			fmt.Printf("%-40s %8d %8d %8.1f%%\n", truncate(e.Name, 40), e.Casts, e.Wins, e.WinRate)
 		}
 	}
 

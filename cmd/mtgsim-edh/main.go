@@ -22,6 +22,7 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
+	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
 func main() {
@@ -37,6 +38,7 @@ func main() {
 	replayDir := flag.String("replay", "", "Directory to write per-pod replay JSON (empty = disabled)")
 	sideboardVariants := flag.Int("sideboard-variants", 0, "Generated sideboard variants per imported deck (0 = disabled)")
 	sideboardSwaps := flag.Int("sideboard-swaps", 3, "Cards swapped per generated sideboard variant")
+	cardStatsFlag := flag.String("card-stats", "", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
@@ -86,8 +88,21 @@ func main() {
 	legacyResults := simulation.NewResults()
 	var mu sync.Mutex
 
+	cardLib, err := stats.LoadCardLibrary(*cardStatsFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading card stats library: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if *cardStatsFlag != "" {
+			if err := cardLib.Save(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error saving card stats library: %v\n", err)
+			}
+		}
+	}()
+
 	if *port > 0 {
-		startDashboard(legacyResults, edhResults, &mu, *port)
+		startDashboard(legacyResults, edhResults, cardLib, &mu, *port)
 	}
 	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
 	start := time.Now()
@@ -112,6 +127,15 @@ func main() {
 		mu.Lock()
 		edhResults.RecordGame(rec)
 		recordLegacy(legacyResults, rec)
+		for _, p := range rec.Players {
+			for cName, perf := range p.CardStats {
+				wins := 0
+				if p.DeckName == rec.Winner {
+					wins = perf.Casts
+				}
+				cardLib.RecordCounts(cName, perf.Casts, wins)
+			}
+		}
 		mu.Unlock()
 		if *replayDir != "" {
 			writeReplay(*replayDir, i+1, rec)
@@ -125,7 +149,7 @@ func main() {
 	logger.LogMeta("Simulated %d pods in %.2fs (avg %.2f turns/pod)",
 		*games, elapsed.Seconds(), edhResults.AverageTurns())
 
-	printSummary(edhResults)
+	printSummary(edhResults, cardLib)
 
 	if *port > 0 && *keepAlive {
 		fmt.Printf("\nDashboard still running on http://localhost:%d (press Ctrl+C to exit)\n", *port)
@@ -211,7 +235,7 @@ func recordLegacy(r *simulation.Results, rec simulation.EDHGameRecord) {
 	}
 }
 
-func printSummary(r *simulation.EDHResults) {
+func printSummary(r *simulation.EDHResults, cardLib *stats.CardLibrary) {
 	logger.LogMeta("=== EDH Results ===")
 	for _, s := range r.DeckStats() {
 		logger.LogMeta("Deck %-30s G:%-3d W:%-3d L:%-3d WR:%5.1f%%  AvgLife:%5.1f  CmdrDmgKO:%d",
@@ -244,6 +268,12 @@ func printSummary(r *simulation.EDHResults) {
 			logger.LogMeta("    Card %-26s C:%-3d W:%-3d WR:%5.1f%%", e.name, e.casts, e.wins, e.winRate)
 		}
 	}
+	if len(cardLib.Cards) > 0 {
+		logger.LogMeta("=== Global Card Library ===")
+		for _, e := range cardLib.TopCards(5, 20) {
+			logger.LogMeta("%-40s C:%-5d W:%-5d WR:%5.1f%%", e.Name, e.Casts, e.Wins, e.WinRate)
+		}
+	}
 }
 
 // writeReplay serializes a single pod's record (including the event log
@@ -261,7 +291,7 @@ func writeReplay(dir string, podIndex int, rec simulation.EDHGameRecord) {
 	}
 }
 
-func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, mu *sync.Mutex, port int) {
+func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.Mutex, port int) {
 	server := dashboard.NewServer(func() []simulation.Result {
 		mu.Lock()
 		defer mu.Unlock()
@@ -281,6 +311,11 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, mu *
 		mu.Lock()
 		defer mu.Unlock()
 		return edh.RecentGames(10)
+	})
+	server.SetCardLibraryProvider(func() map[string]stats.GlobalCardStats {
+		mu.Lock()
+		defer mu.Unlock()
+		return cardLib.Cards
 	})
 	go func() {
 		if err := server.Start(); err != nil {
