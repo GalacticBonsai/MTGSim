@@ -192,6 +192,20 @@ func parseCostToGameMana(cost string) game.Mana {
 	return gm
 }
 
+// taxedCost returns the mana cost of a card plus any generic taxes from
+// static effects like Thalia, Guardian of Thraben.
+func taxedCost(p *game.Player, cardData card.Card, g *game.Game) game.Mana {
+	cost := parseCostToGameMana(cardData.ManaCost)
+	if g != nil {
+		registry := g.GetStaticEffects()
+		additional := registry.TotalAdditionalCost(p, cardData.TypeLine)
+		if additional > 0 {
+			cost.Add(game.Any, additional)
+		}
+	}
+	return cost
+}
+
 // Convert game.Mana to ability.Cost
 func toAbilityCostFromGameMana(gm game.Mana) abil.Cost {
 	mc := map[game.ManaType]int{}
@@ -316,7 +330,7 @@ type abilityStackAdapter struct {
 	cardDB *card.CardDB
 }
 
-func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, _ string, controller any, targets []any) error {
+func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, typeLine string, controller any, targets []any) error {
 	// Look up the real card from the database to include oracle/effects
 	cc, ok := a.cardDB.GetCardByName(name)
 	if !ok {
@@ -331,6 +345,17 @@ func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, _ strin
 			return fmt.Errorf("invalid controller type for %s", name)
 		}
 	}
+	// Static-effect constraint check (e.g., Rule of Law)
+	if gp, ok2 := controller.(*game.Player); ok2 {
+		g := a.gs.G
+		if g != nil {
+			registry := g.GetStaticEffects()
+			spellsCastThisTurn := 0 // TODO: track per-player spells cast per turn accurately
+			if !registry.CanCastSpell(gp, spellsCastThisTurn) {
+				return fmt.Errorf("cannot cast %s: cast constraint active", name)
+			}
+		}
+	}
 	// Convert []any targets -> []interface{}
 	var ts []interface{}
 	for _, t := range targets {
@@ -340,6 +365,17 @@ func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, _ strin
 }
 
 func (a *abilityStackAdapter) Size() int { return a.sce.GetStack().Size() }
+
+// napResponseWindow gives the non-active player (dp) a chance to cast
+// instants or activate abilities in response to the active player's actions.
+// After NAP actions, the stack is resolved.
+func napResponseWindow(g *game.Game, nap *game.Player, ap *game.Player, cardDB *card.CardDB, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine, casts map[string]map[string]int, sce *abil.SpellCastingEngine) {
+	// NAP produces mana and casts instants if any
+	produceAllAvailableMana(nap)
+	castInstants(g, nap, ap, cardDB, nap, gs, ai, exec, casts)
+	// Resolve any items added by NAP before returning to AP resolution
+	resolveStackWithPermanents(sce, g)
+}
 
 // resolveStackWithPermanents resolves the ability stack one item at a time.
 // After each resolution, if the item was a permanent spell, we create the
@@ -393,15 +429,16 @@ func produceAllAvailableMana(p *game.Player) {
 	}
 }
 
-// Compute aggregate colored and generic requirements from creatures in hand
-func handCostTotals(p *game.Player, cardDB *card.CardDB) (totals game.Mana) {
+// Compute aggregate colored and generic requirements from castable cards in hand,
+// accounting for static-effect mana taxes so the AI produces enough mana.
+func handCostTotals(p *game.Player, cardDB *card.CardDB, g *game.Game) (totals game.Mana) {
 	totals = game.Mana{}
 	for _, c := range p.Hand {
-		if !c.IsCreature() {
+		if c.IsLand() || c.IsInstant() || c.IsSorcery() {
 			continue
 		}
 		if cd, ok := cardDB.GetCardByName(c.Name); ok {
-			mc := parseCostToGameMana(cd.ManaCost)
+			mc := taxedCost(p, cd, g)
 			for _, t := range []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green, game.Colorless, game.Any} {
 				totals.Add(t, mc.Get(t))
 			}
@@ -429,11 +466,12 @@ func chooseMaxNeedColor(need map[game.ManaType]int) (game.ManaType, int) {
 	return bestT, bestV
 }
 
-// Produce mana tailored to hand needs using a greedy allocation over producers
-func produceSmartMana(p *game.Player, cardDB *card.CardDB) {
+// Produce mana tailored to hand needs using a greedy allocation over producers.
+// Accounts for taxed costs so the AI does not fall short when stax is present.
+func produceSmartMana(p *game.Player, cardDB *card.CardDB, g *game.Game) {
 	// Current pool and targets
 	pool := clonePool(p.GetManaPool())
-	tot := handCostTotals(p, cardDB)
+	tot := handCostTotals(p, cardDB, g)
 	need := map[game.ManaType]int{}
 	for _, t := range []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green} {
 		v := tot.Get(t) - pool[t]
@@ -557,7 +595,7 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 				continue
 			}
 			if cardData, ok := cardDB.GetCardByName(c.Name); ok {
-				cost := parseCostToGameMana(cardData.ManaCost)
+				cost := taxedCost(p, cardData, g)
 				if poolCanPay(p.GetManaPool(), cost) {
 					pow := atoiSafe(c.Power)
 					if pow > bestPow {
@@ -598,7 +636,7 @@ func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB
 			if !ok {
 				continue
 			}
-			cost := parseCostToGameMana(cardData.ManaCost)
+			cost := taxedCost(p, cardData, g)
 			if !poolCanPay(p.GetManaPool(), cost) {
 				continue
 			}
@@ -635,9 +673,9 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 		if err != nil || len(abs) == 0 {
 			continue
 		}
-		// Use first parsed ability as proxy and attach mana cost
+		// Use first parsed ability as proxy and attach mana cost (with taxes)
 		ab := *abs[0]
-		cost := toAbilityCostFromGameMana(parseCostToGameMana(cd.ManaCost))
+		cost := toAbilityCostFromGameMana(taxedCost(p, cd, g))
 		ab.Cost = cost
 		abilities = append(abilities, &ab)
 		cardByAbility[&ab] = cd
@@ -690,7 +728,7 @@ func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.Ca
 			continue
 		}
 		ab := *abs[0]
-		ab.Cost = toAbilityCostFromGameMana(parseCostToGameMana(cd.ManaCost))
+		ab.Cost = toAbilityCostFromGameMana(taxedCost(p, cd, g))
 		abilities = append(abilities, &ab)
 		cardByAbility[&ab] = cd
 	}
@@ -866,7 +904,9 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 		case game.PhaseUpkeep:
 			// no-op (hooks for triggers would go here)
 		case game.PhaseDraw:
-			ap.Draw(1)
+			if ap.Draw(1) == 0 && len(ap.Library) == 0 {
+				ap.Lose("deckout")
+			}
 		case game.PhaseMain1, game.PhaseMain2:
 			// One land per turn per player
 			if !landDropUsed[ap] {
@@ -888,20 +928,19 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 				}
 			}
 			// Generate mana by tapping producers and cast spells via stack
-			produceSmartMana(ap, cardDB)
-			// Pre-sorcery instant-speed window
+			produceSmartMana(ap, cardDB, g)
+			// Pre-sorcery instant-speed window (AP then NAP priority)
 			produceAllAvailableMana(ap)
 			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
-			resolveStackWithPermanents(sce, g)
+			napResponseWindow(g, dp, ap, cardDB, gs, ai, exec, casts, sce)
 			// Cast non-creature permanents first, then sorceries, then creatures
 			castNonCreaturePermanents(g, ap, cardDB, ap, casts)
 			castSorceries(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
 			castAllPossibleCreatures(g, ap, cardDB, ap, casts)
-			// Post-sorcery instant-speed window
+			// Post-sorcery instant-speed window (AP then NAP priority)
 			produceAllAvailableMana(ap)
 			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
-			// Resolve the stack completely before leaving main phase
-			resolveStackWithPermanents(sce, g)
+			napResponseWindow(g, dp, ap, cardDB, gs, ai, exec, casts, sce)
 			// CR 106.4: Any unused mana in a player's mana pool empties as steps and phases end.
 			clearManaPool(ap)
 		case game.PhaseCombat:
@@ -915,7 +954,7 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 			// Attacker instant-speed window (after attackers declared, before blocks)
 			produceAllAvailableMana(ap)
 			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
-			resolveStackWithPermanents(sce, g)
+			napResponseWindow(g, dp, ap, cardDB, gs, ai, exec, casts, sce)
 			// Blockers: only block sometimes; prefer survival blocks, then trades
 			for _, blocker := range dp.GetCreatures() {
 				if blocker.IsTapped() {
@@ -949,16 +988,17 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 			// Defender instant-speed window (after blocks declared, before damage)
 			produceAllAvailableMana(dp)
 			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec, casts)
-			resolveStackWithPermanents(sce, g)
+			// NAP in combat is the attacker when defender acts; give AP a chance to respond
+			napResponseWindow(g, ap, dp, cardDB, gs, ai, exec, casts, sce)
 			g.ResolveCombatDamage()
 		case game.PhaseEnd:
 			// End step instant windows (active then non-active player)
 			produceAllAvailableMana(ap)
 			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
-			resolveStackWithPermanents(sce, g)
+			napResponseWindow(g, dp, ap, cardDB, gs, ai, exec, casts, sce)
 			produceAllAvailableMana(dp)
 			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec, casts)
-			resolveStackWithPermanents(sce, g)
+			napResponseWindow(g, ap, dp, cardDB, gs, ai, exec, casts, sce)
 			// Discard down to 7
 			for len(ap.Hand) > 7 {
 				i := rand.Intn(len(ap.Hand))
@@ -975,6 +1015,7 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 
 		// Advance
 		g.AdvancePhase()
+		g.ApplyStateBasedActions()
 
 		// Check for loss
 		if p1.HasLost() || p2.HasLost() || p1.GetLifeTotal() <= 0 || p2.GetLifeTotal() <= 0 {
@@ -984,11 +1025,24 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 	turns = g.GetTurnNumber()
 	dur = time.Since(start)
 
+	// Apply final SBAs to ensure loss reasons are set
+	g.ApplyStateBasedActions()
+
+	p1Lost := p1.HasLost() || p1.GetLifeTotal() <= 0
+	p2Lost := p2.HasLost() || p2.GetLifeTotal() <= 0
+
 	// Draw: both players eliminated simultaneously
-	if p1.GetLifeTotal() <= 0 && p2.GetLifeTotal() <= 0 {
+	if p1Lost && p2Lost {
 		return nil, nil, true, turns, dur, casts
 	}
+	if !p1Lost && p2Lost {
+		return p1, p2, false, turns, dur, casts
+	}
+	if p1Lost && !p2Lost {
+		return p2, p1, false, turns, dur, casts
+	}
 
+	// No one has lost yet: use life total as tie-breaker
 	if p1.GetLifeTotal() > p2.GetLifeTotal() {
 		return p1, p2, false, turns, dur, casts
 	}

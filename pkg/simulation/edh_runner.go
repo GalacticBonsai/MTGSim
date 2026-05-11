@@ -141,6 +141,7 @@ func survivors(g *game.Game) int {
 func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit bool, metrics *edhMetrics) EDHGameRecord {
 	rec := EDHGameRecord{Turns: g.GetTurnNumber(), Players: make([]EDHPlayerRecord, len(seats))}
 	var winner string
+	var winnerPlayer *game.Player
 	for i, p := range g.GetPlayersRaw() {
 		pr := EDHPlayerRecord{
 			DeckName:       seats[i].DeckName,
@@ -154,6 +155,7 @@ func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit boo
 			pr.KillSource = classifyElimination(p, turnLimitHit)
 		} else {
 			winner = seats[i].DeckName
+			winnerPlayer = p
 		}
 		if metrics != nil {
 			metrics.applyToPlayerRecord(i, &pr)
@@ -161,6 +163,10 @@ func finalizeRecord(g *game.Game, seats []EDHSeat, casts []int, turnLimitHit boo
 		rec.Players[i] = pr
 	}
 	rec.Winner = winner
+	rec.WinnerCondition = classifyWinCondition(winnerPlayer, g)
+	if turnLimitHit && winner == "" {
+		rec.WinnerCondition = WinConditionTurnLimit
+	}
 	if metrics != nil {
 		metrics.applyToGameRecord(&rec)
 	}

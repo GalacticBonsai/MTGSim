@@ -81,6 +81,12 @@ type BoardState struct {
 	OpponentPower     int
 	MyLands           int
 	OpponentLands     int
+	MyArtifacts       int
+	MyEnchantments    int
+	OpponentArtifacts int
+	OpponentEnchantments int
+	MyUtilityPerms    int // high-utility non-creature permanents (combo, lock, stax)
+	OpponentLockPerms int // opponent permanents that disrupt our strategy
 }
 
 // ShouldActivateAbilities determines if the AI should look for abilities to activate.
@@ -254,9 +260,31 @@ func (ai *AIDecisionMaker) scoreEffectInContext(effect Effect, context DecisionC
 	case DestroyPermanent:
 		// Removal is more valuable when opponent has threats
 		if context.BoardState.OpponentCreatures > 0 {
-			return 4.0
+			score := 4.0
+			// Extra value for destroying lock pieces
+			if context.BoardState.OpponentLockPerms > 0 {
+				score += 3.0
+			}
+			return score
 		}
 		return 1.0
+
+	case SearchLibrary:
+		// Tutoring is high priority when we have few cards or need combo pieces
+		if context.HandSize < 3 {
+			return 5.0
+		}
+		if context.BoardState.MyUtilityPerms == 0 {
+			return 3.5 // likely need to find ramp/combo engine
+		}
+		return 2.0
+
+	case TapUntap:
+		// Tapping opponent lock pieces is valuable
+		if context.BoardState.OpponentLockPerms > 0 {
+			return 3.0
+		}
+		return 0.5
 
 	default:
 		return 1.0
@@ -369,6 +397,21 @@ func (ai *AIDecisionMaker) ActivateAbilitiesForPlayer(player AbilityPlayer, phas
 func (ai *AIDecisionMaker) BuildDecisionContext(player AbilityPlayer, opponents []AbilityPlayer, phase string) DecisionContext {
 	ctx := ai.buildDecisionContext(player, phase)
 	ctx.Opponents = opponents
+
+	// Populate opponent board state for synergy-aware targeting
+	for _, opp := range opponents {
+		ctx.BoardState.OpponentCreatures += len(opp.GetCreatures())
+		ctx.BoardState.OpponentLands += len(opp.GetLands())
+		for range opp.GetCreatures() {
+			ctx.BoardState.OpponentPower += 2
+		}
+		ctx.BoardState.OpponentLockPerms += estimateLockPermanents(opp)
+	}
+	ctx.BoardState.MyUtilityPerms = estimateUtilityPermanents(player)
+
+	if ctx.BoardState.OpponentLockPerms > 0 {
+		ctx.ThreatLevel += 3
+	}
 	return ctx
 }
 
@@ -423,6 +466,65 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		ThreatLevel:       threatLevel,
 		CanCastMoreSpells: availableMana >= 2 && len(player.GetHand()) > 0,
 	}
+}
+
+// estimateUtilityPermanents returns a rough count of high-utility non-creature
+// permanents controlled by the player (artifacts/enchantments).
+func estimateUtilityPermanents(player AbilityPlayer) int {
+	utility := 0
+	// Lands are not utility for this heuristic; artifacts/enchantments are.
+	for _, perm := range player.GetLands() {
+		if p, ok := perm.(AbilityPermanent); ok {
+			name := p.GetName()
+			if isHighUtilityPermanent(name) {
+				utility++
+			}
+		}
+	}
+	return utility
+}
+
+// estimateLockPermanents counts opponent permanents that disrupt our strategy.
+func estimateLockPermanents(opponent AbilityPlayer) int {
+	lock := 0
+	for _, perm := range opponent.GetLands() {
+		if p, ok := perm.(AbilityPermanent); ok {
+			name := p.GetName()
+			if isLockPiece(name) {
+				lock++
+			}
+		}
+	}
+	return lock
+}
+
+// isHighUtilityPermanent heuristically detects combo-enablers and engines.
+func isHighUtilityPermanent(name string) bool {
+	switch name {
+	case "Sol Ring", "Mana Crypt", "Grim Monolith", "Basalt Monolith",
+		"Gilded Lotus", "Thran Dynamo", "Chrome Mox", "Mox Diamond",
+		"Mind's Eye", "Rhystic Study", "Mystic Remora",
+		"Sylvan Library", "Sensei's Divining Top", "Skullclamp",
+		"Ashnod's Altar", "Phyrexian Altar", "Earthcraft",
+		"Intruder Alarm", "Training Grounds":
+		return true
+	}
+	return false
+}
+
+// isLockPiece heuristically detects stax/prison pieces that shut down strategies.
+func isLockPiece(name string) bool {
+	switch name {
+	case "Null Rod", "Stony Silence", "Collector Ouphe", "Kataki, War's Wage",
+		"Rule of Law", "Eidolon of Rhetoric", "Arcane Laboratory",
+		"Blood Moon", "Magus of the Moon", "Contamination",
+		"Trinisphere", "Sphere of Resistance", "Thorn of Amethyst",
+		"Thalia, Guardian of Thraben", "Glowrider", "Vryn Wingmare",
+		"Armageddon", "Ravages of War", "Smokestack", "Tangle Wire",
+		"Static Orb", "Winter Orb":
+		return true
+	}
+	return false
 }
 
 // chooseTargets chooses targets for an ability using enhanced targeting validation.
@@ -554,14 +656,27 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 
 	// Simple strategy: prefer opponents for harmful effects, self for beneficial effects
 	switch effect.Type {
-	case DealDamage, DestroyPermanent, LoseLife:
-		// Prefer opponent targets
+	case DealDamage, DestroyPermanent, LoseLife, TapUntap:
+		// Prefer opponent targets, especially lock pieces when destroying/tapping
 		for _, target := range validTargets {
 			if player, ok := target.(AbilityPlayer); ok {
 				if player.GetName() != context.Player.GetName() {
 					return target
 				}
 			}
+		}
+		// For permanents: prefer lock pieces on opponent's side
+		for _, target := range validTargets {
+			if permanent, ok := target.(AbilityPermanent); ok {
+				if permanent.GetController().GetName() != context.Player.GetName() {
+					if isLockPiece(permanent.GetName()) {
+						return target
+					}
+				}
+			}
+		}
+		// Fallback: any opponent permanent
+		for _, target := range validTargets {
 			if permanent, ok := target.(AbilityPermanent); ok {
 				if permanent.GetController().GetName() != context.Player.GetName() {
 					return target
@@ -569,13 +684,24 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 			}
 		}
 	case DrawCards, GainLife, PumpCreature:
-		// Prefer own targets
+		// Prefer own targets; for pump, prefer our combo-enabling creatures
 		for _, target := range validTargets {
 			if player, ok := target.(AbilityPlayer); ok {
 				if player.GetName() == context.Player.GetName() {
 					return target
 				}
 			}
+		}
+		for _, target := range validTargets {
+			if permanent, ok := target.(AbilityPermanent); ok {
+				if permanent.GetController().GetName() == context.Player.GetName() {
+					if isHighUtilityPermanent(permanent.GetName()) {
+						return target
+					}
+				}
+			}
+		}
+		for _, target := range validTargets {
 			if permanent, ok := target.(AbilityPermanent); ok {
 				if permanent.GetController().GetName() == context.Player.GetName() {
 					return target

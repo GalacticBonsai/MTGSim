@@ -73,6 +73,23 @@ func (g *Game) IsMainPhase() bool {
 }
 func (g *Game) IsCombatPhase() bool { return g.currentPhase == PhaseCombat }
 
+// WinGame marks all opponents of the given winner as lost by the specified win condition.
+// Common conditions: "combat", "commander_damage", "deckout", "effect".
+func (g *Game) WinGame(winner *Player, condition string) {
+	for _, pl := range g.players {
+		if pl != winner && !pl.HasLost() {
+			pl.Lose(condition)
+		}
+	}
+}
+
+// LoseGame marks the specified player as lost with the given reason.
+func (g *Game) LoseGame(loser *Player, reason string) {
+	if loser != nil && !loser.HasLost() {
+		loser.Lose(reason)
+	}
+}
+
 // removeDamageFromPermanents removes all damage from permanents during cleanup step.
 func (g *Game) removeDamageFromPermanents() {
 	for _, pl := range g.players {

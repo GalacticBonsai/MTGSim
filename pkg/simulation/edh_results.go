@@ -15,8 +15,22 @@ const (
 	KillSourceLifeLoss        KillSource = "life_loss"
 	KillSourceCommanderDamage KillSource = "commander_damage"
 	KillSourceMill            KillSource = "mill"
+	KillSourceDeckout         KillSource = "deckout"
+	KillSourceEffect          KillSource = "effect"
 	KillSourceTurnLimit       KillSource = "turn_limit"
 	KillSourceUnknown         KillSource = "unknown"
+)
+
+// WinCondition categorizes how a player won the game.
+type WinCondition string
+
+const (
+	WinConditionCombat         WinCondition = "combat"
+	WinConditionCommanderDamage WinCondition = "commander_damage"
+	WinConditionDeckout          WinCondition = "deckout"
+	WinConditionEffect           WinCondition = "effect"
+	WinConditionTurnLimit        WinCondition = "turn_limit"
+	WinConditionUnknown          WinCondition = "unknown"
 )
 
 // CardPerformance tracks per-card aggregate performance for a deck.
@@ -49,7 +63,8 @@ type EDHPlayerRecord struct {
 type EDHGameRecord struct {
 	Turns             int
 	Players           []EDHPlayerRecord
-	Winner            string // deck name; empty if draw / turn limit
+	Winner            string       // deck name; empty if draw / turn limit
+	WinnerCondition   WinCondition // how the winner won (combat, effect, etc.)
 	MaxStormCount     int
 	TotalManaSpent    int
 	TotalCardsPlayed  int
@@ -88,6 +103,11 @@ type EDHDeckStats struct {
 	CommanderDamageKOs int                           `json:"commander_damage_kos"`
 	LifeLossKOs        int                           `json:"life_loss_kos"`
 	MillKOs            int                           `json:"mill_kos"`
+	DeckoutKOs         int                           `json:"deckout_kos"`
+	EffectKOs          int                           `json:"effect_kos"`
+	CombatWins         int                           `json:"combat_wins"`
+	EffectWins         int                           `json:"effect_wins"`
+	DeckoutWins        int                           `json:"deckout_wins"`
 	AvgCommanderCasts  float64                       `json:"avg_commander_casts"`
 	AvgManaSpent       float64                       `json:"avg_mana_spent"`
 	AvgCardsPlayed     float64                       `json:"avg_cards_played"`
@@ -127,6 +147,11 @@ type deckAccumulator struct {
 	cmdDamageKOs     int
 	lifeLossKOs      int
 	millKOs          int
+	deckoutKOs       int
+	effectKOs        int
+	combatWins       int
+	effectWins       int
+	deckoutWins      int
 	commanderCastSum int
 	manaSpentSum     int
 	cardsPlayedSum   int
@@ -190,6 +215,21 @@ func (r *EDHResults) RecordGame(rec EDHGameRecord) {
 				acc.lifeLossKOs++
 			case KillSourceMill:
 				acc.millKOs++
+			case KillSourceDeckout:
+				acc.deckoutKOs++
+			case KillSourceEffect:
+				acc.effectKOs++
+			}
+		}
+		// Track how this deck won when it is the winner
+		if p.DeckName == rec.Winner {
+			switch rec.WinnerCondition {
+			case WinConditionCombat:
+				acc.combatWins++
+			case WinConditionEffect:
+				acc.effectWins++
+			case WinConditionDeckout:
+				acc.deckoutWins++
 			}
 		}
 		for cardName, perf := range p.CardStats {
@@ -232,6 +272,11 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 			CommanderDamageKOs: acc.cmdDamageKOs,
 			LifeLossKOs:        acc.lifeLossKOs,
 			MillKOs:            acc.millKOs,
+			DeckoutKOs:         acc.deckoutKOs,
+			EffectKOs:          acc.effectKOs,
+			CombatWins:         acc.combatWins,
+			EffectWins:         acc.effectWins,
+			DeckoutWins:        acc.deckoutWins,
 			MaxStormCount:      acc.maxStormCount,
 			TotalManaSpent:     acc.manaSpentSum,
 			TotalCardsPlayed:   acc.cardsPlayedSum,

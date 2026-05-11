@@ -63,9 +63,10 @@ type LayeredEffect struct {
 // continuous holds the active layered effects and bookkeeping for the
 // recompute pipeline.
 type continuous struct {
-	effects   []*LayeredEffect
-	nextID    uint64
-	timestamp uint64
+	effects       []*LayeredEffect
+	nextID        uint64
+	timestamp     uint64
+	staticEffects *StaticEffectRegistry
 }
 
 func (g *Game) ensureContinuous() {
