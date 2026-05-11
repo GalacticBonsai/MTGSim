@@ -2,11 +2,14 @@ package game
 
 import (
 	"strconv"
+
+	"github.com/google/uuid"
 )
 
 // Permanent is a battlefield object created from a card.
 type Permanent struct {
-	id         string
+	id         uuid.UUID
+	userData   any
 	source     SimpleCard
 	owner      *Player
 	controller *Player
@@ -63,7 +66,7 @@ type Permanent struct {
 
 func NewPermanent(c SimpleCard, owner *Player, controller *Player) *Permanent {
 	p := &Permanent{
-		id:               "",
+		id:               uuid.New(),
 		source:           c,
 		owner:            owner,
 		controller:       controller,
@@ -100,11 +103,19 @@ func parseIntSafe(s string) int {
 }
 
 // Accessors compatible with future adapters
-func (p *Permanent) GetID() string          { return p.id }
+func (p *Permanent) GetID() uuid.UUID       { return p.id }
+func (p *Permanent) SetUserData(d any)      { p.userData = d }
+func (p *Permanent) GetUserData() any       { return p.userData }
 func (p *Permanent) GetName() string        { return p.source.Name }
 func (p *Permanent) GetSource() SimpleCard  { return p.source }
 func (p *Permanent) GetOwner() *Player      { return p.owner }
 func (p *Permanent) GetController() *Player { return p.controller }
+func (p *Permanent) GetControllerName() string {
+	if p.controller == nil {
+		return ""
+	}
+	return p.controller.GetName()
+}
 func (p *Permanent) IsTapped() bool         { return p.tapped }
 func (p *Permanent) Tap()                   { p.tapped = true }
 func (p *Permanent) Untap()                 { p.tapped = false }
@@ -163,9 +174,23 @@ func (p *Permanent) AttachTo(target *Permanent) { p.attachedTo = target }
 func (p *Permanent) Detach()                    { p.attachedTo = nil }
 func (p *Permanent) GetAttachedTo() *Permanent  { return p.attachedTo }
 
+// Abilities storage (avoids import cycles between game and ability packages)
+func (p *Permanent) SetAbilities(a []any) { p.userData = a }
+func (p *Permanent) GetAbilities() []any    {
+	if p.userData == nil {
+		return nil
+	}
+	if a, ok := p.userData.([]any); ok {
+		return a
+	}
+	return nil
+}
+
 // Helpers
 func (p *Permanent) IsCreature() bool     { return p.source.IsCreature() }
 func (p *Permanent) IsLand() bool         { return p.source.IsLand() }
 func (p *Permanent) IsAura() bool         { return p.source.IsAura() }
 func (p *Permanent) IsLegendary() bool    { return p.source.IsLegendary() }
 func (p *Permanent) IsPlaneswalker() bool { return p.source.IsPlaneswalker() }
+func (p *Permanent) IsArtifact() bool     { return p.source.IsArtifact() }
+func (p *Permanent) IsEnchantment() bool  { return p.source.IsEnchantment() }

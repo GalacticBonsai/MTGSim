@@ -149,15 +149,15 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 
 	// Check tap cost requirements
 	if ability.Cost.TapCost {
-		if permanent, ok := ability.Source.(AbilityPermanent); ok {
-			if permanent.IsTapped() {
+		if tapper, ok := ability.Source.(interface{ IsTapped() bool }); ok {
+			if tapper.IsTapped() {
 				return false // Cannot activate tap abilities when source is tapped
 			}
 
 			// Check summoning sickness for non-mana abilities
 			if ability.Type != Mana {
 				// Check if this permanent has summoning sickness
-				if summoningSickPerm, ok := permanent.(SummoningSickness); ok {
+				if summoningSickPerm, ok := ability.Source.(SummoningSickness); ok {
 					if summoningSickPerm.HasSummoningSickness() {
 						return false // Creatures with summoning sickness cannot use tap abilities (except mana abilities)
 					}
@@ -188,8 +188,8 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, source any) error {
 	// Handle tap costs by tapping the source permanent
 	if ability.Cost.TapCost {
-		if permanent, ok := source.(AbilityPermanent); ok {
-			permanent.Tap()
+		if tapper, ok := source.(interface{ Tap() }); ok {
+			tapper.Tap()
 		}
 	}
 
@@ -777,13 +777,13 @@ func (ee *ExecutionEngine) applyPumpEffect(target any, power, toughness int, dur
 
 // applyTapEffect applies a tap/untap effect.
 func (ee *ExecutionEngine) applyTapEffect(target any, shouldTap bool) {
-	if permanent, ok := target.(AbilityPermanent); ok {
+	if tapper, ok := target.(interface{ Tap(); Untap(); GetName() string }); ok {
 		if shouldTap {
-			permanent.Tap()
-			logger.LogCard("Tapping %s", permanent.GetName())
+			tapper.Tap()
+			logger.LogCard("Tapping %s", tapper.GetName())
 		} else {
-			permanent.Untap()
-			logger.LogCard("Untapping %s", permanent.GetName())
+			tapper.Untap()
+			logger.LogCard("Untapping %s", tapper.GetName())
 		}
 	}
 }
@@ -821,22 +821,45 @@ func (ee *ExecutionEngine) ApplyEffect(effect Effect, controller AbilityPlayer, 
 	return ee.applyEffect(effect, controller, targets)
 }
 
+// abilitiesFrom extracts abilities from an object, trying AbilityPermanent first
+// then falling back to the duck-typed []any getter used by game.Permanent.
+func abilitiesFrom(v any) []*Ability {
+	if perm, ok := v.(AbilityPermanent); ok {
+		return perm.GetAbilities()
+	}
+	if carrier, ok := v.(interface{ GetAbilities() []any }); ok {
+		var out []*Ability
+		for _, a := range carrier.GetAbilities() {
+			if ab, ok := a.(*Ability); ok {
+				out = append(out, ab)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func isTapped(v any) bool {
+	if tapper, ok := v.(interface{ IsTapped() bool }); ok {
+		return tapper.IsTapped()
+	}
+	return false
+}
+
 // ActivateManaAbilities activates all available mana abilities for a player.
 func (ee *ExecutionEngine) ActivateManaAbilities(player AbilityPlayer) int {
 	totalManaAdded := 0
 
 	// Get all lands controlled by the player
 	for _, land := range player.GetLands() {
-		if permanent, ok := land.(AbilityPermanent); ok {
-			if !permanent.IsTapped() {
-				// Check if this land has mana abilities
-				for _, ability := range permanent.GetAbilities() {
-					if ability.Type == Mana && ee.canActivateAbility(ability, player) {
-						if err := ee.ExecuteAbility(ability, player, nil); err == nil {
-							totalManaAdded++
-							break // Only activate one mana ability per land
-						}
-					}
+		if isTapped(land) {
+			continue
+		}
+		for _, ability := range abilitiesFrom(land) {
+			if ability.Type == Mana && ee.canActivateAbility(ability, player) {
+				if err := ee.ExecuteAbility(ability, player, nil); err == nil {
+					totalManaAdded++
+					break // Only activate one mana ability per land
 				}
 			}
 		}
@@ -851,22 +874,18 @@ func (ee *ExecutionEngine) GetActivatableAbilities(player AbilityPlayer) []*Abil
 
 	// Check creatures for activated abilities
 	for _, creature := range player.GetCreatures() {
-		if permanent, ok := creature.(AbilityPermanent); ok {
-			for _, ability := range permanent.GetAbilities() {
-				if ability.Type == Activated && ee.canActivateAbility(ability, player) {
-					activatable = append(activatable, ability)
-				}
+		for _, ability := range abilitiesFrom(creature) {
+			if ability.Type == Activated && ee.canActivateAbility(ability, player) {
+				activatable = append(activatable, ability)
 			}
 		}
 	}
 
 	// Check lands for non-mana activated abilities
 	for _, land := range player.GetLands() {
-		if permanent, ok := land.(AbilityPermanent); ok {
-			for _, ability := range permanent.GetAbilities() {
-				if ability.Type == Activated && ability.Type != Mana && ee.canActivateAbility(ability, player) {
-					activatable = append(activatable, ability)
-				}
+		for _, ability := range abilitiesFrom(land) {
+			if ability.Type == Activated && ability.Type != Mana && ee.canActivateAbility(ability, player) {
+				activatable = append(activatable, ability)
 			}
 		}
 	}

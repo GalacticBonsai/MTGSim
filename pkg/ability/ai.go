@@ -470,8 +470,8 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 
 	// Add untapped lands (simplified)
 	for _, land := range player.GetLands() {
-		if permanent, ok := land.(AbilityPermanent); ok {
-			if !permanent.IsTapped() {
+		if tapper, ok := land.(interface{ IsTapped() bool }); ok {
+			if !tapper.IsTapped() {
 				availableMana++
 			}
 		}
@@ -528,9 +528,8 @@ func estimateUtilityPermanents(player AbilityPlayer) int {
 	utility := 0
 	// Lands are not utility for this heuristic; artifacts/enchantments are.
 	for _, perm := range player.GetLands() {
-		if p, ok := perm.(AbilityPermanent); ok {
-			name := p.GetName()
-			if isHighUtilityPermanent(name) {
+		if named, ok := perm.(interface{ GetName() string }); ok {
+			if isHighUtilityPermanent(named.GetName()) {
 				utility++
 			}
 		}
@@ -542,9 +541,8 @@ func estimateUtilityPermanents(player AbilityPlayer) int {
 func estimateLockPermanents(opponent AbilityPlayer) int {
 	lock := 0
 	for _, perm := range opponent.GetLands() {
-		if p, ok := perm.(AbilityPermanent); ok {
-			name := p.GetName()
-			if isLockPiece(name) {
+		if named, ok := perm.(interface{ GetName() string }); ok {
+			if isLockPiece(named.GetName()) {
 				lock++
 			}
 		}
@@ -745,18 +743,18 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		}
 		// For permanents: prefer opponent combo pieces, then lock pieces
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() != context.Player.GetName() {
-					if isOpponentComboPiece(permanent.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() != context.Player.GetName() {
+					if isOpponentComboPiece(named.GetName()) {
 						return target
 					}
 				}
 			}
 		}
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() != context.Player.GetName() {
-					if isLockPiece(permanent.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() != context.Player.GetName() {
+					if isLockPiece(named.GetName()) {
 						return target
 					}
 				}
@@ -764,8 +762,8 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		}
 		// Fallback: any opponent permanent
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() != context.Player.GetName() {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() != context.Player.GetName() {
 					return target
 				}
 			}
@@ -781,26 +779,26 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		}
 		// Prefer protecting our combo pieces, then utility permanents
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() == context.Player.GetName() {
-					if isComboPieceFor(permanent.GetName(), context.Player.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() == context.Player.GetName() {
+					if isComboPieceFor(named.GetName(), context.Player.GetName()) {
 						return target
 					}
 				}
 			}
 		}
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() == context.Player.GetName() {
-					if isHighUtilityPermanent(permanent.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() == context.Player.GetName() {
+					if isHighUtilityPermanent(named.GetName()) {
 						return target
 					}
 				}
 			}
 		}
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() == context.Player.GetName() {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() == context.Player.GetName() {
 					return target
 				}
 			}

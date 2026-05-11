@@ -296,6 +296,14 @@ func (pa *PermanentAdapter) GetController() AbilityPlayer {
 	return &PlayerAdapter{player: controller, adapter: pa.adapter}
 }
 
+func (pa *PermanentAdapter) GetControllerName() string {
+	ctrl := pa.permanent.GetController()
+	if ctrl == nil {
+		return ""
+	}
+	return ctrl.GetName()
+}
+
 func (pa *PermanentAdapter) IsTapped() bool {
 	return pa.permanent.IsTapped()
 }

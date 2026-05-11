@@ -184,7 +184,14 @@ func (sce *SpellCastingEngine) cardToSpell(cardToCast card.Card) (*Spell, error)
 
 	// Convert abilities to effects
 	var effects []Effect
+	isPermanent := cardToCast.IsCreature() || cardToCast.IsArtifact() || cardToCast.IsEnchantment() || cardToCast.IsPlaneswalker() || cardToCast.IsLand()
 	for _, ability := range abilities {
+		// Triggered, activated, and mana abilities on permanent spells fire or are
+		// paid for after the permanent is on the battlefield, not during spell
+		// resolution. Skip them here so they can be attached to the permanent.
+		if isPermanent && (ability.Type == Triggered || ability.Type == Activated || ability.Type == Mana) {
+			continue
+		}
 		effects = append(effects, ability.Effects...)
 	}
 

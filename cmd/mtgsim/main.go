@@ -405,14 +405,48 @@ func napResponseWindow(g *game.Game, nap *game.Player, ap *game.Player, cardDB *
 	produceAllAvailableMana(nap)
 	castInstants(g, nap, ap, cardDB, nap, gs, ai, exec, casts)
 	// Resolve any items added by NAP before returning to AP resolution
-	resolveStackWithPermanents(sce, g)
+	resolveStackWithPermanents(sce, g, gs, exec)
+}
+
+// attachAbilitiesAndExecuteETB parses oracle text abilities onto a permanent and
+// immediately executes any EntersTheBattlefield triggers.
+func attachAbilitiesAndExecuteETB(perm *game.Permanent, oracleText string, exec *abil.ExecutionEngine, gs *bridge.AbilityGameState) {
+	if perm == nil || oracleText == "" {
+		return
+	}
+	abs, err := exec.ParseAndRegisterAbilities(oracleText, perm)
+	if err != nil || len(abs) == 0 {
+		return
+	}
+	var wrapped []any
+	for _, a := range abs {
+		a.Source = perm
+		wrapped = append(wrapped, a)
+	}
+	perm.SetAbilities(wrapped)
+
+	ctrlName := perm.GetControllerName()
+	if ctrlName == "" {
+		return
+	}
+	ctrlAdapter := gs.GetPlayer(ctrlName)
+	if ctrlAdapter == nil {
+		return
+	}
+	for _, a := range abs {
+		if a.Type == abil.Triggered && a.TriggerCondition == abil.EntersTheBattlefield {
+			for _, effect := range a.Effects {
+				_ = exec.ApplyEffect(effect, ctrlAdapter, nil)
+			}
+		}
+	}
 }
 
 // resolveStackWithPermanents resolves the ability stack one item at a time.
 // After each resolution, if the item was a permanent spell, we create the
 // corresponding permanent on the battlefield by moving the card from hand.
 // CR 117.4b: When all players pass in succession, the top object on the stack resolves.
-func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
+func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game, gs *bridge.AbilityGameState, exec *abil.ExecutionEngine) {
 	st := sce.GetStack()
 	for !st.IsEmpty() {
 		item := st.Peek()
@@ -435,10 +469,11 @@ func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
 			continue
 		}
 		// Move permanent spells onto the battlefield
+		var perm *game.Permanent
 		if strings.Contains(tl, "Creature") {
-			_, _ = g.SummonCreature(ctrl, name)
+			perm, _ = g.SummonCreature(ctrl, name)
 		} else if strings.Contains(tl, "Enchantment") || strings.Contains(tl, "Artifact") || strings.Contains(tl, "Planeswalker") {
-			_, _ = g.CastPermanent(ctrl, name)
+			perm, _ = g.CastPermanent(ctrl, name)
 		} else if strings.Contains(tl, "Instant") || strings.Contains(tl, "Sorcery") {
 			// Non-permanent spells move from hand to graveyard on resolution
 			idx := ctrl.FindCardInHand(name)
@@ -447,6 +482,9 @@ func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
 				ctrl.Hand = append(ctrl.Hand[:idx], ctrl.Hand[idx+1:]...)
 				ctrl.Graveyard = append(ctrl.Graveyard, card)
 			}
+		}
+		if perm != nil && item.Spell.OracleText != "" {
+			attachAbilitiesAndExecuteETB(perm, item.Spell.OracleText, exec, gs)
 		}
 		g.ApplyStateBasedActions()
 	}
@@ -950,9 +988,12 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 					c := ap.Hand[landIdx]
 					// CR 305.2: A player may play one land during their main phase when they have priority and the stack is empty.
 					// Do not remove from hand here; Player.PlayLand handles the zone change (single removal).
-					if _, err := g.PlayLand(ap, c.Name); err == nil {
+					if perm, err := g.PlayLand(ap, c.Name); err == nil {
 						landDropUsed[ap] = true
 						recordCast(casts, ap, c.Name)
+						if c.OracleText != "" {
+							attachAbilitiesAndExecuteETB(perm, c.OracleText, exec, gs)
+						}
 					}
 				}
 			}

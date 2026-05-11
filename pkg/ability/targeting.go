@@ -282,8 +282,8 @@ func (tv *TargetValidator) isCreature(target interface{}) bool {
 		return checker.IsCreature()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "creature")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "creature")
 	}
 	return false
 }
@@ -294,7 +294,7 @@ func (tv *TargetValidator) isPlayer(target interface{}) bool {
 }
 
 func (tv *TargetValidator) isPermanent(target interface{}) bool {
-	_, ok := target.(AbilityPermanent)
+	_, ok := target.(interface{ IsTapped() bool })
 	return ok
 }
 
@@ -304,8 +304,8 @@ func (tv *TargetValidator) isArtifact(target interface{}) bool {
 		return checker.IsArtifact()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "artifact")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "artifact")
 	}
 	return false
 }
@@ -316,8 +316,8 @@ func (tv *TargetValidator) isEnchantment(target interface{}) bool {
 		return checker.IsEnchantment()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "enchantment")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "enchantment")
 	}
 	return false
 }
@@ -328,8 +328,8 @@ func (tv *TargetValidator) isLand(target interface{}) bool {
 		return checker.IsLand()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "land")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "land")
 	}
 	return false
 }
@@ -340,8 +340,8 @@ func (tv *TargetValidator) isPlaneswalker(target interface{}) bool {
 		return checker.IsPlaneswalker()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "planeswalker")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "planeswalker")
 	}
 	return false
 }
@@ -390,6 +390,9 @@ func (tv *TargetValidator) isControlledBy(target interface{}, player AbilityPlay
 	if permanent, ok := target.(AbilityPermanent); ok {
 		return permanent.GetController().GetName() == player.GetName()
 	}
+	if named, ok := target.(interface{ GetControllerName() string }); ok {
+		return named.GetControllerName() == player.GetName()
+	}
 	return false
 }
 
@@ -397,12 +400,18 @@ func (tv *TargetValidator) isControlledByOpponent(target interface{}, player Abi
 	if permanent, ok := target.(AbilityPermanent); ok {
 		return permanent.GetController().GetName() != player.GetName()
 	}
+	if named, ok := target.(interface{ GetControllerName() string }); ok {
+		return named.GetControllerName() != player.GetName()
+	}
 	return false
 }
 
 func (tv *TargetValidator) isTapped(target interface{}) bool {
 	if permanent, ok := target.(AbilityPermanent); ok {
 		return permanent.IsTapped()
+	}
+	if tapper, ok := target.(interface{ IsTapped() bool }); ok {
+		return tapper.IsTapped()
 	}
 	return false
 }
