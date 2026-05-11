@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -215,6 +216,33 @@ func printSummary(r *simulation.EDHResults) {
 	for _, s := range r.DeckStats() {
 		logger.LogMeta("Deck %-30s G:%-3d W:%-3d L:%-3d WR:%5.1f%%  AvgLife:%5.1f  CmdrDmgKO:%d",
 			s.DeckName, s.Games, s.Wins, s.Losses, s.WinRate, s.AvgFinalLife, s.CommanderDamageKOs)
+		type cardEntry struct {
+			name    string
+			casts   int
+			wins    int
+			winRate float64
+		}
+		var entries []cardEntry
+		for cName, cp := range s.CardStats {
+			if cp.Casts >= 5 {
+				entries = append(entries, cardEntry{
+					name: cName, casts: cp.Casts, wins: cp.Wins,
+					winRate: 100 * float64(cp.Wins) / float64(cp.Casts),
+				})
+			}
+		}
+		if len(entries) == 0 {
+			continue
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i].winRate != entries[j].winRate {
+				return entries[i].winRate > entries[j].winRate
+			}
+			return entries[i].casts > entries[j].casts
+		})
+		for _, e := range entries {
+			logger.LogMeta("    Card %-26s C:%-3d W:%-3d WR:%5.1f%%", e.name, e.casts, e.wins, e.winRate)
+		}
 	}
 }
 

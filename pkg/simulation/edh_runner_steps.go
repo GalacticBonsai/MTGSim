@@ -153,7 +153,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventLandPlay, Actor: ap.GetName(), Detail: c.Name})
 			}
 			if metrics != nil {
-				metrics.recordLand(idx)
+				metrics.recordLand(idx, c.Name)
 			}
 			break
 		}
@@ -180,7 +180,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 				casts[idx]++
 				storm := 0
 				if metrics != nil {
-					storm = metrics.recordSpell(idx, manaSpent, true)
+					storm = metrics.recordSpell(idx, manaSpent, true, name)
 				}
 				if log != nil {
 					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
@@ -208,7 +208,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			perm.SetEnteredTurn(g.GetTurnNumber())
 			storm := 0
 			if metrics != nil {
-				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature())
+				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
 			}
 			if log != nil {
 				kind := EventPermanentCast

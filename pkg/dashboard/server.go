@@ -177,9 +177,15 @@ const htmlDashboard = `
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0a0e27; color: #fff; }
 		.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-		header { padding: 20px 0; border-bottom: 1px solid #1a1f3a; margin-bottom: 30px; }
+		header { padding: 20px 0; border-bottom: 1px solid #1a1f3a; margin-bottom: 20px; }
 		h1 { font-size: 2.5em; margin-bottom: 5px; }
 		.subtitle { color: #888; }
+		.tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #1a1f3a; padding-bottom: 10px; }
+		.tab-btn { background: #141829; border: 1px solid #1a1f3a; color: #888; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9em; }
+		.tab-btn:hover { background: #1a1f3a; color: #fff; }
+		.tab-btn.active { background: #5a6dd8; color: #fff; border-color: #5a6dd8; }
+		.tab-content { display: none; }
+		.tab-content.active { display: block; }
 		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
 		.card { background: #141829; border: 1px solid #1a1f3a; border-radius: 8px; padding: 20px; }
 		.card h2 { font-size: 0.9em; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
@@ -204,6 +210,14 @@ const htmlDashboard = `
 			<p class="subtitle">Magic: The Gathering Simulation Statistics</p>
 		</header>
 
+		<div class="tabs">
+			<button class="tab-btn active" onclick="showTab('overview', this)">Overview</button>
+			<button class="tab-btn" onclick="showTab('edh-decks', this)">EDH Decks</button>
+			<button class="tab-btn" onclick="showTab('top-cards', this)">Top Cards</button>
+			<button class="tab-btn" onclick="showTab('recent-pods', this)">Recent Pods</button>
+		</div>
+		<div id="overview" class="tab-content active">
+
 		<div class="grid" id="summary">
 			<div class="loading">Loading...</div>
 		</div>
@@ -223,13 +237,15 @@ const htmlDashboard = `
 			</tbody>
 		</table>
 
-		<div id="edhSection" style="display:none">
+			<div id="edhSummarySection" style="display:none">
 				<h3>EDH Tuning Highlights</h3>
 				<div class="grid" id="edhSummary">
 					<div class="loading">Loading EDH telemetry...</div>
 				</div>
-
-			<h3>EDH / Commander Performance</h3>
+			</div>
+		</div>
+		<div id="edh-decks" class="tab-content">
+		<h3>EDH / Commander Performance</h3>
 			<table class="table" id="edhDecks">
 				<thead>
 					<tr>
@@ -259,7 +275,28 @@ const htmlDashboard = `
 					<tr><td colspan="20" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
+		</div>
 
+		<div id="top-cards" class="tab-content">
+			<h3>Top Cards by Win Rate When Cast</h3>
+			<p style="color:#888; margin-bottom:10px;">Cards with at least 5 casts. Sorted by win rate, then by cast volume.</p>
+			<table class="table" id="topCards">
+				<thead>
+					<tr>
+						<th>Deck</th>
+						<th>Card</th>
+						<th>Casts</th>
+						<th>Wins</th>
+						<th>Win Rate</th>
+					</tr>
+				</thead>
+				<tbody id="topCardsBody">
+					<tr><td colspan="5" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div id="recent-pods" class="tab-content">
 				<h3>Recent EDH Pods</h3>
 				<table class="table" id="edhGames">
 					<thead>
@@ -273,6 +310,12 @@ const htmlDashboard = `
 	</div>
 
 	<script>
+		function showTab(tabId, btn) {
+			document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+			document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+			document.getElementById(tabId).classList.add('active');
+			btn.classList.add('active');
+		}
 		async function loadResults() {
 			try {
 				const res = await fetch('/api/results');
@@ -286,8 +329,10 @@ const htmlDashboard = `
 				const res = await fetch('/api/edh-results');
 				const data = await res.json();
 				if (data.enabled) {
-					document.getElementById('edhSection').style.display = '';
+					document.getElementById('edhSummarySection').style.display = '';
+					renderEDHSummary(data.summary || {});
 					renderEDH(data);
+					renderTopCards(data.decks || []);
 				}
 			} catch (err) {
 				console.error('Error loading EDH results:', err);
@@ -312,7 +357,6 @@ const htmlDashboard = `
 
 		function renderEDH(data) {
 			const decks = data.decks || [];
-				renderEDHSummary(data.summary || {});
 			let html = '';
 			for (let d of decks) {
 				html += '<tr>'
@@ -339,6 +383,31 @@ const htmlDashboard = `
 					+ '</tr>';
 			}
 				document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
+			}
+
+			function renderTopCards(decks) {
+			let cards = [];
+			for (let d of decks) {
+				let cs = d.card_stats || {};
+				for (let [name, perf] of Object.entries(cs)) {
+					if (perf.casts >= 5) {
+						cards.push({
+							deck: d.deck_name,
+							name: name,
+							casts: perf.casts,
+							wins: perf.wins,
+							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0
+						});
+					}
+				}
+			}
+			cards.sort((a, b) => b.winRate - a.winRate || b.casts - a.casts);
+			cards = cards.slice(0, 100);
+			let html = '';
+			for (let c of cards) {
+				html += '<tr><td>' + c.deck + '</td><td>' + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+			}
+			document.getElementById('topCardsBody').innerHTML = html || '<tr><td colspan="5">No cards with enough sample size yet</td></tr>';
 		}
 
 			function renderEDHSummary(s) {
