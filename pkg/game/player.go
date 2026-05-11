@@ -56,12 +56,37 @@ func (p *Player) HasLost() bool         { return p.lost }
 func (p *Player) GetLossReason() string { return p.lossReason }
 func (p *Player) SetLossReason(r string) { p.lossReason = r }
 
-// Lose marks the player as lost with the given reason.
+// Lose marks the player as lost with the given reason and exiles all of their zones.
 func (p *Player) Lose(reason string) {
+	if p.lost {
+		return
+	}
 	p.lost = true
 	if reason != "" {
 		p.lossReason = reason
 	}
+	p.exileAllZones()
+}
+
+// exileAllZones moves all cards/permanents from Battlefield, Hand, Library,
+// Graveyard and CommandZone into Exile. Called automatically by Lose.
+func (p *Player) exileAllZones() {
+	for _, perm := range p.Battlefield {
+		p.Exile = append(p.Exile, perm.GetSource())
+	}
+	p.Battlefield = p.Battlefield[:0]
+
+	p.Exile = append(p.Exile, p.Hand...)
+	p.Hand = p.Hand[:0]
+
+	p.Exile = append(p.Exile, p.Library...)
+	p.Library = p.Library[:0]
+
+	p.Exile = append(p.Exile, p.Graveyard...)
+	p.Graveyard = p.Graveyard[:0]
+
+	p.Exile = append(p.Exile, p.CommandZone...)
+	p.CommandZone = p.CommandZone[:0]
 }
 
 // DeckedOut returns true if the player's library is empty and they would lose from attempting to draw.
