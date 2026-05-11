@@ -22,7 +22,7 @@ func (m *edhMetrics) resetTurn() {
 	}
 }
 
-func (m *edhMetrics) recordLand(player int) {
+func (m *edhMetrics) recordLand(player int, cardName string) {
 	if !m.valid(player) {
 		return
 	}
@@ -30,9 +30,15 @@ func (m *edhMetrics) recordLand(player int) {
 	p.LandsPlayed++
 	p.CardsPlayed++
 	m.game.TotalCardsPlayed++
+	if p.CardStats == nil {
+		p.CardStats = map[string]CardPerformance{}
+	}
+	cp := p.CardStats[cardName]
+	cp.Casts++
+	p.CardStats[cardName] = cp
 }
 
-func (m *edhMetrics) recordSpell(player int, manaSpent int, creature bool) int {
+func (m *edhMetrics) recordSpell(player int, manaSpent int, creature bool, cardName string) int {
 	if !m.valid(player) {
 		return 0
 	}
@@ -52,6 +58,12 @@ func (m *edhMetrics) recordSpell(player int, manaSpent int, creature bool) int {
 	}
 	m.game.TotalCardsPlayed++
 	m.game.TotalManaSpent += manaSpent
+	if p.CardStats == nil {
+		p.CardStats = map[string]CardPerformance{}
+	}
+	cp := p.CardStats[cardName]
+	cp.Casts++
+	p.CardStats[cardName] = cp
 	return m.turnSpells[player]
 }
 

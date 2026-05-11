@@ -17,20 +17,37 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
 // CLI flags
 var (
-	gamesFlag     = flag.Int("games", 100, "Number of games to simulate")
-	decksDirFlag  = flag.String("decks", "decks/1v1", "Directory containing .deck files (searched recursively)")
-	swapNFlag     = flag.Int("swap", 0, "Number of sideboard cards to swap into the main deck each game")
-	verbosityFlag = flag.Int("v", 1, "Verbosity: 0=minimal, 1=summary, 2=per-game details")
-	logLevelFlag  = flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
+	gamesFlag      = flag.Int("games", 100, "Number of games to simulate")
+	decksDirFlag   = flag.String("decks", "decks/1v1", "Directory containing .deck files (searched recursively)")
+	swapNFlag      = flag.Int("swap", 0, "Number of sideboard cards to swap into the main deck each game")
+	verbosityFlag  = flag.Int("v", 1, "Verbosity: 0=minimal, 1=summary, 2=per-game details")
+	logLevelFlag   = flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
+	cardStatsFlag  = flag.String("card-stats", "card_library.json", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
 )
 
 // Stats accumulators
 type deckStats struct {
 	wins, losses int
+}
+
+type cardPerf struct {
+	casts int
+	wins  int
+}
+
+func recordCast(tracker map[string]map[string]int, ctrl *game.Player, name string) {
+	if tracker == nil || ctrl == nil {
+		return
+	}
+	if tracker[ctrl.GetName()] == nil {
+		tracker[ctrl.GetName()] = map[string]int{}
+	}
+	tracker[ctrl.GetName()][name]++
 }
 
 type aggregateStats struct {
@@ -529,7 +546,7 @@ func produceSmartMana(p *game.Player, cardDB *card.CardDB) {
 
 // Cast as many creatures as possible with current pool (descending power)
 // Spells are cast through the stack (SimpleStack adapter) and then resolved.
-func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB, controller any) {
+func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB, controller any, tracker map[string]map[string]int) {
 	for {
 		bestIdx := -1
 		bestPow := -1
@@ -560,6 +577,9 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 			if err := g.CastSimpleSpell(bestCard.Name, int(bestCard.CMC), bestCard.ManaCost, bestCard.TypeLine, controller, nil); err != nil {
 				break
 			}
+			if ctrl, ok := controller.(*game.Player); ok {
+				recordCast(tracker, ctrl, bestCard.Name)
+			}
 		} else {
 			break
 		}
@@ -567,7 +587,7 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 }
 
 // Cast artifacts/enchantments/planeswalkers in main phase (non-creature permanents)
-func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB, controller any) {
+func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB, controller any, tracker map[string]map[string]int) {
 	for {
 		castSomething := false
 		for _, c := range p.Hand {
@@ -587,6 +607,9 @@ func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB
 			}
 			if err := g.CastSimpleSpell(cardData.Name, int(cardData.CMC), cardData.ManaCost, cardData.TypeLine, controller, nil); err == nil {
 				castSomething = true
+				if ctrl, ok := controller.(*game.Player); ok {
+					recordCast(tracker, ctrl, cardData.Name)
+				}
 			}
 		}
 		if !castSomething {
@@ -596,7 +619,7 @@ func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB
 }
 
 // AI-driven sorcery casting in main phase
-func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.CardDB, controller any, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine) {
+func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.CardDB, controller any, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine, tracker map[string]map[string]int) {
 	// Build candidate abilities from sorceries in hand
 	var abilities []*abil.Ability
 	cardByAbility := map[*abil.Ability]card.Card{}
@@ -644,11 +667,14 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 			continue
 		}
 		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+		if ctrl, ok := controller.(*game.Player); ok {
+			recordCast(tracker, ctrl, cd.Name)
+		}
 	}
 }
 
 // AI-driven instant casting for a single window (casts best available one or few)
-func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.CardDB, controller any, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine) {
+func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.CardDB, controller any, gs *bridge.AbilityGameState, ai *abil.AIDecisionMaker, exec *abil.ExecutionEngine, tracker map[string]map[string]int) {
 	var abilities []*abil.Ability
 	cardByAbility := map[*abil.Ability]card.Card{}
 	for _, sc := range p.Hand {
@@ -697,6 +723,9 @@ func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.Ca
 			continue
 		}
 		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+		if ctrl, ok := controller.(*game.Player); ok {
+			recordCast(tracker, ctrl, cd.Name)
+		}
 	}
 }
 
@@ -774,12 +803,13 @@ func gameStateSnapshot(g *game.Game) string {
 }
 
 // Play a single game with phases, mana, and costs enforced.
-// Returns the winner, loser, a draw flag, turn count, and duration.
-func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.CardDB) (winner *game.Player, loser *game.Player, isDraw bool, turns int, dur time.Duration) {
+// Returns the winner, loser, a draw flag, turn count, duration, and per-player card casts.
+func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.CardDB) (winner *game.Player, loser *game.Player, isDraw bool, turns int, dur time.Duration, casts map[string]map[string]int) {
 	_ = verbosity
 	start := time.Now()
 	landDropUsed := map[*game.Player]bool{}
 	maxTurns := 30
+	casts = map[string]map[string]int{}
 
 	// Wire ability stack + priority engine
 	gs := bridge.NewAbilityGameState(g)
@@ -853,6 +883,7 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 					// Do not remove from hand here; Player.PlayLand handles the zone change (single removal).
 					if _, err := g.PlayLand(ap, c.Name); err == nil {
 						landDropUsed[ap] = true
+						recordCast(casts, ap, c.Name)
 					}
 				}
 			}
@@ -860,15 +891,15 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 			produceSmartMana(ap, cardDB)
 			// Pre-sorcery instant-speed window
 			produceAllAvailableMana(ap)
-			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
 			resolveStackWithPermanents(sce, g)
 			// Cast non-creature permanents first, then sorceries, then creatures
-			castNonCreaturePermanents(g, ap, cardDB, ap)
-			castSorceries(g, ap, dp, cardDB, ap, gs, ai, exec)
-			castAllPossibleCreatures(g, ap, cardDB, ap)
+			castNonCreaturePermanents(g, ap, cardDB, ap, casts)
+			castSorceries(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
+			castAllPossibleCreatures(g, ap, cardDB, ap, casts)
 			// Post-sorcery instant-speed window
 			produceAllAvailableMana(ap)
-			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
 			// Resolve the stack completely before leaving main phase
 			resolveStackWithPermanents(sce, g)
 			// CR 106.4: Any unused mana in a player's mana pool empties as steps and phases end.
@@ -883,7 +914,7 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 			}
 			// Attacker instant-speed window (after attackers declared, before blocks)
 			produceAllAvailableMana(ap)
-			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
 			resolveStackWithPermanents(sce, g)
 			// Blockers: only block sometimes; prefer survival blocks, then trades
 			for _, blocker := range dp.GetCreatures() {
@@ -917,16 +948,16 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 			}
 			// Defender instant-speed window (after blocks declared, before damage)
 			produceAllAvailableMana(dp)
-			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec)
+			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec, casts)
 			resolveStackWithPermanents(sce, g)
 			g.ResolveCombatDamage()
 		case game.PhaseEnd:
 			// End step instant windows (active then non-active player)
 			produceAllAvailableMana(ap)
-			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec)
+			castInstants(g, ap, dp, cardDB, ap, gs, ai, exec, casts)
 			resolveStackWithPermanents(sce, g)
 			produceAllAvailableMana(dp)
-			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec)
+			castInstants(g, dp, ap, cardDB, dp, gs, ai, exec, casts)
 			resolveStackWithPermanents(sce, g)
 			// Discard down to 7
 			for len(ap.Hand) > 7 {
@@ -955,20 +986,20 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 
 	// Draw: both players eliminated simultaneously
 	if p1.GetLifeTotal() <= 0 && p2.GetLifeTotal() <= 0 {
-		return nil, nil, true, turns, dur
+		return nil, nil, true, turns, dur, casts
 	}
 
 	if p1.GetLifeTotal() > p2.GetLifeTotal() {
-		return p1, p2, false, turns, dur
+		return p1, p2, false, turns, dur, casts
 	}
 	if p2.GetLifeTotal() > p1.GetLifeTotal() {
-		return p2, p1, false, turns, dur
+		return p2, p1, false, turns, dur, casts
 	}
 	// tie-breaker: active player loses
 	if g.GetActivePlayerRaw() == p1 {
-		return p2, p1, false, turns, dur
+		return p2, p1, false, turns, dur, casts
 	}
-	return p1, p2, false, turns, dur
+	return p1, p2, false, turns, dur, casts
 }
 
 func atoiSafe(s string) int { var v int; fmt.Sscanf(strings.TrimSpace(s), "%d", &v); return v }
@@ -999,6 +1030,17 @@ func wilson95(wins, total int) (float64, float64) {
 func main() {
 	flag.Parse()
 	logger.SetLogLevel(logger.ParseLogLevel(*logLevelFlag))
+
+	cardLib, err := stats.LoadCardLibrary(*cardStatsFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading card stats library: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := cardLib.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving card stats library: %v\n", err)
+		}
+	}()
 
 	// Load card DB
 	logger.LogMeta("Loading card database...")
@@ -1031,6 +1073,7 @@ func main() {
 
 	// Per-deck stats
 	perDeck := map[string]*deckStats{}
+	perCard := map[string]map[string]*cardPerf{}
 	agg := &aggregateStats{}
 
 	startAll := time.Now()
@@ -1060,7 +1103,7 @@ func main() {
 
 		// build and play
 		g, p1, p2 := buildGameFromDecks(m1, m2)
-		winner, loser, isDraw, turns, dur := playOneGame(g, p1, p2, *verbosityFlag, cardDB)
+		winner, loser, isDraw, turns, dur, gameCasts := playOneGame(g, p1, p2, *verbosityFlag, cardDB)
 
 		if !isDraw {
 			// stats update
@@ -1074,6 +1117,25 @@ func main() {
 			perDeck[loser.GetName()].losses++
 		}
 		agg.add(turns, p1, p2, dur)
+
+		// Aggregate per-card stats
+		for pName, pCasts := range gameCasts {
+			if perCard[pName] == nil {
+				perCard[pName] = map[string]*cardPerf{}
+			}
+			for cName, n := range pCasts {
+				if perCard[pName][cName] == nil {
+					perCard[pName][cName] = &cardPerf{}
+				}
+				perCard[pName][cName].casts += n
+				wins := 0
+				if !isDraw && winner != nil && winner.GetName() == pName {
+					perCard[pName][cName].wins += n
+					wins = n
+				}
+				cardLib.RecordCounts(cName, n, wins)
+			}
+		}
 
 		if *verbosityFlag >= 2 {
 			winnerName := "DRAW"
@@ -1135,6 +1197,50 @@ func main() {
 		fmt.Printf("End Hand P1: avg=%.2f | P2: avg=%.2f\n",
 			(&aggregateStats{}).meanInt(agg.p1HandEnd), (&aggregateStats{}).meanInt(agg.p2HandEnd))
 		fmt.Printf("Avg Game Duration: %s\n", agg.meanDur(agg.durations).Truncate(time.Millisecond))
+	}
+
+	// Top Cards by Win Rate When Cast
+	if *verbosityFlag >= 1 {
+		fmt.Println()
+		fmt.Println("Top Cards by Win Rate When Cast (min 5 casts)")
+		fmt.Printf("%-35s %-30s %8s %8s %9s\n", "Deck", "Card", "Casts", "Wins", "Win%")
+		type cardEntry struct {
+			deck    string
+			name    string
+			casts   int
+			wins    int
+			winRate float64
+		}
+		var entries []cardEntry
+		for dName, cards := range perCard {
+			for cName, cp := range cards {
+				if cp.casts >= 5 {
+					entries = append(entries, cardEntry{
+						deck: dName, name: cName, casts: cp.casts, wins: cp.wins,
+						winRate: 100 * float64(cp.wins) / float64(cp.casts),
+					})
+				}
+			}
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i].winRate != entries[j].winRate {
+				return entries[i].winRate > entries[j].winRate
+			}
+			return entries[i].casts > entries[j].casts
+		})
+		for _, e := range entries {
+			fmt.Printf("%-35s %-30s %8d %8d %8.1f%%\n", truncate(e.deck, 35), truncate(e.name, 30), e.casts, e.wins, e.winRate)
+		}
+	}
+
+	// Global Card Library
+	if *verbosityFlag >= 1 && *cardStatsFlag != "" {
+		fmt.Println()
+		fmt.Println("Global Card Library (All Runs)")
+		fmt.Printf("%-40s %8s %8s %9s\n", "Card", "Casts", "Wins", "Win%")
+		for _, e := range cardLib.TopCards(5, 50) {
+			fmt.Printf("%-40s %8d %8d %8.1f%%\n", truncate(e.Name, 40), e.Casts, e.Wins, e.WinRate)
+		}
 	}
 
 	// Report unimplemented/unsupported cards encountered

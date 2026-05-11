@@ -19,6 +19,12 @@ const (
 	KillSourceUnknown         KillSource = "unknown"
 )
 
+// CardPerformance tracks per-card aggregate performance for a deck.
+type CardPerformance struct {
+	Casts int `json:"casts"`
+	Wins  int `json:"wins"`
+}
+
 // EDHPlayerRecord captures one seat in one game.
 type EDHPlayerRecord struct {
 	DeckName       string
@@ -36,6 +42,7 @@ type EDHPlayerRecord struct {
 	Eliminations   int
 	Eliminated     bool
 	KillSource     KillSource
+	CardStats      map[string]CardPerformance
 }
 
 // EDHGameRecord captures one completed multiplayer pod.
@@ -70,29 +77,30 @@ type EDHSummary struct {
 
 // EDHDeckStats is the aggregate row exposed to the dashboard.
 type EDHDeckStats struct {
-	DeckName           string  `json:"deck_name"`
-	CommanderName      string  `json:"commander_name"`
-	Games              int     `json:"games"`
-	Wins               int     `json:"wins"`
-	Losses             int     `json:"losses"`
-	WinRate            float64 `json:"win_rate"`
-	AvgFinalLife       float64 `json:"avg_final_life"`
-	AvgMulligans       float64 `json:"avg_mulligans"`
-	CommanderDamageKOs int     `json:"commander_damage_kos"`
-	LifeLossKOs        int     `json:"life_loss_kos"`
-	MillKOs            int     `json:"mill_kos"`
-	AvgCommanderCasts  float64 `json:"avg_commander_casts"`
-	AvgManaSpent       float64 `json:"avg_mana_spent"`
-	AvgCardsPlayed     float64 `json:"avg_cards_played"`
-	AvgLandsPlayed     float64 `json:"avg_lands_played"`
-	AvgSpellsCast      float64 `json:"avg_spells_cast"`
-	AvgCreaturesCast   float64 `json:"avg_creatures_cast"`
-	AvgCombatDamage    float64 `json:"avg_combat_damage"`
-	MaxStormCount      int     `json:"max_storm_count"`
-	TotalManaSpent     int     `json:"total_mana_spent"`
-	TotalCardsPlayed   int     `json:"total_cards_played"`
-	TotalCombatDamage  int     `json:"total_combat_damage"`
-	Eliminations       int     `json:"eliminations"`
+	DeckName           string                        `json:"deck_name"`
+	CommanderName      string                        `json:"commander_name"`
+	Games              int                           `json:"games"`
+	Wins               int                           `json:"wins"`
+	Losses             int                           `json:"losses"`
+	WinRate            float64                       `json:"win_rate"`
+	AvgFinalLife       float64                       `json:"avg_final_life"`
+	AvgMulligans       float64                       `json:"avg_mulligans"`
+	CommanderDamageKOs int                           `json:"commander_damage_kos"`
+	LifeLossKOs        int                           `json:"life_loss_kos"`
+	MillKOs            int                           `json:"mill_kos"`
+	AvgCommanderCasts  float64                       `json:"avg_commander_casts"`
+	AvgManaSpent       float64                       `json:"avg_mana_spent"`
+	AvgCardsPlayed     float64                       `json:"avg_cards_played"`
+	AvgLandsPlayed     float64                       `json:"avg_lands_played"`
+	AvgSpellsCast      float64                       `json:"avg_spells_cast"`
+	AvgCreaturesCast   float64                       `json:"avg_creatures_cast"`
+	AvgCombatDamage    float64                       `json:"avg_combat_damage"`
+	MaxStormCount      int                           `json:"max_storm_count"`
+	TotalManaSpent     int                           `json:"total_mana_spent"`
+	TotalCardsPlayed   int                           `json:"total_cards_played"`
+	TotalCombatDamage  int                           `json:"total_combat_damage"`
+	Eliminations       int                           `json:"eliminations"`
+	CardStats          map[string]CardPerformance    `json:"card_stats"`
 }
 
 // EDHResults aggregates EDHGameRecord values across many simulated pods.
@@ -102,6 +110,11 @@ type EDHResults struct {
 	games   []EDHGameRecord
 	byDeck  map[string]*deckAccumulator
 	summary EDHSummary
+}
+
+type cardPerfAccumulator struct {
+	casts int
+	wins  int
 }
 
 type deckAccumulator struct {
@@ -123,6 +136,7 @@ type deckAccumulator struct {
 	combatDamageSum  int
 	maxStormCount    int
 	eliminations     int
+	cardStats        map[string]*cardPerfAccumulator
 }
 
 // NewEDHResults constructs an empty aggregator.
@@ -178,6 +192,20 @@ func (r *EDHResults) RecordGame(rec EDHGameRecord) {
 				acc.millKOs++
 			}
 		}
+		for cardName, perf := range p.CardStats {
+			if acc.cardStats == nil {
+				acc.cardStats = map[string]*cardPerfAccumulator{}
+			}
+			cpa := acc.cardStats[cardName]
+			if cpa == nil {
+				cpa = &cardPerfAccumulator{}
+				acc.cardStats[cardName] = cpa
+			}
+			cpa.casts += perf.Casts
+			if p.DeckName == rec.Winner {
+				cpa.wins += perf.Casts
+			}
+		}
 	}
 }
 
@@ -209,6 +237,7 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 			TotalCardsPlayed:   acc.cardsPlayedSum,
 			TotalCombatDamage:  acc.combatDamageSum,
 			Eliminations:       acc.eliminations,
+			CardStats:          make(map[string]CardPerformance, len(acc.cardStats)),
 		}
 		if games > 0 {
 			row.WinRate = float64(acc.wins) / float64(games) * 100
@@ -221,6 +250,9 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 			row.AvgSpellsCast = float64(acc.spellsCastSum) / float64(games)
 			row.AvgCreaturesCast = float64(acc.creaturesCastSum) / float64(games)
 			row.AvgCombatDamage = float64(acc.combatDamageSum) / float64(games)
+		}
+		for cname, cpa := range acc.cardStats {
+			row.CardStats[cname] = CardPerformance{Casts: cpa.casts, Wins: cpa.wins}
 		}
 		out = append(out, row)
 	}
@@ -271,7 +303,16 @@ func (r *EDHResults) RecentGames(limit int) []EDHGameRecord {
 
 func cloneEDHGameRecord(rec EDHGameRecord) EDHGameRecord {
 	out := rec
-	out.Players = append([]EDHPlayerRecord(nil), rec.Players...)
+	out.Players = make([]EDHPlayerRecord, len(rec.Players))
+	for i, p := range rec.Players {
+		out.Players[i] = p
+		if p.CardStats != nil {
+			out.Players[i].CardStats = make(map[string]CardPerformance, len(p.CardStats))
+			for k, v := range p.CardStats {
+				out.Players[i].CardStats[k] = v
+			}
+		}
+	}
 	out.Events = append([]EDHEvent(nil), rec.Events...)
 	return out
 }
