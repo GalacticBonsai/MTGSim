@@ -39,6 +39,7 @@ const (
 	SpellCast
 	CreatureEnters
 	LandPlayed
+	AnyTrigger
 )
 
 // EffectType represents the type of effect an ability produces.
@@ -65,7 +66,14 @@ const (
 	TakeExtraTurn     // Extra-turn effects; execution engines may queue an additional turn
 	KeywordAbility    // Static keyword abilities (flying, trample, haste, etc.)
 	Exile             // Exile a permanent, card, or token
-	GenericEffect     // Broad catch-all for unmodeled but acknowledged effects
+	MillCards         // Put cards from library into graveyard
+	ScryCards         // Look at top N cards of library and reorder
+	AddCounters       // Put +1/+1 counters, proliferate, etc.
+	UntapPermanent    // Untap target permanent or all
+	CopySpell         // Copy target instant, sorcery, or permanent
+	CantAttackBlock   // Restriction: can't attack, can't block, etc.
+	AdditionalLand    // Play additional land(s)
+	SacrificePermanent // Sacrifice a permanent as cost or effect
 )
 
 // String returns the human-readable name of an EffectType.
@@ -111,8 +119,22 @@ func (et EffectType) String() string {
 		return "KeywordAbility"
 	case Exile:
 		return "Exile"
-	case GenericEffect:
-		return "GenericEffect"
+	case MillCards:
+		return "MillCards"
+	case ScryCards:
+		return "ScryCards"
+	case AddCounters:
+		return "AddCounters"
+	case UntapPermanent:
+		return "UntapPermanent"
+	case CopySpell:
+		return "CopySpell"
+	case CantAttackBlock:
+		return "CantAttackBlock"
+	case AdditionalLand:
+		return "AdditionalLand"
+	case SacrificePermanent:
+		return "SacrificePermanent"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}

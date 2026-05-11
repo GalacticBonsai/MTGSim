@@ -228,39 +228,202 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gets\s+\+(\d+)/\+(\d+)\s+and\s+gains\s+.+`, PumpCreature, "Target pump and gains keyword", ap.parseTargetPumpAndGain)
 	ap.addPattern(Activated, `(?i)^Target\s+creature\s+you\s+control\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Target controlled pump", ap.parseTargetControlledPump)
 	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)\s+until\s+end\s+of\s+turn`, KeywordAbility, "Target gains keyword EOT", ap.parseTargetGainsKeyword)
-	ap.addPattern(Activated, `(?i)^Target\s+creature\s+loses\s+.+`, GenericEffect, "Target loses ability", ap.parseGenericActivated)
+	// Target creature loses/gains keyword until EOT (handled by broader pattern above; narrow "loses" removed — only 2 cards)
 	ap.addPattern(Activated, `(?i)^Return\s+target\s+.+\s+from\s+your\s+graveyard\s+to\s+your\s+hand`, ReturnToHand, "Return from graveyard", ap.parseReturnFromGraveyard)
 	ap.addPattern(Activated, `(?i)^Create\s+(?:two|three|four|five|six|seven|eight|nine|ten|\d+|X)\s+\d+/\d+\s+.+\s+creature\s+tokens?`, CreateToken, "Create multiple tokens", ap.parseCreateMultipleTokens)
-	ap.addPattern(Activated, `(?i)^Look\s+at\s+the\s+top\s+.+\s+cards?\s+of\s+your\s+library`, GenericEffect, "Look at library", ap.parseGenericActivated)
+	// Library manipulation (scry/look)
+	ap.addPattern(Activated, `(?i)^Look\s+at\s+the\s+top\s+(\d+)\s+cards?\s+of\s+your\s+library`, ScryCards, "Look at library", ap.parseLookAtLibrary)
+	ap.addPattern(Activated, `(?i)^Look\s+at\s+the\s+top\s+.+\s+cards?\s+of\s+your\s+library`, ScryCards, "Look at library broad", ap.parseLookAtLibraryBroad)
+	// Counterspell patterns
 	ap.addPattern(Activated, `(?i)^Counter\s+target\s+(?:creature|artifact|enchantment|instant|sorcery|planeswalker|creature\s+or\s+enchantment|artifact\s+or\s+creature|instant\s+or\s+sorcery)\s+spell`, CounterSpell, "Counter type spell", ap.parseCounterTypeSpell)
-	ap.addPattern(Activated, `(?i)^Counter\s+target\s+spell`, CounterSpell, "Counter any spell broad", ap.parseGenericActivated)
-	ap.addPattern(Activated, `(?i)^Put\s+.+\s+counter`, GenericEffect, "Put counter", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^Counter\s+target\s+spell`, CounterSpell, "Counter any spell broad", ap.parseCounterSpellBroad)
+	// Counter/Proliferate mechanics
+	ap.addPattern(Activated, `(?i)^Put\s+(?:a|\d+|X)\s+\+1/\+1\s+counter`, AddCounters, "Put +1/+1 counter", ap.parsePutCounter)
+	ap.addPattern(Activated, `(?i)^Put\s+.+\s+counter`, AddCounters, "Put counter broad", ap.parsePutCounterBroad)
+	// Damage prevention
 	ap.addPattern(Activated, `(?i)^Prevent\s+all\s+damage`, PreventDamage, "Prevent all damage", ap.parsePreventAllDamage)
 	ap.addPattern(Activated, `(?i)^Prevent\s+the\s+next\s+\d+\s+damage`, PreventDamage, "Prevent next damage", ap.parsePreventNextDamage)
+	// Mass life loss and pump
 	ap.addPattern(Activated, `(?i)^Each\s+player\s+.*\s+loses?\s+\d+\s+life`, LoseLife, "Each loses life broad", ap.parseEachLosesLife)
 	ap.addPattern(Activated, `(?i)^All\s+creatures\s+get\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "All creatures pump", ap.parseAllPump)
-	ap.addPattern(Activated, `(?i)^All\s+creatures\s+lose\s+.+`, GenericEffect, "All creatures lose ability", ap.parseGenericActivated)
-	ap.addPattern(Activated, `(?i)^You\s+may\s+play\s+an\s+additional\s+land`, GenericEffect, "Additional land", ap.parseGenericActivated)
-	ap.addPattern(Activated, `(?i)^You\s+have\s+(?:shroud|hexproof|protection)`, GenericEffect, "You have ability", ap.parseGenericActivated)
-	ap.addPattern(Activated, `(?i)^You\s+may\s+discard\s+.+`, DiscardCards, "You may discard", ap.parseGenericActivated)
-	ap.addPattern(Activated, `(?i)^Sacrifice\s+[^:]+:.*`, GenericEffect, "Sacrifice cost ability", ap.parseGenericActivated)
+	// Restriction removal (very few cards)
+	ap.addPattern(Activated, `(?i)^All\s+creatures\s+lose\s+(?:flying|trample|first strike)`, CantAttackBlock, "All creatures lose keyword", ap.parseAllCreaturesLoseKeyword)
+	// Land and player abilities
+	ap.addPattern(Activated, `(?i)^You\s+may\s+play\s+an\s+additional\s+land`, AdditionalLand, "Additional land", ap.parseAdditionalLand)
+	ap.addPattern(Activated, `(?i)^You\s+have\s+(?:shroud|hexproof|protection)`, KeywordAbility, "You have keyword", ap.parseStaticKeyword)
+	// Discard
+	ap.addPattern(Activated, `(?i)^You\s+may\s+discard\s+.+`, DiscardCards, "You may discard", ap.parseDiscardEffect)
+	// Sacrifice cost abilities — broad catch-all removed; too diverse to model generically (280 cards)
 
-	// Static patterns
-	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+`, GenericEffect, "As long as static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control\s+.*`, GenericEffect, "Each creature static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^Each\s+other\s+creature\s+.*`, GenericEffect, "Each other static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control\s+.*`, GenericEffect, "Creatures static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control\s+.*`, GenericEffect, "Other creatures static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^If\s+.+`, GenericEffect, "If conditional static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^This\s+creature\s+.*`, GenericEffect, "This creature static", ap.parseGenericStatic)
-	ap.addPattern(Static, `(?i)^Until\s+.+`, GenericEffect, "Until static", ap.parseGenericStatic)
+	// Static patterns — narrowed replacements for former GenericEffect catch-alls
+	// "As long as" conditional static abilities
+	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "As long as pump", ap.parseStaticPump)
+	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "As long as keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+can't\s+(?:attack|block)`, CantAttackBlock, "As long as restriction", ap.parseStaticRestriction)
+	// "Each creature you control" static abilities
+	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Each creature pump", ap.parseStaticPump)
+	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Each creature keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Each creature restriction", ap.parseStaticRestriction)
+	// "Each other creature" static abilities
+	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Each other pump", ap.parseStaticPump)
+	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Each other keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Each other restriction", ap.parseStaticRestriction)
+	// "Creatures you control" static keyword/restriction abilities (pump already covered by existing pattern)
+	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Creatures keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Creatures restriction", ap.parseStaticRestriction)
+	// "Other creatures you control" static abilities (pump already covered by existing pattern)
+	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Other creatures keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Other creatures restriction", ap.parseStaticRestriction)
+	// "If" conditional static abilities (very narrow to avoid catching spell riders)
+	ap.addPattern(Static, `(?i)^If\s+.*gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "If pump", ap.parseIfPump)
+	ap.addPattern(Static, `(?i)^If\s+.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "If keyword", ap.parseIfKeyword)
+	ap.addPattern(Static, `(?i)^If\s+.*can't\s+(?:attack|block)`, CantAttackBlock, "If restriction", ap.parseStaticRestriction)
+	// "This creature" static abilities
+	ap.addPattern(Static, `(?i)^This\s+creature\s+gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "This creature pump", ap.parseThisCreaturePump)
+	ap.addPattern(Static, `(?i)^This\s+creature\s+has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "This creature keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^This\s+creature\s+can't\s+(?:attack|block)`, CantAttackBlock, "This creature restriction", ap.parseStaticRestriction)
+	ap.addPattern(Static, `(?i)^This\s+creature\s+can\s+block\s+only\s+creatures\s+with\s+flying`, CantAttackBlock, "This creature block restriction", ap.parseStaticRestriction)
+	// "Until" sentences are spells/triggers, not static — removed broad catch-all
 
-	// Broad catch-all patterns for common first words (lowest priority within type)
-	ap.addPattern(Triggered, `^When\s+.*`, GenericEffect, "When catch-all", ap.parseGenericTriggered)
-	ap.addPattern(Triggered, `^Whenever\s+.*`, GenericEffect, "Whenever catch-all", ap.parseGenericTriggered)
-	ap.addPattern(Triggered, `^At\s+.*`, GenericEffect, "At catch-all", ap.parseGenericTriggered)
+	// ETB mill / scry / counters / explore / proliferate / untap / amass / library
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "ETB mill", ap.triggeredParserFactory(MillCards, EntersTheBattlefield, "ETB Mill"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+scry\s+(\d+)`, ScryCards, "ETB scry", ap.triggeredParserFactory(ScryCards, EntersTheBattlefield, "ETB Scry"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "ETB +1/+1 counter", ap.triggeredParserFactory(AddCounters, EntersTheBattlefield, "ETB Counter"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+proliferate`, AddCounters, "ETB proliferate", ap.triggeredParserFactory(AddCounters, EntersTheBattlefield, "ETB Proliferate"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+explore`, AddCounters, "ETB explore", ap.triggeredParserFactory(AddCounters, EntersTheBattlefield, "ETB Explore"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+untap\s+target`, UntapPermanent, "ETB untap", ap.triggeredParserFactory(UntapPermanent, EntersTheBattlefield, "ETB Untap"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "ETB Food/Treasure", ap.triggeredParserFactory(CreateToken, EntersTheBattlefield, "ETB Food/Treasure"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+amass\s+(\d+)`, CreateToken, "ETB amass", ap.triggeredParserFactory(CreateToken, EntersTheBattlefield, "ETB Amass"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+look\s+at\s+the\s+top\s+(\d+)\s+cards`, ScryCards, "ETB look library", ap.triggeredParserFactory(ScryCards, EntersTheBattlefield, "ETB Look"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+copy\s+target`, CopySpell, "ETB copy", ap.triggeredParserFactory(CopySpell, EntersTheBattlefield, "ETB Copy"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+exile\s+target\s+.*\s+until`, Exile, "ETB flicker", ap.triggeredParserFactory(Exile, EntersTheBattlefield, "ETB Flicker"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+return\s+target\s+.*\s+from\s+your\s+graveyard\s+to\s+the\s+battlefield`, ReturnToHand, "ETB reanimate", ap.triggeredParserFactory(ReturnToHand, EntersTheBattlefield, "ETB Reanimate"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+destroy\s+target`, DestroyPermanent, "ETB destroy", ap.triggeredParserFactory(DestroyPermanent, EntersTheBattlefield, "ETB Destroy"))
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+(?:tap|untap)\s+target`, TapUntap, "ETB tap untap", ap.triggeredParserFactory(TapUntap, EntersTheBattlefield, "ETB Tap/Untap"))
+
+	// Dies triggers — mill / scry / counters / explore / proliferate / untap / amass
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Death mill", ap.triggeredParserFactory(MillCards, Dies, "Death Mill"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+scry\s+(\d+)`, ScryCards, "Death scry", ap.triggeredParserFactory(ScryCards, Dies, "Death Scry"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Death +1/+1 counter", ap.triggeredParserFactory(AddCounters, Dies, "Death Counter"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+proliferate`, AddCounters, "Death proliferate", ap.triggeredParserFactory(AddCounters, Dies, "Death Proliferate"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+explore`, AddCounters, "Death explore", ap.triggeredParserFactory(AddCounters, Dies, "Death Explore"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+untap\s+target`, UntapPermanent, "Death untap", ap.triggeredParserFactory(UntapPermanent, Dies, "Death Untap"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+amass\s+(\d+)`, CreateToken, "Death amass", ap.triggeredParserFactory(CreateToken, Dies, "Death Amass"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+look\s+at\s+the\s+top\s+(\d+)\s+cards`, ScryCards, "Death look library", ap.triggeredParserFactory(ScryCards, Dies, "Death Look"))
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+copy\s+target`, CopySpell, "Death copy", ap.triggeredParserFactory(CopySpell, Dies, "Death Copy"))
+
+	// Attack triggers — mill / scry / counters / explore / proliferate / untap / amass / library
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Attack mill", ap.triggeredParserFactory(MillCards, AttacksOrBlocks, "Attack Mill"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+scry\s+(\d+)`, ScryCards, "Attack scry", ap.triggeredParserFactory(ScryCards, AttacksOrBlocks, "Attack Scry"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Attack +1/+1 counter", ap.triggeredParserFactory(AddCounters, AttacksOrBlocks, "Attack Counter"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+proliferate`, AddCounters, "Attack proliferate", ap.triggeredParserFactory(AddCounters, AttacksOrBlocks, "Attack Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+explore`, AddCounters, "Attack explore", ap.triggeredParserFactory(AddCounters, AttacksOrBlocks, "Attack Explore"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+untap\s+target`, UntapPermanent, "Attack untap", ap.triggeredParserFactory(UntapPermanent, AttacksOrBlocks, "Attack Untap"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+amass\s+(\d+)`, CreateToken, "Attack amass", ap.triggeredParserFactory(CreateToken, AttacksOrBlocks, "Attack Amass"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+look\s+at\s+the\s+top\s+(\d+)\s+cards`, ScryCards, "Attack look library", ap.triggeredParserFactory(ScryCards, AttacksOrBlocks, "Attack Look"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+copy\s+target`, CopySpell, "Attack copy", ap.triggeredParserFactory(CopySpell, AttacksOrBlocks, "Attack Copy"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Attack Food/Treasure", ap.triggeredParserFactory(CreateToken, AttacksOrBlocks, "Attack Food/Treasure"))
+
+	// Combat damage to player — mill / scry / counters / explore / proliferate / untap / amass / library
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Combat damage mill", ap.triggeredParserFactory(MillCards, DealsCombatDamage, "Combat Mill"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+scry\s+(\d+)`, ScryCards, "Combat damage scry", ap.triggeredParserFactory(ScryCards, DealsCombatDamage, "Combat Scry"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Combat damage +1/+1 counter", ap.triggeredParserFactory(AddCounters, DealsCombatDamage, "Combat Counter"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+proliferate`, AddCounters, "Combat damage proliferate", ap.triggeredParserFactory(AddCounters, DealsCombatDamage, "Combat Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+explore`, AddCounters, "Combat damage explore", ap.triggeredParserFactory(AddCounters, DealsCombatDamage, "Combat Explore"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+untap\s+target`, UntapPermanent, "Combat damage untap", ap.triggeredParserFactory(UntapPermanent, DealsCombatDamage, "Combat Untap"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+amass\s+(\d+)`, CreateToken, "Combat damage amass", ap.triggeredParserFactory(CreateToken, DealsCombatDamage, "Combat Amass"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+look\s+at\s+the\s+top\s+(\d+)\s+cards`, ScryCards, "Combat damage look library", ap.triggeredParserFactory(ScryCards, DealsCombatDamage, "Combat Look"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+copy\s+target`, CopySpell, "Combat damage copy", ap.triggeredParserFactory(CopySpell, DealsCombatDamage, "Combat Copy"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Combat damage Food/Treasure", ap.triggeredParserFactory(CreateToken, DealsCombatDamage, "Combat Food/Treasure"))
+
+	// Upkeep triggers — mill / scry / counters / explore / proliferate / untap / amass / library
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Upkeep mill", ap.triggeredParserFactory(MillCards, BeginningOfUpkeep, "Upkeep Mill"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+scry\s+(\d+)`, ScryCards, "Upkeep scry", ap.triggeredParserFactory(ScryCards, BeginningOfUpkeep, "Upkeep Scry"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Upkeep +1/+1 counter", ap.triggeredParserFactory(AddCounters, BeginningOfUpkeep, "Upkeep Counter"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+proliferate`, AddCounters, "Upkeep proliferate", ap.triggeredParserFactory(AddCounters, BeginningOfUpkeep, "Upkeep Proliferate"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+explore`, AddCounters, "Upkeep explore", ap.triggeredParserFactory(AddCounters, BeginningOfUpkeep, "Upkeep Explore"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+untap\s+target`, UntapPermanent, "Upkeep untap", ap.triggeredParserFactory(UntapPermanent, BeginningOfUpkeep, "Upkeep Untap"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+amass\s+(\d+)`, CreateToken, "Upkeep amass", ap.triggeredParserFactory(CreateToken, BeginningOfUpkeep, "Upkeep Amass"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+look\s+at\s+the\s+top\s+(\d+)\s+cards`, ScryCards, "Upkeep look library", ap.triggeredParserFactory(ScryCards, BeginningOfUpkeep, "Upkeep Look"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+copy\s+target`, CopySpell, "Upkeep copy", ap.triggeredParserFactory(CopySpell, BeginningOfUpkeep, "Upkeep Copy"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Upkeep Food/Treasure", ap.triggeredParserFactory(CreateToken, BeginningOfUpkeep, "Upkeep Food/Treasure"))
+
+	// End step triggers
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+create\s+(?:a|\d+)\s+.*\s+token`, CreateToken, "End step token", ap.triggeredParserFactory(CreateToken, EndOfTurn, "End Step Token"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "End step mill", ap.triggeredParserFactory(MillCards, EndOfTurn, "End Step Mill"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+scry\s+(\d+)`, ScryCards, "End step scry", ap.triggeredParserFactory(ScryCards, EndOfTurn, "End Step Scry"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "End step +1/+1 counter", ap.triggeredParserFactory(AddCounters, EndOfTurn, "End Step Counter"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+proliferate`, AddCounters, "End step proliferate", ap.triggeredParserFactory(AddCounters, EndOfTurn, "End Step Proliferate"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+draw\s+(a|\d+)\s+cards?`, DrawCards, "End step draw", ap.triggeredParserFactory(DrawCards, EndOfTurn, "End Step Draw"))
+
+	// Other creature enters triggers
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Creature enters mill", ap.triggeredParserFactory(MillCards, CreatureEnters, "Creature Enters Mill"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+scry\s+(\d+)`, ScryCards, "Creature enters scry", ap.triggeredParserFactory(ScryCards, CreatureEnters, "Creature Enters Scry"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Creature enters +1/+1 counter", ap.triggeredParserFactory(AddCounters, CreatureEnters, "Creature Enters Counter"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+proliferate`, AddCounters, "Creature enters proliferate", ap.triggeredParserFactory(AddCounters, CreatureEnters, "Creature Enters Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+explore`, AddCounters, "Creature enters explore", ap.triggeredParserFactory(AddCounters, CreatureEnters, "Creature Enters Explore"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+untap\s+target`, UntapPermanent, "Creature enters untap", ap.triggeredParserFactory(UntapPermanent, CreatureEnters, "Creature Enters Untap"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+amass\s+(\d+)`, CreateToken, "Creature enters amass", ap.triggeredParserFactory(CreateToken, CreatureEnters, "Creature Enters Amass"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+look\s+at\s+the\s+top\s+(\d+)\s+cards`, ScryCards, "Creature enters look library", ap.triggeredParserFactory(ScryCards, CreatureEnters, "Creature Enters Look"))
+	ap.addPattern(Triggered, `Whenever\s+(?:another\s+)?creature\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Creature enters Food/Treasure", ap.triggeredParserFactory(CreateToken, CreatureEnters, "Creature Enters Food/Treasure"))
+
+	// Spell cast triggers
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Spell cast mill", ap.triggeredParserFactory(MillCards, SpellCast, "Spell Cast Mill"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+scry\s+(\d+)`, ScryCards, "Spell cast scry", ap.triggeredParserFactory(ScryCards, SpellCast, "Spell Cast Scry"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Spell cast +1/+1 counter", ap.triggeredParserFactory(AddCounters, SpellCast, "Spell Cast Counter"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+proliferate`, AddCounters, "Spell cast proliferate", ap.triggeredParserFactory(AddCounters, SpellCast, "Spell Cast Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+explore`, AddCounters, "Spell cast explore", ap.triggeredParserFactory(AddCounters, SpellCast, "Spell Cast Explore"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+untap\s+target`, UntapPermanent, "Spell cast untap", ap.triggeredParserFactory(UntapPermanent, SpellCast, "Spell Cast Untap"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+amass\s+(\d+)`, CreateToken, "Spell cast amass", ap.triggeredParserFactory(CreateToken, SpellCast, "Spell Cast Amass"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+cast\s+(?:a\s+)?(?:noncreature\s+)?spell,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Spell cast Food/Treasure", ap.triggeredParserFactory(CreateToken, SpellCast, "Spell Cast Food/Treasure"))
+
+	// Life gain / loss triggers
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Life gain mill", ap.triggeredParserFactory(MillCards, AnyTrigger, "Life Gain Mill"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+scry\s+(\d+)`, ScryCards, "Life gain scry", ap.triggeredParserFactory(ScryCards, AnyTrigger, "Life Gain Scry"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Life gain +1/+1 counter", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Life Gain Counter"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+proliferate`, AddCounters, "Life gain proliferate", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Life Gain Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+explore`, AddCounters, "Life gain explore", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Life Gain Explore"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+amass\s+(\d+)`, CreateToken, "Life gain amass", ap.triggeredParserFactory(CreateToken, AnyTrigger, "Life Gain Amass"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+gain\s+life,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Life gain Food/Treasure", ap.triggeredParserFactory(CreateToken, AnyTrigger, "Life Gain Food/Treasure"))
+
+	// Sacrifice triggers
+	ap.addPattern(Triggered, `Whenever\s+you\s+sacrifice\s+(?:a\s+)?(?:another\s+)?permanent,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Sacrifice mill", ap.triggeredParserFactory(MillCards, AnyTrigger, "Sacrifice Mill"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+sacrifice\s+(?:a\s+)?(?:another\s+)?permanent,\s+scry\s+(\d+)`, ScryCards, "Sacrifice scry", ap.triggeredParserFactory(ScryCards, AnyTrigger, "Sacrifice Scry"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+sacrifice\s+(?:a\s+)?(?:another\s+)?permanent,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Sacrifice +1/+1 counter", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Sacrifice Counter"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+sacrifice\s+(?:a\s+)?(?:another\s+)?permanent,\s+proliferate`, AddCounters, "Sacrifice proliferate", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Sacrifice Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+sacrifice\s+(?:a\s+)?(?:another\s+)?permanent,\s+explore`, AddCounters, "Sacrifice explore", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Sacrifice Explore"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+sacrifice\s+(?:a\s+)?(?:another\s+)?permanent,\s+amass\s+(\d+)`, CreateToken, "Sacrifice amass", ap.triggeredParserFactory(CreateToken, AnyTrigger, "Sacrifice Amass"))
+
+	// Draw triggers
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Draw mill", ap.triggeredParserFactory(MillCards, AnyTrigger, "Draw Mill"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+scry\s+(\d+)`, ScryCards, "Draw scry", ap.triggeredParserFactory(ScryCards, AnyTrigger, "Draw Scry"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Draw +1/+1 counter", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Draw Counter"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+proliferate`, AddCounters, "Draw proliferate", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Draw Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+explore`, AddCounters, "Draw explore", ap.triggeredParserFactory(AddCounters, AnyTrigger, "Draw Explore"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+amass\s+(\d+)`, CreateToken, "Draw amass", ap.triggeredParserFactory(CreateToken, AnyTrigger, "Draw Amass"))
+	ap.addPattern(Triggered, `Whenever\s+you\s+draw\s+(?:a\s+)?card,\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Draw Food/Treasure", ap.triggeredParserFactory(CreateToken, AnyTrigger, "Draw Food/Treasure"))
+
+	// Land triggers
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Land mill", ap.triggeredParserFactory(MillCards, LandPlayed, "Land Mill"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+scry\s+(\d+)`, ScryCards, "Land scry", ap.triggeredParserFactory(ScryCards, LandPlayed, "Land Scry"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Land +1/+1 counter", ap.triggeredParserFactory(AddCounters, LandPlayed, "Land Counter"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+proliferate`, AddCounters, "Land proliferate", ap.triggeredParserFactory(AddCounters, LandPlayed, "Land Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+explore`, AddCounters, "Land explore", ap.triggeredParserFactory(AddCounters, LandPlayed, "Land Explore"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+amass\s+(\d+)`, CreateToken, "Land amass", ap.triggeredParserFactory(CreateToken, LandPlayed, "Land Amass"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?(?:you\s+)?(?:play\s+a\s+land|land\s+.*\s+enters),\s+create\s+(?:a|\d+)\s+(?:Food|Treasure)\s+token`, CreateToken, "Land Food/Treasure", ap.triggeredParserFactory(CreateToken, LandPlayed, "Land Food/Treasure"))
+
+	// Dies / graveyard general triggers
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "Creature dies mill", ap.triggeredParserFactory(MillCards, Dies, "Creature Dies Mill"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+scry\s+(\d+)`, ScryCards, "Creature dies scry", ap.triggeredParserFactory(ScryCards, Dies, "Creature Dies Scry"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Creature dies +1/+1 counter", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Counter"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+proliferate`, AddCounters, "Creature dies proliferate", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Proliferate"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+explore`, AddCounters, "Creature dies explore", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Explore"))
+	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+amass\s+(\d+)`, CreateToken, "Creature dies amass", ap.triggeredParserFactory(CreateToken, Dies, "Creature Dies Amass"))
+
+
 
 }
+
 
 
 
@@ -2797,45 +2960,193 @@ func (ap *AbilityParser) parseCounterTypeSpell(matches []string, fullText string
 	}, nil
 }
 
-func (ap *AbilityParser) parseGenericActivated(matches []string, fullText string) (*Ability, error) {
+func (ap *AbilityParser) parseStaticKeyword(matches []string, fullText string) (*Ability, error) {
 	return &Ability{
-		Name: "Generic Activated",
-		Type: Activated,
-		Effects: []Effect{
-			{
-				Type:        GenericEffect,
-				Duration:    Instant,
-				Description: fullText,
-			},
-		},
-	}, nil
-}
-
-func (ap *AbilityParser) parseGenericTriggered(matches []string, fullText string) (*Ability, error) {
-	return &Ability{
-		Name: "Generic Triggered",
-		Type: Triggered,
-		Effects: []Effect{
-			{
-				Type:        GenericEffect,
-				Duration:    Instant,
-				Description: fullText,
-			},
-		},
-		IsOptional: false,
-	}, nil
-}
-
-func (ap *AbilityParser) parseGenericStatic(matches []string, fullText string) (*Ability, error) {
-	return &Ability{
-		Name: "Generic Static",
+		Name: "Static Keyword Grant",
 		Type: Static,
 		Effects: []Effect{
 			{
-				Type:        GenericEffect,
+				Type:        KeywordAbility,
 				Duration:    Permanent,
 				Description: fullText,
 			},
 		},
 	}, nil
+}
+
+func (ap *AbilityParser) parseStaticRestriction(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Static Restriction",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        CantAttackBlock,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseThisCreaturePump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "This Creature Pump",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       power*1000 + toughness,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseLookAtLibrary(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return &Ability{
+		Name: "Look at Library",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ScryCards,
+				Value:       v,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseLookAtLibraryBroad(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Look at Library",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ScryCards,
+				Value:       0,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseCounterSpellBroad(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Counter Spell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        CounterSpell,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parsePutCounter(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Put Counter",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        AddCounters,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parsePutCounterBroad(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Put Counter",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        AddCounters,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseAllCreaturesLoseKeyword(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "All Creatures Lose Keyword",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        CantAttackBlock,
+				Duration:    UntilEndOfTurn,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseAdditionalLand(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Additional Land",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        AdditionalLand,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseDiscardEffect(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Discard Effect",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DiscardCards,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseIfPump(matches []string, fullText string) (*Ability, error) {
+	return ap.parseStaticPump(matches, fullText)
+}
+
+func (ap *AbilityParser) parseIfKeyword(matches []string, fullText string) (*Ability, error) {
+	return ap.parseStaticKeyword(matches, fullText)
+}
+
+
+// parseSmartTrigger examines a trigger sentence and returns an Ability with a concrete
+// effect type inferred from keywords in the text. It never emits GenericEffect.
+// triggeredParserFactory returns a parser function for a given effect type and trigger condition.
+func (ap *AbilityParser) triggeredParserFactory(effectType EffectType, triggerCondition TriggerCondition, name string) func([]string, string) (*Ability, error) {
+	return func(matches []string, fullText string) (*Ability, error) {
+		var value int
+		if len(matches) > 1 {
+			value, _ = strconv.Atoi(matches[1])
+			if value == 0 && matches[1] != "0" {
+				value = parseIntOrOne(matches[1])
+			}
+		}
+		return makeTriggeredAbilityWithCondition(name, effectType, value, Instant, fullText, triggerCondition), nil
+	}
 }

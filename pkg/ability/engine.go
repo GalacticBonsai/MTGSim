@@ -429,9 +429,29 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		// Exile effects are parsed for coverage.
 		logger.LogCard("Exile: %s", effect.Description)
 
-	case GenericEffect:
-		// Generic catch-all for effects that are acknowledged but not specifically modeled.
-		logger.LogCard("Generic effect: %s", effect.Description)
+	case MillCards:
+		logger.LogCard("Mill cards: %s", effect.Description)
+
+	case ScryCards:
+		logger.LogCard("Scry cards: %s", effect.Description)
+
+	case AddCounters:
+		logger.LogCard("Add counters: %s", effect.Description)
+
+	case UntapPermanent:
+		logger.LogCard("Untap permanent: %s", effect.Description)
+
+	case CopySpell:
+		logger.LogCard("Copy spell: %s", effect.Description)
+
+	case CantAttackBlock:
+		logger.LogCard("Restriction: %s", effect.Description)
+
+	case AdditionalLand:
+		logger.LogCard("Additional land: %s", effect.Description)
+
+	case SacrificePermanent:
+		logger.LogCard("Sacrifice: %s", effect.Description)
 
 	default:
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
@@ -448,7 +468,9 @@ func CanExecuteEffect(effectType EffectType) bool {
 		PumpCreature, DestroyPermanent, CounterSpell,
 		TapUntap, ChangeControl, ReturnToHand, SourcePowerDamage,
 		DiscardCards, SearchLibrary, CreateToken, PreventDamage,
-		KeywordAbility, ChooseMode, TakeExtraTurn, Exile, GenericEffect:
+		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
+		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
+		CantAttackBlock, AdditionalLand, SacrificePermanent:
 		return true
 	default:
 		return false
