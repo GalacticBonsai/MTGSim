@@ -331,6 +331,19 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 	return nil
 }
 
+// CanExecuteEffect returns true if the execution engine has a concrete
+// implementation for the given effect type.
+func CanExecuteEffect(effectType EffectType) bool {
+	switch effectType {
+	case DrawCards, DealDamage, GainLife, LoseLife, AddMana,
+		PumpCreature, DestroyPermanent, CounterSpell,
+		TapUntap, ChangeControl, ReturnToHand, SourcePowerDamage:
+		return true
+	default:
+		return false
+	}
+}
+
 // determineManaType determines what type of mana an ability produces.
 func (ee *ExecutionEngine) determineManaType(ability *Ability, _ Effect) game.ManaType {
 	// Parse from ability description or oracle text
@@ -563,12 +576,12 @@ func (ee *ExecutionEngine) ParseAndRegisterAbilities(oracleText string, source a
 		return nil, err
 	}
 
-	// If no abilities parsed for spell cards with non-empty text, mark as unimplemented
+	// A card with oracle text inherently has abilities. If the parser returns
+	// zero abilities, that is a parser failure, not a missing-ability card.
 	if len(abilities) == 0 {
 		if cc, ok := source.(card.Card); ok {
-			typeLine := cc.TypeLine
-			if (strings.Contains(typeLine, "Instant") || strings.Contains(typeLine, "Sorcery")) && strings.TrimSpace(cc.OracleText) != "" {
-				markUnimplementedCard(cc.Name, "no parsed effects")
+			if strings.TrimSpace(cc.OracleText) != "" && !isBasicLand(cc.TypeLine) {
+				markUnimplementedCard(cc.Name, "parser failed to extract abilities from oracle text")
 			}
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/mtgsim/mtgsim/internal/logger"
+	abil "github.com/mtgsim/mtgsim/pkg/ability"
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/dashboard"
 	"github.com/mtgsim/mtgsim/pkg/deck"
@@ -85,6 +86,47 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Warn about unimplemented cards in loaded EDH decks
+	implTracker := abil.NewImplementationTracker()
+	warnedDecks := map[string]bool{}
+	for _, seat := range seats {
+		if warnedDecks[seat.DeckPath] {
+			continue
+		}
+		warnedDecks[seat.DeckPath] = true
+		var allNames []string
+		for _, c := range seat.Library {
+			allNames = append(allNames, c.Name)
+		}
+		for _, c := range seat.Sideboard {
+			allNames = append(allNames, c.Name)
+		}
+		for _, c := range seat.Commanders {
+			allNames = append(allNames, c.Name)
+		}
+		seen := map[string]bool{}
+		var deckCards []card.Card
+		for _, name := range allNames {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if c, ok := cardDB.GetCardByName(name); ok {
+				deckCards = append(deckCards, c)
+			}
+		}
+		unimpl := implTracker.CheckDeck(deckCards, cardDB)
+		for _, name := range unimpl {
+			logger.LogMeta("Warning: unimplemented card in %s: %s", seat.DeckPath, name)
+		}
+	}
+	var implReport *card.ImplementationReport
+	if report, err := card.ComputeImplementationStatus(cardDB, implTracker); err == nil {
+		logger.LogMeta("Implementation status: %d/%d cards (%.1f%%)", report.ImplementedCount, report.TotalCards, report.Percentage)
+		_ = implTracker.Save()
+		implReport = report
+	}
+
 	edhResults := simulation.NewEDHResults()
 	legacyResults := simulation.NewResults()
 	var mu sync.Mutex
@@ -121,7 +163,7 @@ func main() {
 	}
 
 	if *port > 0 {
-		startDashboard(legacyResults, edhResults, cardLib, &mu, *port)
+		startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport)
 	}
 	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
 	start := time.Now()
@@ -300,16 +342,16 @@ func printSummary(r *simulation.EDHResults, cardLib *stats.CardLibrary) {
 			}
 			return entries[i].casts > entries[j].casts
 		})
-		for _, e := range entries {
-			logger.LogMeta("    Card %-26s C:%-3d W:%-3d WR:%5.1f%%", e.name, e.casts, e.wins, e.winRate)
-		}
+		// for _, e := range entries {
+		// 	logger.LogMeta("    Card %-26s C:%-3d W:%-3d WR:%5.1f%%", e.name, e.casts, e.wins, e.winRate)
+		// }
 	}
-	if len(cardLib.Cards) > 0 {
-		logger.LogMeta("=== Global Card Library ===")
-		for _, e := range cardLib.TopCards(5, 20) {
-			logger.LogMeta("%-40s C:%-5d W:%-5d WR:%5.1f%%", e.Name, e.Casts, e.Wins, e.WinRate)
-		}
-	}
+	// if len(cardLib.Cards) > 0 {
+	// 	logger.LogMeta("=== Global Card Library ===")
+	// 	for _, e := range cardLib.TopCards(5, 20) {
+	// 		logger.LogMeta("%-40s C:%-5d W:%-5d WR:%5.1f%%", e.Name, e.Casts, e.Wins, e.WinRate)
+	// 	}
+	// }
 }
 
 // writeReplay serializes a single pod's record (including the event log
@@ -327,7 +369,7 @@ func writeReplay(dir string, podIndex int, rec simulation.EDHGameRecord) {
 	}
 }
 
-func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.Mutex, port int) {
+func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.Mutex, port int, implReport *card.ImplementationReport) {
 	server := dashboard.NewServer(func() []simulation.Result {
 		mu.Lock()
 		defer mu.Unlock()
@@ -352,6 +394,9 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 		mu.Lock()
 		defer mu.Unlock()
 		return cardLib.Cards
+	})
+	server.SetImplementationReportProvider(func() *card.ImplementationReport {
+		return implReport
 	})
 	go func() {
 		if err := server.Start(); err != nil {

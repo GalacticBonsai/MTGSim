@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
@@ -31,15 +32,19 @@ type EDHSummaryProvider func() simulation.EDHSummary
 // CardLibraryProvider returns the persistent global card stats library.
 type CardLibraryProvider func() map[string]stats.GlobalCardStats
 
+// ImplementationReportProvider returns the card implementation report.
+type ImplementationReportProvider func() *card.ImplementationReport
+
 // Server serves the dashboard.
 type Server struct {
-	provider     ResultsProvider
-	edhProvider  EDHResultsProvider
-	edhGames     EDHGamesProvider
-	edhSummary   EDHSummaryProvider
-	cardLibrary  CardLibraryProvider
-	port         int
-	mux          *http.ServeMux
+	provider            ResultsProvider
+	edhProvider         EDHResultsProvider
+	edhGames            EDHGamesProvider
+	edhSummary          EDHSummaryProvider
+	cardLibrary         CardLibraryProvider
+	implReport          ImplementationReportProvider
+	port                int
+	mux                 *http.ServeMux
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
@@ -65,6 +70,9 @@ func (s *Server) SetEDHSummaryProvider(p EDHSummaryProvider) { s.edhSummary = p 
 // SetCardLibraryProvider attaches a global card stats provider for /api/card-library.
 func (s *Server) SetCardLibraryProvider(p CardLibraryProvider) { s.cardLibrary = p }
 
+// SetImplementationReportProvider attaches an implementation report for /api/implementation.
+func (s *Server) SetImplementationReportProvider(p ImplementationReportProvider) { s.implReport = p }
+
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
 	s.registerRoutes()
@@ -76,6 +84,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/edh-results", s.handleEDHResults)
 	s.mux.HandleFunc("/api/edh-games", s.handleEDHGames)
 	s.mux.HandleFunc("/api/card-library", s.handleCardLibrary)
+	s.mux.HandleFunc("/api/implementation", s.handleImplementation)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -174,6 +183,20 @@ func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: true, Cards: s.cardLibrary()})
 }
 
+type implementationResponse struct {
+	Enabled bool                     `json:"enabled"`
+	Report  *card.ImplementationReport `json:"report"`
+}
+
+func (s *Server) handleImplementation(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.implReport == nil {
+		_ = json.NewEncoder(w).Encode(implementationResponse{Enabled: false})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(implementationResponse{Enabled: true, Report: s.implReport()})
+}
+
 // handleHealth returns server health.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -224,6 +247,10 @@ const htmlDashboard = `
 		.chart-container { background: #141829; border: 1px solid #1a1f3a; border-radius: 8px; padding: 20px; margin-top: 20px; }
 		h3 { margin: 20px 0 10px 0; }
 		.loading { text-align: center; color: #666; }
+		.search-box { width: 100%; max-width: 400px; background: #0a0e27; border: 1px solid #1a1f3a; color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 0.95em; margin-bottom: 10px; }
+		.search-box::placeholder { color: #666; }
+		.search-box:focus { outline: none; border-color: #5a6dd8; }
+		.search-meta { color: #888; font-size: 0.85em; margin-bottom: 10px; }
 	</style>
 </head>
 <body>
@@ -234,11 +261,12 @@ const htmlDashboard = `
 		</header>
 
 		<div class="tabs">
-			<button class="tab-btn active" onclick="showTab('overview', this)">Overview</button>
-			<button class="tab-btn" onclick="showTab('edh-decks', this)">EDH Decks</button>
-			<button class="tab-btn" onclick="showTab('top-cards', this)">Top Cards</button>
-			<button class="tab-btn" onclick="showTab('recent-pods', this)">Recent Pods</button>
-			<button class="tab-btn" onclick="showTab('card-library', this)">Card Library</button>
+			<button class="tab-btn active" onclick="showTab('overview', this)" title="Aggregate 1v1 simulation results and deck win rates">Overview</button>
+			<button class="tab-btn" onclick="showTab('edh-decks', this)" title="Commander deck performance across all pods">EDH Decks</button>
+			<button class="tab-btn" onclick="showTab('top-cards', this)" title="Highest win-rate cards when cast (minimum 5 casts)">Top Cards</button>
+			<button class="tab-btn" onclick="showTab('recent-pods', this)" title="Last 10 EDH pods with per-player breakdowns">Recent Pods</button>
+			<button class="tab-btn" onclick="showTab('card-library', this)" title="Global card statistics across all simulation runs">Card Library</button>
+			<button class="tab-btn" onclick="showTab('implementation', this)" title="Card implementation status by parser and engine support">Implementation</button>
 		</div>
 		<div id="overview" class="tab-content active">
 
@@ -250,10 +278,10 @@ const htmlDashboard = `
 		<table class="table" id="decks">
 			<thead>
 				<tr>
-					<th>Deck Name</th>
-					<th>Wins</th>
-					<th>Losses</th>
-					<th>Win Rate</th>
+					<th title="Deck file name">Deck Name</th>
+					<th title="Games won">Wins</th>
+					<th title="Games lost">Losses</th>
+					<th title="Win percentage (Wins / Total Games)">Win Rate</th>
 				</tr>
 			</thead>
 			<tbody id="decksBody">
@@ -273,26 +301,26 @@ const htmlDashboard = `
 			<table class="table" id="edhDecks">
 				<thead>
 					<tr>
-						<th>Deck</th>
-						<th>Commander</th>
-						<th>Games</th>
-						<th>Wins</th>
-						<th>Losses</th>
-						<th>Win Rate</th>
-						<th>Avg Life</th>
-						<th>Cmdr Dmg KOs</th>
-							<th>Life KOs</th>
-							<th>Mill KOs</th>
-							<th>Avg Cmdr Casts</th>
-					<th>Avg Mana</th>
-					<th>Avg Cards</th>
-					<th>Avg Lands</th>
-					<th>Avg Spells</th>
-					<th>Avg Creatures</th>
-							<th>Avg Combat</th>
-							<th>Max Storm</th>
-							<th>KOs</th>
-						<th>Avg Mulls</th>
+						<th title="Deck file name">Deck</th>
+						<th title="Commander card name">Commander</th>
+						<th title="Total pods played">Games</th>
+						<th title="Pods won">Wins</th>
+						<th title="Pods lost">Losses</th>
+						<th title="Win percentage (Wins / Games)">Win Rate</th>
+						<th title="Average remaining life total at pod end">Avg Life</th>
+						<th title="Eliminations via commander damage">Cmdr Dmg KOs</th>
+							<th title="Eliminations via life loss (non-commander)">Life KOs</th>
+							<th title="Eliminations via decking or mill">Mill KOs</th>
+							<th title="Average commander casts per pod">Avg Cmdr Casts</th>
+					<th title="Average mana spent per pod">Avg Mana</th>
+					<th title="Average cards played per pod">Avg Cards</th>
+					<th title="Average lands played per pod">Avg Lands</th>
+					<th title="Average non-creature spells cast per pod">Avg Spells</th>
+					<th title="Average creatures cast per pod">Avg Creatures</th>
+							<th title="Average combat damage dealt per pod">Avg Combat</th>
+							<th title="Highest storm count reached">Max Storm</th>
+							<th title="Total eliminations caused">KOs</th>
+						<th title="Average mulligans per pod">Avg Mulls</th>
 					</tr>
 				</thead>
 				<tbody id="edhDecksBody">
@@ -307,11 +335,11 @@ const htmlDashboard = `
 			<table class="table" id="topCards">
 				<thead>
 					<tr>
-						<th>Deck</th>
-						<th>Card</th>
-						<th>Casts</th>
-						<th>Wins</th>
-						<th>Win Rate</th>
+						<th title="Deck that played this card">Deck</th>
+						<th title="Card name">Card</th>
+						<th title="Total times this card was cast">Casts</th>
+						<th title="Games won when this card was cast">Wins</th>
+						<th title="Win percentage when cast (Wins / Casts)">Win Rate</th>
 					</tr>
 				</thead>
 				<tbody id="topCardsBody">
@@ -324,7 +352,17 @@ const htmlDashboard = `
 				<h3>Recent EDH Pods</h3>
 				<table class="table" id="edhGames">
 					<thead>
-						<tr><th>Winner</th><th>Turns</th><th>Max Storm</th><th>Mana</th><th>Cards</th><th>Combat</th><th>Players</th><th>Events</th><th>Last Event</th></tr>
+						<tr>
+							<th title="Deck that won the pod (or Draw)">Winner</th>
+							<th title="Number of turns the pod lasted">Turns</th>
+							<th title="Highest storm count reached">Max Storm</th>
+							<th title="Total mana spent by all players">Mana</th>
+							<th title="Total cards played by all players">Cards</th>
+							<th title="Total combat damage dealt">Combat</th>
+							<th title="Per-player pod summary">Players</th>
+							<th title="Number of game events logged">Events</th>
+							<th title="Type of the final game event">Last Event</th>
+						</tr>
 					</thead>
 					<tbody id="edhGamesBody">
 						<tr><td colspan="9" class="loading">Loading...</td></tr>
@@ -338,14 +376,51 @@ const htmlDashboard = `
 			<table class="table" id="cardLibrary">
 				<thead>
 					<tr>
-						<th>Card</th>
-						<th>Casts</th>
-						<th>Wins</th>
-						<th>Win Rate</th>
+						<th title="Card name">Card</th>
+						<th title="Total casts across all runs">Casts</th>
+						<th title="Wins when this card was cast">Wins</th>
+						<th title="Win percentage when cast (Wins / Casts)">Win Rate</th>
 					</tr>
 				</thead>
 				<tbody id="cardLibraryBody">
 					<tr><td colspan="4" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div id="implementation" class="tab-content">
+			<h3>Implementation</h3>
+			<p style="color:#888; margin-bottom:10px;">Cards evaluated against the ability parser and execution engine.</p>
+			<div class="grid" id="implSummary">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>By Color</h3>
+			<div class="chart-container" id="implByColor" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>By Set</h3>
+			<div class="chart-container" id="implBySet" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>By Type</h3>
+			<div class="chart-container" id="implByType" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>Unimplemented Cards</h3>
+			<input type="text" id="implSearch" class="search-box" placeholder="Search unimplemented cards by name..." oninput="filterImplCards()">
+			<div class="search-meta" id="implSearchMeta"></div>
+			<table class="table" id="implCards">
+				<thead>
+					<tr>
+						<th onclick="sortImplTable('name')" title="Click to sort by card name">Card ▲▼</th>
+						<th onclick="sortImplTable('type')" title="Click to sort by card type">Type ▲▼</th>
+						<th onclick="sortImplTable('set')" title="Click to sort by set code">Set ▲▼</th>
+						<th onclick="sortImplTable('colors')" title="Click to sort by color identity">Color ▲▼</th>
+						<th title="Why the card is not yet fully implemented">Reason</th>
+					</tr>
+				</thead>
+				<tbody id="implCardsBody">
+					<tr><td colspan="5" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
 		</div>
@@ -388,12 +463,21 @@ const htmlDashboard = `
 			} catch (err) {
 				console.error('Error loading card library:', err);
 			}
+			try {
+				const res = await fetch('/api/implementation');
+				const data = await res.json();
+				if (data.enabled) {
+					renderImplementationStatus(data.report || {});
+				}
+			} catch (err) {
+				console.error('Error loading implementation status:', err);
+			}
 		}
 
 		function renderSummary(data) {
 			let html = '';
-			html += '<div class="card"><h2>Total Games</h2><div class="value">' + (data.total_games || 0) + '</div></div>';
-			html += '<div class="card"><h2>Unique Decks</h2><div class="value">' + (data.unique_decks || 0) + '</div></div>';
+			html += '<div class="card" title="Total number of 1v1 games simulated"><h2>Total Games</h2><div class="value">' + (data.total_games || 0) + '</div></div>';
+			html += '<div class="card" title="Number of distinct decklists tested"><h2>Unique Decks</h2><div class="value">' + (data.unique_decks || 0) + '</div></div>';
 			document.getElementById('summary').innerHTML = html;
 		}
 
@@ -401,7 +485,7 @@ const htmlDashboard = `
 			const decks = data.decks || [];
 			let html = '';
 			for (let d of decks) {
-				html += '<tr><td>' + d.name + '</td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
+				html += '<tr title="' + d.name + ': ' + d.wins + 'W / ' + d.losses + 'L (' + (d.win_rate || 0).toFixed(1) + '% win rate)"><td>' + d.name + '</td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
 			}
 			document.getElementById('decksBody').innerHTML = html || '<tr><td colspan="4">No data</td></tr>';
 		}
@@ -410,7 +494,8 @@ const htmlDashboard = `
 			const decks = data.decks || [];
 			let html = '';
 			for (let d of decks) {
-				html += '<tr>'
+				let tooltip = d.deck_name + ' (' + (d.commander_name || 'No Commander') + ') — ' + d.games + ' pods, ' + d.wins + 'W / ' + d.losses + 'L';
+				html += '<tr title="' + tooltip + '">'
 					+ '<td>' + d.deck_name + '</td>'
 					+ '<td>' + (d.commander_name || '-') + '</td>'
 					+ '<td>' + d.games + '</td>'
@@ -458,20 +543,21 @@ const htmlDashboard = `
 			let html = '';
 			for (let c of cards) {
 				let img = c.image_url ? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;" alt="">' : '';
-				html += '<tr><td>' + c.deck + '</td><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+				let tooltip = c.name + ' in ' + c.deck + ': ' + c.casts + ' casts, ' + c.wins + ' wins (' + c.winRate.toFixed(1) + '% win rate)';
+				html += '<tr title="' + tooltip + '"><td>' + c.deck + '</td><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
 			}
 			document.getElementById('topCardsBody').innerHTML = html || '<tr><td colspan="5">No cards with enough sample size yet</td></tr>';
 		}
 
 			function renderEDHSummary(s) {
 				let html = '';
-				html += '<div class="card"><h2>EDH Pods</h2><div class="value">' + (s.total_games || 0) + '</div></div>';
-				html += '<div class="card"><h2>Average Turns</h2><div class="value">' + (s.average_turns || 0).toFixed(1) + '</div></div>';
-				html += '<div class="card"><h2>Highest Storm</h2><div class="value">' + (s.highest_storm_count || 0) + '</div></div>';
-				html += '<div class="card"><h2>Total Mana Spent</h2><div class="value">' + (s.total_mana_spent || 0) + '</div><span class="unit">avg ' + (s.average_mana_spent || 0).toFixed(1) + '/pod</span></div>';
-				html += '<div class="card"><h2>Total Cards Played</h2><div class="value">' + (s.total_cards_played || 0) + '</div><span class="unit">avg ' + (s.average_cards_played || 0).toFixed(1) + '/pod</span></div>';
-				html += '<div class="card"><h2>Combat Damage</h2><div class="value">' + (s.total_combat_damage || 0) + '</div><span class="unit">avg ' + (s.average_combat_damage || 0).toFixed(1) + '/pod</span></div>';
-				html += '<div class="card"><h2>Eliminations</h2><div class="value">' + (s.total_eliminations || 0) + '</div><span class="unit">avg ' + (s.average_eliminations || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card" title="Total number of EDH pods simulated"><h2>EDH Pods</h2><div class="value">' + (s.total_games || 0) + '</div></div>';
+				html += '<div class="card" title="Average number of turns per pod"><h2>Average Turns</h2><div class="value">' + (s.average_turns || 0).toFixed(1) + '</div></div>';
+				html += '<div class="card" title="Highest storm count reached in any pod"><h2>Highest Storm</h2><div class="value">' + (s.highest_storm_count || 0) + '</div></div>';
+				html += '<div class="card" title="Total mana spent by all players across all pods"><h2>Total Mana Spent</h2><div class="value">' + (s.total_mana_spent || 0) + '</div><span class="unit">avg ' + (s.average_mana_spent || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card" title="Total cards played by all players across all pods"><h2>Total Cards Played</h2><div class="value">' + (s.total_cards_played || 0) + '</div><span class="unit">avg ' + (s.average_cards_played || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card" title="Total combat damage dealt across all pods"><h2>Combat Damage</h2><div class="value">' + (s.total_combat_damage || 0) + '</div><span class="unit">avg ' + (s.average_combat_damage || 0).toFixed(1) + '/pod</span></div>';
+				html += '<div class="card" title="Total player eliminations across all pods"><h2>Eliminations</h2><div class="value">' + (s.total_eliminations || 0) + '</div><span class="unit">avg ' + (s.average_eliminations || 0).toFixed(1) + '/pod</span></div>';
 				document.getElementById('edhSummary').innerHTML = html;
 			}
 
@@ -493,7 +579,8 @@ const htmlDashboard = `
 				let html = '';
 				for (let c of rows) {
 					let img = c.image_url ? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;" alt="">' : '';
-					html += '<tr><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+					let tooltip = c.name + ': ' + c.casts + ' casts, ' + c.wins + ' wins (' + c.winRate.toFixed(1) + '% win rate)';
+					html += '<tr title="' + tooltip + '"><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
 				}
 				document.getElementById('cardLibraryBody').innerHTML = html || '<tr><td colspan="4">No cards with enough sample size yet</td></tr>';
 			}
@@ -514,9 +601,106 @@ const htmlDashboard = `
 					const players = (g.Players || []).map(p => p.DeckName + ' mana=' + (p.ManaSpent || 0) + ' cards=' + (p.CardsPlayed || 0) + (p.Eliminated ? ' ✗' : ' ✓')).join('<br>');
 					const events = g.Events || [];
 					const last = events.length ? events[events.length - 1].kind : '-';
-					html += '<tr><td>' + (g.Winner || 'Draw') + '</td><td>' + g.Turns + '</td><td>' + (g.MaxStormCount || 0) + '</td><td>' + (g.TotalManaSpent || 0) + '</td><td>' + (g.TotalCardsPlayed || 0) + '</td><td>' + (g.TotalCombatDamage || 0) + '</td><td>' + players + '</td><td>' + events.length + '</td><td>' + last + '</td></tr>';
+					let tooltip = 'Pod winner: ' + (g.Winner || 'Draw') + ', Turns: ' + g.Turns + ', Storm: ' + (g.MaxStormCount || 0);
+					html += '<tr title="' + tooltip + '"><td>' + (g.Winner || 'Draw') + '</td><td>' + g.Turns + '</td><td>' + (g.MaxStormCount || 0) + '</td><td>' + (g.TotalManaSpent || 0) + '</td><td>' + (g.TotalCardsPlayed || 0) + '</td><td>' + (g.TotalCombatDamage || 0) + '</td><td>' + players + '</td><td>' + events.length + '</td><td>' + last + '</td></tr>';
 			}
 				document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="9">No recent pods</td></tr>';
+			}
+
+			function renderDonut(label, impl, total) {
+				const r = 50;
+				const c = 2 * Math.PI * r;
+				const pct = total > 0 ? (impl / total * 100) : 0;
+				const dashImpl = (pct / 100) * c;
+				const dashUnimpl = c - dashImpl;
+				const offset = -c * 0.25; // start at top
+				let tooltip = label + ': ' + impl + ' implemented out of ' + total + ' cards (' + pct.toFixed(1) + '%)';
+				return '<div style="text-align:center;min-width:100px;" title="' + tooltip + '"><svg width="120" height="120" style="margin:0 auto;display:block;"><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#141829" stroke-width="14"/><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#e74c3c" stroke-width="14" stroke-dasharray="' + c + '" stroke-dashoffset="' + offset + '"/><circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#5a6dd8" stroke-width="14" stroke-dasharray="' + dashImpl + ' ' + dashUnimpl + '" stroke-dashoffset="' + offset + '"/></svg><div style="font-size:12px;margin-top:4px;">' + label + '</div><div style="font-size:11px;color:#888;">' + impl + '/' + total + ' (' + pct.toFixed(1) + '%)</div></div>';
+			}
+
+			let implSortKey = 'name', implSortAsc = true;
+			let currentImplData = {};
+			let currentImplRows = [];
+			let implFilterText = '';
+			function applyImplFilterAndSort() {
+				let rows = (currentImplData.unimplemented_cards || []).slice();
+				let filter = implFilterText.trim().toLowerCase();
+				if (filter) {
+					rows = rows.filter(c => {
+						return (c.name || '').toLowerCase().includes(filter) ||
+							(c.type || '').toLowerCase().includes(filter) ||
+							(c.set || '').toLowerCase().includes(filter) ||
+							(c.colors || '').toLowerCase().includes(filter) ||
+							(c.reason || '').toLowerCase().includes(filter);
+					});
+				}
+				rows.sort((a, b) => {
+					let av = a[implSortKey] || '', bv = b[implSortKey] || '';
+					if (av < bv) return implSortAsc ? -1 : 1;
+					if (av > bv) return implSortAsc ? 1 : -1;
+					return 0;
+				});
+				currentImplRows = rows;
+				renderImplementationTable(rows);
+			}
+			function sortImplTable(key) {
+				if (implSortKey === key) implSortAsc = !implSortAsc;
+				else { implSortKey = key; implSortAsc = true; }
+				applyImplFilterAndSort();
+			}
+			function filterImplCards() {
+				implFilterText = document.getElementById('implSearch').value || '';
+				applyImplFilterAndSort();
+			}
+			function renderImplementationTable(rows) {
+				let html = '';
+				for (let c of rows.slice(0, 500)) {
+					let tooltip = (c.name || 'Unknown') + ' — ' + (c.type || 'Unknown') + ' — ' + (c.reason || 'No reason given');
+					html += '<tr title="' + tooltip + '"><td>' + (c.name || '') + '</td><td>' + (c.type || '') + '</td><td>' + (c.set || '') + '</td><td>' + (c.colors || 'C') + '</td><td>' + (c.reason || '') + '</td></tr>';
+				}
+				document.getElementById('implCardsBody').innerHTML = html || '<tr><td colspan="5">No unimplemented cards match this search. The card may be fully implemented or not in the database.</td></tr>';
+				let total = (currentImplData.unimplemented_cards || []).length;
+				let meta = '';
+				if (implFilterText.trim()) {
+					meta = 'Showing ' + rows.length + ' of ' + total + ' unimplemented cards (search: "' + implFilterText.trim() + '")';
+					if (rows.length > 500) meta += '. Display limited to first 500 results.';
+				} else {
+					meta = 'Showing ' + Math.min(rows.length, 500) + ' of ' + total + ' unimplemented cards';
+					if (rows.length > 500) meta += '. Scroll or refine search to see more.';
+				}
+				document.getElementById('implSearchMeta').textContent = meta;
+			}
+			function renderImplementationStatus(report) {
+				currentImplData = report;
+				implFilterText = '';
+				let total = report.total_cards || 0;
+				let impl = report.implemented_count || 0;
+				let unimpl = report.unimplemented_count || 0;
+				let pct = report.percentage || 0;
+				let summaryHtml = '<div class="card" title="Total cards in the card database"><h2>Total Cards</h2><div class="value">' + total + '</div></div>';
+				summaryHtml += '<div class="card" title="Cards fully supported by the ability parser and execution engine"><h2>Implemented</h2><div class="value">' + impl + '</div><span class="unit">' + pct.toFixed(1) + '%</span></div>';
+				summaryHtml += '<div class="card" title="Cards the engine cannot yet fully execute"><h2>Unimplemented</h2><div class="value">' + unimpl + '</div><span class="unit">' + (100 - pct).toFixed(1) + '%</span></div>';
+				document.getElementById('implSummary').innerHTML = summaryHtml;
+
+				let colorHtml = '';
+				for (let b of (report.by_color || [])) {
+					colorHtml += renderDonut(b.name, b.implemented, b.total);
+				}
+				document.getElementById('implByColor').innerHTML = colorHtml || '<div class="loading">No data</div>';
+
+				let setHtml = '';
+				for (let b of (report.by_set || [])) {
+					setHtml += renderDonut(b.name, b.implemented, b.total);
+				}
+				document.getElementById('implBySet').innerHTML = setHtml || '<div class="loading">No data</div>';
+
+				let typeHtml = '';
+				for (let b of (report.by_type || [])) {
+					typeHtml += renderDonut(b.name, b.implemented, b.total);
+				}
+				document.getElementById('implByType').innerHTML = typeHtml || '<div class="loading">No data</div>';
+
+				renderImplementationTable(report);
 			}
 
 		setInterval(loadResults, 5000);

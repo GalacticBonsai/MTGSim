@@ -44,6 +44,15 @@ func (db *CardDB) Size() int {
 	return len(db.cards)
 }
 
+// ListAll returns a slice of all cards in the database.
+func (db *CardDB) ListAll() []Card {
+	out := make([]Card, 0, len(db.cards))
+	for _, c := range db.cards {
+		out = append(out, c)
+	}
+	return out
+}
+
 // LoadCardDatabase loads the card database from file or downloads it if not present.
 func LoadCardDatabase() (*CardDB, error) {
 	var cards []Card
