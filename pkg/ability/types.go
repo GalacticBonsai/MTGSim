@@ -63,6 +63,9 @@ const (
 	SourcePowerDamage // e.g., Rabid Bite style: first target deals damage equal to its power to second target
 	ChooseMode        // Modal spells/actions with choices represented explicitly instead of fake draw effects
 	TakeExtraTurn     // Extra-turn effects; execution engines may queue an additional turn
+	KeywordAbility    // Static keyword abilities (flying, trample, haste, etc.)
+	Exile             // Exile a permanent, card, or token
+	GenericEffect     // Broad catch-all for unmodeled but acknowledged effects
 )
 
 // String returns the human-readable name of an EffectType.
@@ -104,6 +107,12 @@ func (et EffectType) String() string {
 		return "ChooseMode"
 	case TakeExtraTurn:
 		return "TakeExtraTurn"
+	case KeywordAbility:
+		return "KeywordAbility"
+	case Exile:
+		return "Exile"
+	case GenericEffect:
+		return "GenericEffect"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}

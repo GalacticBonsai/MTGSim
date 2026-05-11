@@ -338,7 +338,7 @@ func TestAbilityParser_ParseComplexAbilities(t *testing.T) {
 		{
 			name:        "Complex creature",
 			oracleText:  "Flying. When this creature enters the battlefield, you gain 3 life. {2}, {T}: Draw a card.",
-			expectedLen: 2, // Flying is a keyword, not parsed as ability
+			expectedLen: 3, // Flying keyword + ETB trigger + activated ability
 			description: "Should parse ETB trigger and activated ability",
 		},
 		{

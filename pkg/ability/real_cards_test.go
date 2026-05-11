@@ -284,11 +284,14 @@ func TestRealEnchantmentSpells(t *testing.T) {
 				t.Errorf("%s: failed to parse oracle text: %v", card.Name, err)
 			}
 
-			// Enchantments should create permanent effects
+			// Static enchantment effects should be permanent; triggered/activated abilities on enchantments (e.g., Necropotence) are correctly Instant.
 			for _, ability := range abilities {
+				if ability.Type != Static {
+					continue
+				}
 				for _, effect := range ability.Effects {
 					if effect.Duration != Permanent && effect.Duration != UntilLeavesPlay {
-						t.Errorf("%s: enchantment effects should be permanent or until leaves play", card.Name)
+						t.Errorf("%s: static enchantment effects should be permanent or until leaves play", card.Name)
 					}
 				}
 			}

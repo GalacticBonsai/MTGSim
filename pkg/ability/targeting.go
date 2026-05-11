@@ -428,13 +428,17 @@ func (tv *TargetValidator) hasProtection(target interface{}, source AbilityPlaye
 func CanExecuteTargetRestriction(r TargetRestrictionType) bool {
 	switch r {
 	case CreatureRestriction, ArtifactRestriction, EnchantmentRestriction,
-		LandRestriction, PlaneswalkerRestriction, PermanentRestriction,
+		LandRestriction, PlaneswalkerRestriction, PermanentRestriction, SpellRestriction, PlayerRestriction,
 		FlyingRestriction, TrampleRestriction, VigilanceRestriction,
 		FirstStrikeRestriction, DeathtouchRestriction, LifelinkRestriction,
+		DoubleStrikeRestriction, HexproofRestriction, ShroudRestriction, ProtectionRestriction,
 		PowerLessEqualRestriction, ToughnessLessEqualRestriction, CMCLessEqualRestriction,
 		PowerGreaterEqualRestriction, ToughnessGreaterEqualRestriction, CMCGreaterEqualRestriction,
 		YouControlRestriction, YouDontControlRestriction, OpponentControlsRestriction,
 		TappedRestriction, UntappedRestriction, AttackingRestriction, BlockingRestriction,
+		EnchantedRestriction, EquippedRestriction,
+		WhiteRestriction, BlueRestriction, BlackRestriction, RedRestriction, GreenRestriction,
+		ColorlessRestriction, MonocoloredRestriction, MulticoloredRestriction,
 		NoRestriction:
 		return true
 	default:

@@ -67,6 +67,39 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Static, `Creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump", ap.parseStaticPump)
 	ap.addPattern(Static, `Other\s+creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump others", ap.parseStaticPumpOthers)
 
+	// Keyword abilities — broad regex for comma-separated keyword lists on a single line.
+	ap.addPattern(Static, `(?i)^(?:(?:Flying|Trample|Haste|Vigilance|First strike|Lifelink|Deathtouch|Menace|Reach|Hexproof|Defender|Flash|Indestructible|Double strike|Shroud|Intimidate|Fear|Shadow|Infect|Wither|Prowess|Cascade|Convoke|Delve|Dredge|Persist|Undying|Unearth|Morph|Manifest|Embalm|Eternalize|Aftermath|Adventure|Mutate|Foretell|Strive|Rebound|Suspend|Madness|Buyback|Replicate|Splice|Transmute|Regenerate|Ward\s*\{[^}]+\}|Bloodthirst\s*\d+|Annihilator\s*\d+|Protection from [^.,;()]+)(?:\s*\([^)]*\)|\s*[,;]\s*|)*)+$`, KeywordAbility, "Keyword abilities", ap.parseKeywordAbilities)
+
+	// Aura enchantments
+	ap.addPattern(Static, `(?i)^Enchant\s+(creature|land|artifact|enchantment|planeswalker|permanent)$`, PumpCreature, "Aura enchantment", ap.parseAuraEnchantment)
+	ap.addPattern(Static, `(?i)^Enchant\s+(creature|land|artifact|enchantment|planeswalker|permanent)\s+with\s+mana\s+value\s+\d+\s+or\s+(?:less|greater)$`, PumpCreature, "Aura enchantment with restriction", ap.parseAuraEnchantment)
+
+	// Equipped creature gets...
+	ap.addPattern(Static, `(?i)^Equipped\s+creature\s+gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Equipment pump", ap.parseEquippedPump)
+	ap.addPattern(Static, `(?i)^Equipped\s+creature\s+has\s+.+`, KeywordAbility, "Equipment grant ability", ap.parseEquippedGrant)
+
+	// Exile effects
+	ap.addPattern(Activated, `(?i)^Exile\s+target\s+.+$`, Exile, "Exile target", ap.parseExileEffect)
+	ap.addPattern(Activated, `(?i)^Exile\s+all\s+.+$`, Exile, "Exile all", ap.parseExileEffect)
+	ap.addPattern(Activated, `(?i)^Exile\s+target\s+creature\s+you\s+control,\s+then\s+return\s+it\s+to\s+the\s+battlefield.+`, Exile, "Flicker", ap.parseFlickerEffect)
+	ap.addPattern(Activated, `(?i)^Exile\s+target\s+creature.+then\s+return\s+that\s+card\s+to\s+the\s+battlefield.+`, Exile, "Flicker", ap.parseFlickerEffect)
+
+	// More return patterns
+	ap.addPattern(Activated, `(?i)^Return\s+target\s+.+\s+to\s+its\s+owner'?s\s+hand\.?$`, ReturnToHand, "Return target to hand", ap.parseReturnToHandGeneric)
+	ap.addPattern(Activated, `(?i)^Return\s+all\s+.+\s+to\s+their\s+owners'?\s+hands\.?$`, ReturnToHand, "Return all to hands", ap.parseReturnAllToHands)
+
+	// More token creation patterns
+	ap.addPattern(Activated, `(?i)^Create\s+a\s+\d+/\d+\s+.+\s+creature\s+token`, CreateToken, "Create specific token", ap.parseCreateSpecificToken)
+	ap.addPattern(Activated, `(?i)^Create\s+\d+\s+\d+/\d+\s+.+\s+creature\s+tokens?`, CreateToken, "Create multiple tokens", ap.parseCreateMultipleTokens)
+
+	// Additional common spell patterns
+	ap.addPattern(Activated, `(?i)^Target\s+(?:player|opponent)\s+loses\s+(\d+)\s+life`, LoseLife, "Target loses life", ap.parseTargetLosesLife)
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gets\s+-([0-9]+)/-([0-9]+)\s+until\s+end\s+of\s+turn`, PumpCreature, "Target debuff", ap.parseTargetDebuff)
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+has\s+base\s+power\s+and\s+toughness\s+(\d+)/(\d+)`, PumpCreature, "Set base P/T", ap.parseSetBasePT)
+	ap.addPattern(Activated, `(?i)^Each\s+player\s+loses\s+(\d+)\s+life`, LoseLife, "Each loses life", ap.parseEachLosesLife)
+	ap.addPattern(Activated, `(?i)^Each\s+player\s+draws?\s+(\d+)\s+cards?`, DrawCards, "Each draws", ap.parseEachDraws)
+	ap.addPattern(Activated, `(?i)^You\s+gain\s+(\d+)\s+life`, GainLife, "You gain life", ap.parseYouGainLife)
+
 	// Modal spells - improved patterns
 	ap.addPattern(Activated, `Choose one —.*`, ChooseMode, "Modal spell", ap.parseModalSpell)
 	ap.addPattern(Activated, `Choose two —.*`, ChooseMode, "Modal spell - choose two", ap.parseModalSpellTwo)
@@ -144,7 +177,92 @@ func (ap *AbilityParser) initializePatterns() {
 	// Conditional ETB triggers
 	ap.addPattern(Triggered, `When\s+.*\s+enters\s+the\s+battlefield,\s+if\s+you\s+control\s+a\s+(.*),\s*(.*)`, DrawCards, "Conditional ETB control", ap.parseConditionalETBControl)
 
+	// Broad ETB trigger patterns for common effects
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+exile\s+target\s+(.*)`, Exile, "ETB exile", ap.parseETBExile)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+return\s+target\s+(.*)\s+to\s+its\s+owner'?s\s+hand`, ReturnToHand, "ETB return", ap.parseETBReturn)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+destroy\s+target\s+(.*)`, DestroyPermanent, "ETB destroy", ap.parseETBDestroy)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+search\s+your\s+library\s+for\s+(.*)`, SearchLibrary, "ETB search", ap.parseETBSearch)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+create\s+(.*)\s+creature\s+token`, CreateToken, "ETB create token", ap.parseETBCreateToken)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+target\s+creature\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "ETB pump", ap.parseETBPump)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+target\s+creature\s+gets\s+-([0-9]+)/-([0-9]+)`, PumpCreature, "ETB debuff", ap.parseETBDebuff)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+target\s+player\s+loses\s+(\d+)\s+life`, LoseLife, "ETB lose life", ap.parseETBLoseLife)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+target\s+player\s+gains\s+(\d+)\s+life`, GainLife, "ETB gain life", ap.parseETBGainLife)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+draw\s+(a|\d+)\s+cards?`, DrawCards, "ETB draw", ap.parseDeathDraw)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)`, DealDamage, "ETB damage", ap.parseAttackDamage)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+.*\s+gains\s+(\d+)\s+life`, GainLife, "ETB gain life broad", ap.parseETBGainLife)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+.*\s+lose\s+(\d+)\s+life`, LoseLife, "ETB lose life broad", ap.parseETBLoseLife)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+.*\s+tap\s+target\s+(.*)`, TapUntap, "ETB tap", ap.parseETBTap)
+
+	// Attack triggers
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks(?:\s+and\s+isn'?t\s+blocked)?,\s+.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)`, DealDamage, "Attack damage trigger", ap.parseAttackDamage)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks(?:\s+and\s+isn'?t\s+blocked)?,\s+.*\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Attack pump trigger", ap.parseAttackPump)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks(?:\s+and\s+isn'?t\s+blocked)?,\s+draw\s+(a|\d+)\s+cards?`, DrawCards, "Attack draw trigger", ap.parseAttackDraw)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks(?:\s+and\s+isn'?t\s+blocked)?,\s+.*\s+gains\s+\+(\d+)/\+(\d+)`, PumpCreature, "Attack pump broad", ap.parseAttackPump)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+attacks(?:\s+and\s+isn'?t\s+blocked)?,\s+.*\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof)`, KeywordAbility, "Attack gains keyword", ap.parseAttackGainKeyword)
+	ap.addPattern(Triggered, `Whenever\s+a\s+creature\s+attacks(?:\s+this\s+turn)?,\s+(.*)`, KeywordAbility, "Any attack trigger", ap.parseAnyAttackTrigger)
+
+	// Combat damage triggers
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+a\s+player,\s+.*\s+gains\s+(\d+)\s+life`, GainLife, "Combat damage gain life", ap.parseCombatDamageGainLife)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+a\s+player,\s+.*\s+loses\s+(\d+)\s+life`, LoseLife, "Combat damage lose life", ap.parseCombatDamageLoseLife)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+a\s+player,\s+create\s+(.*)\s+creature\s+token`, CreateToken, "Combat damage token", ap.parseCombatDamageToken)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+a\s+player,\s+exile\s+(.*)`, Exile, "Combat damage exile", ap.parseCombatDamageExile)
+
+	// Step triggers
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+.*\s+loses\s+(\d+)\s+life`, LoseLife, "Upkeep lose life", ap.parseUpkeepLoseLife)
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+.*\s+gains\s+(\d+)\s+life`, GainLife, "Upkeep gain life", ap.parseUpkeepGainLife)
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)`, DealDamage, "Upkeep damage", ap.parseUpkeepDamage)
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+combat\s+on\s+your\s+turn,\s+(.*)`, DrawCards, "Combat step trigger", ap.parseCombatStepTrigger)
+
+	// Dies triggers
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+draw\s+(a|\d+)\s+cards?`, DrawCards, "Death draw", ap.parseDeathDraw)
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+return\s+it\s+to\s+its\s+owner'?s\s+hand`, ReturnToHand, "Death return", ap.parseDeathReturn)
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+create\s+(.*)\s+creature\s+token`, CreateToken, "Death token", ap.parseDeathToken)
+	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+exile\s+(.*)`, Exile, "Death exile", ap.parseDeathExile)
+
+	// Block triggers
+	ap.addPattern(Triggered, `Whenever\s+.*\s+blocks,\s+.*\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Block pump", ap.parseBlockPump)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+blocks,\s+.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)`, DealDamage, "Block damage", ap.parseBlockDamage)
+	ap.addPattern(Triggered, `Whenever\s+.*\s+blocks,\s+draw\s+(a|\d+)\s+cards?`, DrawCards, "Block draw", ap.parseBlockDraw)
+
+	// More spell patterns
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gets\s+\+(\d+)/\+(\d+)\s+and\s+gains\s+.+`, PumpCreature, "Target pump and gains keyword", ap.parseTargetPumpAndGain)
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+you\s+control\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Target controlled pump", ap.parseTargetControlledPump)
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)\s+until\s+end\s+of\s+turn`, KeywordAbility, "Target gains keyword EOT", ap.parseTargetGainsKeyword)
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+loses\s+.+`, GenericEffect, "Target loses ability", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^Return\s+target\s+.+\s+from\s+your\s+graveyard\s+to\s+your\s+hand`, ReturnToHand, "Return from graveyard", ap.parseReturnFromGraveyard)
+	ap.addPattern(Activated, `(?i)^Create\s+(?:two|three|four|five|six|seven|eight|nine|ten|\d+|X)\s+\d+/\d+\s+.+\s+creature\s+tokens?`, CreateToken, "Create multiple tokens", ap.parseCreateMultipleTokens)
+	ap.addPattern(Activated, `(?i)^Look\s+at\s+the\s+top\s+.+\s+cards?\s+of\s+your\s+library`, GenericEffect, "Look at library", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^Counter\s+target\s+(?:creature|artifact|enchantment|instant|sorcery|planeswalker|creature\s+or\s+enchantment|artifact\s+or\s+creature|instant\s+or\s+sorcery)\s+spell`, CounterSpell, "Counter type spell", ap.parseCounterTypeSpell)
+	ap.addPattern(Activated, `(?i)^Counter\s+target\s+spell`, CounterSpell, "Counter any spell broad", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^Put\s+.+\s+counter`, GenericEffect, "Put counter", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^Prevent\s+all\s+damage`, PreventDamage, "Prevent all damage", ap.parsePreventAllDamage)
+	ap.addPattern(Activated, `(?i)^Prevent\s+the\s+next\s+\d+\s+damage`, PreventDamage, "Prevent next damage", ap.parsePreventNextDamage)
+	ap.addPattern(Activated, `(?i)^Each\s+player\s+.*\s+loses?\s+\d+\s+life`, LoseLife, "Each loses life broad", ap.parseEachLosesLife)
+	ap.addPattern(Activated, `(?i)^All\s+creatures\s+get\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "All creatures pump", ap.parseAllPump)
+	ap.addPattern(Activated, `(?i)^All\s+creatures\s+lose\s+.+`, GenericEffect, "All creatures lose ability", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^You\s+may\s+play\s+an\s+additional\s+land`, GenericEffect, "Additional land", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^You\s+have\s+(?:shroud|hexproof|protection)`, GenericEffect, "You have ability", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^You\s+may\s+discard\s+.+`, DiscardCards, "You may discard", ap.parseGenericActivated)
+	ap.addPattern(Activated, `(?i)^Sacrifice\s+[^:]+:.*`, GenericEffect, "Sacrifice cost ability", ap.parseGenericActivated)
+
+	// Static patterns
+	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+`, GenericEffect, "As long as static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control\s+.*`, GenericEffect, "Each creature static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^Each\s+other\s+creature\s+.*`, GenericEffect, "Each other static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control\s+.*`, GenericEffect, "Creatures static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control\s+.*`, GenericEffect, "Other creatures static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^If\s+.+`, GenericEffect, "If conditional static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^This\s+creature\s+.*`, GenericEffect, "This creature static", ap.parseGenericStatic)
+	ap.addPattern(Static, `(?i)^Until\s+.+`, GenericEffect, "Until static", ap.parseGenericStatic)
+
+	// Broad catch-all patterns for common first words (lowest priority within type)
+	ap.addPattern(Triggered, `^When\s+.*`, GenericEffect, "When catch-all", ap.parseGenericTriggered)
+	ap.addPattern(Triggered, `^Whenever\s+.*`, GenericEffect, "Whenever catch-all", ap.parseGenericTriggered)
+	ap.addPattern(Triggered, `^At\s+.*`, GenericEffect, "At catch-all", ap.parseGenericTriggered)
+
 }
+
+
 
 // addPattern adds a new pattern to the parser.
 func (ap *AbilityParser) addPattern(abilityType AbilityType, pattern string, effectType EffectType, description string, parser func([]string, string) (*Ability, error)) {
@@ -229,15 +347,23 @@ func (ap *AbilityParser) parseEnhancedTargets(ability *Ability, oracleText strin
 }
 
 // splitOracleText splits oracle text into individual sentences for parsing.
+// It splits by newlines first (abilities are usually line-separated) and
+// then by periods to catch multiple sentences on the same line.
 func (ap *AbilityParser) splitOracleText(text string) []string {
-	// Split by periods, but be careful about mana symbols like {T}
-	sentences := strings.Split(text, ".")
+	lines := strings.Split(text, "\n")
 	var result []string
 
-	for _, sentence := range sentences {
-		trimmed := strings.TrimSpace(sentence)
-		if trimmed != "" {
-			result = append(result, trimmed)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, ".")
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				result = append(result, trimmed)
+			}
 		}
 	}
 
@@ -2009,5 +2135,707 @@ func (ap *AbilityParser) parseSearchToBattlefield(matches []string, fullText str
 			},
 		},
 		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseKeywordAbilities(matches []string, fullText string) (*Ability, error) {
+	parts := strings.Split(fullText, ",")
+	var effects []Effect
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Strip reminder text in parentheses
+		if idx := strings.Index(part, "("); idx != -1 {
+			part = strings.TrimSpace(part[:idx])
+		}
+		if part == "" {
+			continue
+		}
+		effects = append(effects, Effect{
+			Type:        KeywordAbility,
+			Duration:    Permanent,
+			Description: part,
+		})
+	}
+	if len(effects) == 0 {
+			return nil, ErrParsingFailed
+		}
+		return &Ability{
+			Name:    "Keyword Abilities",
+			Type:    Static,
+			Effects: effects,
+		}, nil
+	}
+
+func (ap *AbilityParser) parseAuraEnchantment(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Aura Enchantment",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseEquippedPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "Equipment Pump",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:     PumpCreature,
+				Value:    power*1000 + toughness,
+				Duration: Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseEquippedGrant(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Equipment Grant Ability",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        KeywordAbility,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseExileEffect(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Exile",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        Exile,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseFlickerEffect(matches []string, fullText string) (*Ability, error) {
+	// Flicker: exile then return
+	return &Ability{
+		Name: "Flicker",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        Exile,
+				Duration:    Instant,
+				Description: fullText,
+			},
+			{
+				Type:        ReturnToHand,
+				Duration:    Instant,
+				Description: "return to battlefield",
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseReturnToHandGeneric(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Return to Hand",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ReturnToHand,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseReturnAllToHands(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Return All to Hands",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ReturnToHand,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseCreateSpecificToken(matches []string, fullText string) (*Ability, error) {
+	// Parse "Create a X/Y ... creature token"
+	re := regexp.MustCompile(`(?i)Create a (\d+)/(\d+) (.+?) creature token`)
+	m := re.FindStringSubmatch(fullText)
+	if len(m) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(m[1])
+	toughness, _ := strconv.Atoi(m[2])
+	return &Ability{
+		Name: "Create Token",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        CreateToken,
+				Value:       1*1000000 + power*1000 + toughness,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseCreateMultipleTokens(matches []string, fullText string) (*Ability, error) {
+	// Parse "Create N X/Y ... creature tokens"
+	re := regexp.MustCompile(`(?i)Create (\d+) (\d+)/(\d+) (.+?) creature tokens?`)
+	m := re.FindStringSubmatch(fullText)
+	if len(m) < 4 {
+		return nil, ErrParsingFailed
+	}
+	count, _ := strconv.Atoi(m[1])
+	power, _ := strconv.Atoi(m[2])
+	toughness, _ := strconv.Atoi(m[3])
+	return &Ability{
+		Name: "Create Tokens",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        CreateToken,
+				Value:       count*1000000 + power*1000 + toughness,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetLosesLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	value, _ := strconv.Atoi(matches[1])
+	return &Ability{
+		Name: "Target Loses Life",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        LoseLife,
+				Value:       value,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetDebuff(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "Target Debuff",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       -power*1000 - toughness,
+				Duration:    UntilEndOfTurn,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseSetBasePT(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "Set Base P/T",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       power*1000 + toughness,
+				Duration:    UntilEndOfTurn,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseEachLosesLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	value, _ := strconv.Atoi(matches[1])
+	return &Ability{
+		Name: "Each Loses Life",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        LoseLife,
+				Value:       value,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseEachDraws(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	value, _ := strconv.Atoi(matches[1])
+	return &Ability{
+		Name: "Each Draws",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        DrawCards,
+				Value:       value,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseYouGainLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	value, _ := strconv.Atoi(matches[1])
+	return &Ability{
+		Name: "Gain Life",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        GainLife,
+				Value:       value,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func makeTriggeredAbility(name string, effType EffectType, value int, dur EffectDuration, fullText string) *Ability {
+	return &Ability{
+		Name:             name,
+		Type:             Triggered,
+		TriggerCondition: EntersTheBattlefield,
+		Effects: []Effect{
+			{
+				Type:        effType,
+				Value:       value,
+				Duration:    dur,
+				Description: fullText,
+			},
+		},
+		IsOptional: false,
+	}
+}
+
+func makeTriggeredAbilityWithCondition(name string, effType EffectType, value int, dur EffectDuration, fullText string, cond TriggerCondition) *Ability {
+	return &Ability{
+		Name:             name,
+		Type:             Triggered,
+		TriggerCondition: cond,
+		Effects: []Effect{
+			{
+				Type:        effType,
+				Value:       value,
+				Duration:    dur,
+				Description: fullText,
+			},
+		},
+		IsOptional: false,
+	}
+}
+
+func parseIntOrOne(s string) int {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "a" || s == "" {
+		return 1
+	}
+	v, _ := strconv.Atoi(s)
+	if v == 0 {
+		return 1
+	}
+	return v
+}
+
+// ETB trigger parsers
+func (ap *AbilityParser) parseETBExile(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("ETB Exile", Exile, 0, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBReturn(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("ETB Return", ReturnToHand, 0, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBDestroy(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("ETB Destroy", DestroyPermanent, 0, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBSearch(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("ETB Search", SearchLibrary, 1, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBCreateToken(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("ETB Create Token", CreateToken, 0, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return makeTriggeredAbility("ETB Pump", PumpCreature, power*1000+toughness, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBDebuff(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return makeTriggeredAbility("ETB Debuff", PumpCreature, -power*1000-toughness, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseETBLoseLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbility("ETB Lose Life", LoseLife, v, Instant, fullText), nil
+}
+// Attack trigger parsers
+func (ap *AbilityParser) parseAttackDamage(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Attack Damage", DealDamage, v, Instant, fullText, AttacksOrBlocks), nil
+}
+func (ap *AbilityParser) parseAttackPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return makeTriggeredAbilityWithCondition("Attack Pump", PumpCreature, power*1000+toughness, Instant, fullText, AttacksOrBlocks), nil
+}
+func (ap *AbilityParser) parseAttackDraw(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v := parseIntOrOne(matches[1])
+	return makeTriggeredAbilityWithCondition("Attack Draw", DrawCards, v, Instant, fullText, AttacksOrBlocks), nil
+}
+
+// Combat damage trigger parsers
+func (ap *AbilityParser) parseCombatDamageGainLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Combat Gain Life", GainLife, v, Instant, fullText, DealsCombatDamage), nil
+}
+func (ap *AbilityParser) parseCombatDamageLoseLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Combat Lose Life", LoseLife, v, Instant, fullText, DealsCombatDamage), nil
+}
+func (ap *AbilityParser) parseCombatDamageToken(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Combat Token", CreateToken, 0, Instant, fullText, DealsCombatDamage), nil
+}
+func (ap *AbilityParser) parseCombatDamageExile(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Combat Exile", Exile, 0, Instant, fullText, DealsCombatDamage), nil
+}
+
+// Upkeep trigger parsers
+func (ap *AbilityParser) parseUpkeepLoseLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Upkeep Lose Life", LoseLife, v, Instant, fullText, BeginningOfUpkeep), nil
+}
+func (ap *AbilityParser) parseUpkeepGainLife(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Upkeep Gain Life", GainLife, v, Instant, fullText, BeginningOfUpkeep), nil
+}
+func (ap *AbilityParser) parseUpkeepDamage(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Upkeep Damage", DealDamage, v, Instant, fullText, BeginningOfUpkeep), nil
+}
+func (ap *AbilityParser) parseCombatStepTrigger(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Combat Step", DrawCards, 0, Instant, fullText, AttacksOrBlocks), nil
+}
+
+// Death trigger parsers
+func (ap *AbilityParser) parseDeathDraw(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v := parseIntOrOne(matches[1])
+	return makeTriggeredAbilityWithCondition("Death Draw", DrawCards, v, Instant, fullText, Dies), nil
+}
+
+func (ap *AbilityParser) parseDeathReturn(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Death Return", ReturnToHand, 0, Instant, fullText, Dies), nil
+}
+func (ap *AbilityParser) parseDeathToken(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Death Token", CreateToken, 0, Instant, fullText, Dies), nil
+}
+func (ap *AbilityParser) parseDeathExile(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Death Exile", Exile, 0, Instant, fullText, Dies), nil
+}
+
+
+func (ap *AbilityParser) parseETBTap(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("ETB Tap", TapUntap, 0, Instant, fullText), nil
+}
+
+func (ap *AbilityParser) parseAttackGainKeyword(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Attack Gain Keyword", KeywordAbility, 0, Instant, fullText, AttacksOrBlocks), nil
+}
+
+func (ap *AbilityParser) parseAnyAttackTrigger(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("Any Attack Trigger", KeywordAbility, 0, Instant, fullText, AttacksOrBlocks), nil
+}
+
+func (ap *AbilityParser) parseEndStepTrigger(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("End Step Trigger", DrawCards, 0, Instant, fullText, EndOfTurn), nil
+}
+
+func (ap *AbilityParser) parseEndOfCombatTrigger(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbilityWithCondition("End of Combat Trigger", DrawCards, 0, Instant, fullText, EndOfTurn), nil
+}
+
+
+func (ap *AbilityParser) parseBlockPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return makeTriggeredAbilityWithCondition("Block Pump", PumpCreature, power*1000+toughness, Instant, fullText, AttacksOrBlocks), nil
+}
+
+func (ap *AbilityParser) parseBlockDamage(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	v, _ := strconv.Atoi(matches[1])
+	return makeTriggeredAbilityWithCondition("Block Damage", DealDamage, v, Instant, fullText, AttacksOrBlocks), nil
+}
+
+func (ap *AbilityParser) parseBlockDraw(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	v := parseIntOrOne(matches[1])
+	return makeTriggeredAbilityWithCondition("Block Draw", DrawCards, v, Instant, fullText, AttacksOrBlocks), nil
+}
+
+func (ap *AbilityParser) parseTargetPumpAndGain(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "Target Pump and Gain",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       power*1000 + toughness,
+				Duration:    UntilEndOfTurn,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetControlledPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "Target Controlled Pump",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       power*1000 + toughness,
+				Duration:    UntilEndOfTurn,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseTargetGainsKeyword(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Target Gains Keyword",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        KeywordAbility,
+				Duration:    UntilEndOfTurn,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseReturnFromGraveyard(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Return from Graveyard",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        ReturnToHand,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parsePreventAllDamage(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Prevent All Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PreventDamage,
+				Value:       9999,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parsePreventNextDamage(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Prevent Next Damage",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PreventDamage,
+				Value:       0,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseAllPump(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 3 {
+		return nil, ErrParsingFailed
+	}
+	power, _ := strconv.Atoi(matches[1])
+	toughness, _ := strconv.Atoi(matches[2])
+	return &Ability{
+		Name: "All Pump",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Value:       power*1000 + toughness,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseCounterTypeSpell(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Counter Type Spell",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        CounterSpell,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseGenericActivated(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Generic Activated",
+		Type: Activated,
+		Effects: []Effect{
+			{
+				Type:        GenericEffect,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseGenericTriggered(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Generic Triggered",
+		Type: Triggered,
+		Effects: []Effect{
+			{
+				Type:        GenericEffect,
+				Duration:    Instant,
+				Description: fullText,
+			},
+		},
+		IsOptional: false,
+	}, nil
+}
+
+func (ap *AbilityParser) parseGenericStatic(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Generic Static",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        GenericEffect,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
 	}, nil
 }
