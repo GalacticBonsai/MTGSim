@@ -89,14 +89,11 @@ jobs:
       - name: Build mtgsim
         run: go build -v -o mtgsim${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim
 
-      - name: Build mtgstats
-        run: go build -v -o mtgstats${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgstats
-
       - name: Build mtgsim-dashboard
         run: go build -v -o mtgsim-dashboard${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim-dashboard
 
-      - name: Build stack_demo
-        run: go build -v -o stack_demo${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/stack_demo
+      - name: Build mtgsim-edh
+        run: go build -v -o mtgsim-edh${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim-edh
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
@@ -104,7 +101,6 @@ jobs:
           name: mtgsim-${{ matrix.os }}
           path: |
             mtgsim*
-            mtgstats*
             mtgsim-dashboard*
-            stack_demo*
+            mtgsim-edh*
           if-no-files-found: error

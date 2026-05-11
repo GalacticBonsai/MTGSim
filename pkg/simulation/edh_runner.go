@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"strings"
 
@@ -76,8 +77,14 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 	}
 
 	turnLimitHit := false
+
 	for {
-		if anyAlive := stepOneEDHTurn(g, casts, priority, log, metrics); !anyAlive {
+		anyAlive, stuck := stepOneEDHTurn(g, casts, priority, log, metrics)
+		if !anyAlive {
+			break
+		}
+		if stuck {
+			turnLimitHit = true
 			break
 		}
 		if survivors(g) <= 1 {
@@ -177,4 +184,34 @@ func seatCommanderNames(s EDHSeat) []string {
 		names = append(names, c.Name)
 	}
 	return names
+}
+
+
+
+// edhGameStateSnapshot returns a string representation of the current EDH game state
+// used to detect if the game is making progress across turns.
+func edhGameStateSnapshot(g *game.Game) string {
+	var b strings.Builder
+	for _, p := range g.GetPlayersRaw() {
+		fmt.Fprintf(&b, "%s:L%d,lost:%v,Lib%d,Hand%d,BF%d,G%d,E%d;",
+			p.GetName(), p.GetLifeTotal(), p.HasLost(),
+			len(p.Library), len(p.Hand), len(p.Battlefield),
+			len(p.Graveyard), len(p.Exile))
+	}
+	fmt.Fprintf(&b, "T%d,A%d", g.GetTurnNumber(), g.GetCurrentPhase())
+	return b.String()
+}
+
+// edhActionStateSnapshot returns a string representation of the current EDH game state
+// excluding turn and phase numbers so it can be used to detect meaningful progress
+// across individual phase actions.
+func edhActionStateSnapshot(g *game.Game) string {
+	var b strings.Builder
+	for _, p := range g.GetPlayersRaw() {
+		fmt.Fprintf(&b, "%s:L%d,lost:%v,Lib%d,Hand%d,BF%d,G%d,E%d;",
+			p.GetName(), p.GetLifeTotal(), p.HasLost(),
+			len(p.Library), len(p.Hand), len(p.Battlefield),
+			len(p.Graveyard), len(p.Exile))
+	}
+	return b.String()
 }

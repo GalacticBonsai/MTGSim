@@ -116,23 +116,23 @@ func (mp *ManaPool) Pay(cost Mana) bool {
 		}
 		mp.pool[t] -= need
 	}
-	// Deduct Any from whatever remains (greedy)
+	// Deduct Any from whatever remains (greedy).
+	// We iterate over every entry in the pool, not just the specific slice,
+	// so that Snow/Any/Phyrexian/etc. can also be spent for generic costs.
 	anyNeed := cost[Any]
 	for anyNeed > 0 {
-		for _, t := range specific {
+		found := false
+		for t, v := range mp.pool {
 			if anyNeed == 0 {
 				break
 			}
-			if mp.pool[t] > 0 {
+			if v > 0 {
 				mp.pool[t]--
 				anyNeed--
+				found = true
 			}
 		}
-		if anyNeed == 0 {
-			break
-		}
-		// If still needed and we have no specific left, break to avoid infinite loop
-		if mp.total() == 0 {
+		if !found {
 			break
 		}
 	}

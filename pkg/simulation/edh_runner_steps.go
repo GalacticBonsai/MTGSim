@@ -3,21 +3,42 @@ package simulation
 import (
 	"strings"
 
+	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
 // stepOneEDHTurn drives the active player through a complete turn using
-// the simplified runner AI. Returns false if no players are alive after
-// the turn finishes. priority is invoked at instant-speed windows so
-// future AI can respond on opponents' turns; log is optional.
-func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *EDHEventLog, metrics *edhMetrics) bool {
+// the simplified runner AI. Returns (anyAlive, stuck) where anyAlive is
+// false if no players are alive after the turn finishes, and stuck is
+// true if the game state did not progress for maxUnchangedActions
+// consecutive phase actions. priority is invoked at instant-speed windows
+// so future AI can respond on opponents' turns; log is optional.
+func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *EDHEventLog, metrics *edhMetrics) (bool, bool) {
 	startTurn := g.GetTurnNumber()
 	milledThisTurn := false
 	if metrics != nil {
 		metrics.resetTurn()
 	}
+
+	lastState := ""
+	unchangedActions := 0
+	const maxUnchangedActions = 12
+
 	for {
+		// Detect stale game state before each phase action
+		currentState := edhActionStateSnapshot(g)
+		if currentState == lastState {
+			unchangedActions++
+			if unchangedActions >= maxUnchangedActions {
+				logger.LogMeta("STUCK LOOP: no state change for %d consecutive actions, breaking. snapshot=%s", unchangedActions, currentState)
+				return survivors(g) >= 1, true
+			}
+		} else {
+			unchangedActions = 0
+			lastState = currentState
+		}
+
 		ap := g.GetActivePlayerRaw()
 		switch g.GetCurrentPhase() {
 		case game.PhaseUntap:
@@ -53,13 +74,13 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 		recordEliminations(g, log, ap, metrics)
 		g.AdvancePhase()
 		if survivors(g) <= 1 {
-			return survivors(g) >= 1
+			return survivors(g) >= 1, false
 		}
 		if g.GetTurnNumber() != startTurn {
 			break
 		}
 	}
-	return survivors(g) >= 1
+	return survivors(g) >= 1, false
 }
 
 // offerOpponentPriority walks each living non-active opponent in APNAP
@@ -181,19 +202,20 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			}
 			manaSpent := manaSpentForCard(c)
 			perm, err := castPermanentCard(g, ap, c)
-			if err == nil && perm != nil {
-				perm.SetEnteredTurn(g.GetTurnNumber())
-				storm := 0
-				if metrics != nil {
-					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature())
+			if err != nil || perm == nil {
+				continue
+			}
+			perm.SetEnteredTurn(g.GetTurnNumber())
+			storm := 0
+			if metrics != nil {
+				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature())
+			}
+			if log != nil {
+				kind := EventPermanentCast
+				if c.IsCreature() {
+					kind = EventCreatureSummon
 				}
-				if log != nil {
-					kind := EventPermanentCast
-					if c.IsCreature() {
-						kind = EventCreatureSummon
-					}
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
-				}
+				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
 			}
 			again = true
 			break
@@ -204,7 +226,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 }
 
 func isCastablePermanent(c game.SimpleCard) bool {
-	return c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()
+	return !c.IsLand() && (c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker())
 }
 
 func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.Permanent, error) {

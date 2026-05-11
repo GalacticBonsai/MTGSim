@@ -2,15 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug mtgstats: single game",
+      "name": "Debug mtgsim: single game",
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/cmd/mtgstats",
+      "program": "${workspaceFolder}/cmd/mtgsim",
       "cwd": "${workspaceFolder}",
       "args": [
         "-games=100",
-        "-decks=decks/welcome",
+        "-decks=decks/1v1",
         "-swap=0",
         "-v=2",
         "-log=META"
