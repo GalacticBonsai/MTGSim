@@ -242,6 +242,11 @@ const htmlDashboard = `
 		.table td { padding: 15px; border-bottom: 1px solid #1a1f3a; }
 		.table tr:last-child td { border-bottom: none; }
 		.table tbody tr:hover { background: #1a1f3a; }
+		.th-sort { cursor: pointer; user-select: none; }
+		.th-sort:hover { color: #5a6dd8; }
+		.th-sort::after { content: ' ⇅'; font-size: 0.8em; opacity: 0.5; }
+		.th-sort.asc::after { content: ' ▲'; opacity: 1; }
+		.th-sort.desc::after { content: ' ▼'; opacity: 1; }
 		.bar { height: 20px; background: #5a6dd8; border-radius: 4px; position: relative; }
 		.bar-label { position: absolute; left: 5px; top: 50%; transform: translateY(-50%); color: white; font-size: 0.85em; font-weight: bold; }
 		.chart-container { background: #141829; border: 1px solid #1a1f3a; border-radius: 8px; padding: 20px; margin-top: 20px; }
@@ -301,26 +306,26 @@ const htmlDashboard = `
 			<table class="table" id="edhDecks">
 				<thead>
 					<tr>
-						<th title="Deck file name">Deck</th>
-						<th title="Commander card name">Commander</th>
-						<th title="Total pods played">Games</th>
-						<th title="Pods won">Wins</th>
-						<th title="Pods lost">Losses</th>
-						<th title="Win percentage (Wins / Games)">Win Rate</th>
-						<th title="Average remaining life total at pod end">Avg Life</th>
-						<th title="Eliminations via commander damage">Cmdr Dmg KOs</th>
-							<th title="Eliminations via life loss (non-commander)">Life KOs</th>
-							<th title="Eliminations via decking or mill">Mill KOs</th>
-							<th title="Average commander casts per pod">Avg Cmdr Casts</th>
-					<th title="Average mana spent per pod">Avg Mana</th>
-					<th title="Average cards played per pod">Avg Cards</th>
-					<th title="Average lands played per pod">Avg Lands</th>
-					<th title="Average non-creature spells cast per pod">Avg Spells</th>
-					<th title="Average creatures cast per pod">Avg Creatures</th>
-							<th title="Average combat damage dealt per pod">Avg Combat</th>
-							<th title="Highest storm count reached">Max Storm</th>
-							<th title="Total eliminations caused">KOs</th>
-						<th title="Average mulligans per pod">Avg Mulls</th>
+						<th class="th-sort" data-sort-key="deck_name" onclick="sortEDH('deck_name')" title="Deck file name">Deck</th>
+						<th class="th-sort" data-sort-key="commander_name" onclick="sortEDH('commander_name')" title="Commander card name">Commander</th>
+						<th class="th-sort" data-sort-key="games" onclick="sortEDH('games')" title="Total pods played">Games</th>
+						<th class="th-sort" data-sort-key="wins" onclick="sortEDH('wins')" title="Pods won">Wins</th>
+						<th class="th-sort" data-sort-key="losses" onclick="sortEDH('losses')" title="Pods lost">Losses</th>
+						<th class="th-sort" data-sort-key="win_rate" onclick="sortEDH('win_rate')" title="Win percentage (Wins / Games)">Win Rate</th>
+						<th class="th-sort" data-sort-key="avg_final_life" onclick="sortEDH('avg_final_life')" title="Average remaining life total at pod end">Avg Life</th>
+						<th class="th-sort" data-sort-key="commander_damage_kos" onclick="sortEDH('commander_damage_kos')" title="Eliminations via commander damage">Cmdr Dmg KOs</th>
+							<th class="th-sort" data-sort-key="life_loss_kos" onclick="sortEDH('life_loss_kos')" title="Eliminations via life loss (non-commander)">Life KOs</th>
+							<th class="th-sort" data-sort-key="mill_kos" onclick="sortEDH('mill_kos')" title="Eliminations via decking or mill">Mill KOs</th>
+							<th class="th-sort" data-sort-key="avg_commander_casts" onclick="sortEDH('avg_commander_casts')" title="Average commander casts per pod">Avg Cmdr Casts</th>
+					<th class="th-sort" data-sort-key="avg_mana_spent" onclick="sortEDH('avg_mana_spent')" title="Average mana spent per pod">Avg Mana</th>
+					<th class="th-sort" data-sort-key="avg_cards_played" onclick="sortEDH('avg_cards_played')" title="Average cards played per pod">Avg Cards</th>
+					<th class="th-sort" data-sort-key="avg_lands_played" onclick="sortEDH('avg_lands_played')" title="Average lands played per pod">Avg Lands</th>
+					<th class="th-sort" data-sort-key="avg_spells_cast" onclick="sortEDH('avg_spells_cast')" title="Average non-creature spells cast per pod">Avg Spells</th>
+					<th class="th-sort" data-sort-key="avg_creatures_cast" onclick="sortEDH('avg_creatures_cast')" title="Average creatures cast per pod">Avg Creatures</th>
+							<th class="th-sort" data-sort-key="avg_combat_damage" onclick="sortEDH('avg_combat_damage')" title="Average combat damage dealt per pod">Avg Combat</th>
+							<th class="th-sort" data-sort-key="max_storm_count" onclick="sortEDH('max_storm_count')" title="Highest storm count reached">Max Storm</th>
+							<th class="th-sort" data-sort-key="eliminations" onclick="sortEDH('eliminations')" title="Total eliminations caused">KOs</th>
+						<th class="th-sort" data-sort-key="avg_mulligans" onclick="sortEDH('avg_mulligans')" title="Average mulligans per pod">Avg Mulls</th>
 					</tr>
 				</thead>
 				<tbody id="edhDecksBody">
@@ -433,6 +438,27 @@ const htmlDashboard = `
 			document.getElementById(tabId).classList.add('active');
 			btn.classList.add('active');
 		}
+
+		let currentEDHData = null;
+		let edhSortState = { key: 'win_rate', dir: 'desc' };
+
+		function sortEDH(key) {
+			if (!currentEDHData || !currentEDHData.decks) return;
+			if (edhSortState.key === key) {
+				edhSortState.dir = edhSortState.dir === 'asc' ? 'desc' : 'asc';
+			} else {
+				edhSortState.key = key;
+				edhSortState.dir = 'asc';
+			}
+			document.querySelectorAll('#edhDecks .th-sort').forEach(th => {
+				th.classList.remove('asc', 'desc');
+				if (th.dataset.sortKey === key) {
+					th.classList.add(edhSortState.dir);
+				}
+			});
+			renderEDH(currentEDHData);
+		}
+
 		async function loadResults() {
 			try {
 				const res = await fetch('/api/results');
@@ -491,7 +517,27 @@ const htmlDashboard = `
 		}
 
 		function renderEDH(data) {
-			const decks = data.decks || [];
+			currentEDHData = data;
+			const decks = (data.decks || []).slice();
+			const key = edhSortState.key;
+			const dir = edhSortState.dir;
+			const numericKeys = ['games','wins','losses','win_rate','avg_final_life','commander_damage_kos','life_loss_kos','mill_kos','avg_commander_casts','avg_mana_spent','avg_cards_played','avg_lands_played','avg_spells_cast','avg_creatures_cast','avg_combat_damage','max_storm_count','eliminations','avg_mulligans'];
+			const isNum = numericKeys.includes(key);
+			decks.sort((a, b) => {
+				let av = a[key] !== undefined ? a[key] : (isNum ? 0 : '');
+				let bv = b[key] !== undefined ? b[key] : (isNum ? 0 : '');
+				if (typeof av === 'string') av = av.toLowerCase();
+				if (typeof bv === 'string') bv = bv.toLowerCase();
+				if (av < bv) return dir === 'asc' ? -1 : 1;
+				if (av > bv) return dir === 'asc' ? 1 : -1;
+				return 0;
+			});
+			document.querySelectorAll('#edhDecks .th-sort').forEach(th => {
+				th.classList.remove('asc', 'desc');
+				if (th.dataset.sortKey === key) {
+					th.classList.add(dir);
+				}
+			});
 			let html = '';
 			for (let d of decks) {
 				let tooltip = d.deck_name + ' (' + (d.commander_name || 'No Commander') + ') — ' + d.games + ' pods, ' + d.wins + 'W / ' + d.losses + 'L';
@@ -518,8 +564,8 @@ const htmlDashboard = `
 					+ '<td>' + (d.avg_mulligans || 0).toFixed(2) + '</td>'
 					+ '</tr>';
 			}
-				document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
-			}
+			document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
+		}
 
 			function renderTopCards(decks) {
 			let cards = [];
