@@ -52,6 +52,15 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+.*\s+deals\s+(\d+)\s+damage\s+to\s+(.*)`, DealDamage, "ETB deal damage", ap.parseETBDamage)
 	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+you\s+gain\s+(\d+)\s+life`, GainLife, "ETB gain life", ap.parseETBGainLife)
 
+	// Alternate win/loss abilities
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+.*you\s+win\s+the\s+game`, WinGame, "ETB win the game", ap.triggeredParserFactory(WinGame, EntersTheBattlefield, "ETB Win Game"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+upkeep,\s+.*you\s+win\s+the\s+game`, WinGame, "Upkeep win the game", ap.triggeredParserFactory(WinGame, BeginningOfUpkeep, "Upkeep Win Game"))
+	ap.addPattern(Triggered, `At\s+the\s+beginning\s+of\s+your\s+end\s+step,\s+.*you\s+win\s+the\s+game`, WinGame, "End step win the game", ap.triggeredParserFactory(WinGame, EndOfTurn, "End Step Win Game"))
+	ap.addPattern(Triggered, `Whenever\s+.*\s+deals\s+combat\s+damage\s+to\s+(?:a\s+)?player,\s+.*player\s+loses\s+the\s+game`, LoseGame, "Combat damage player loses", ap.triggeredParserFactory(LoseGame, DealsCombatDamage, "Combat Damage Lose Game"))
+	ap.addPattern(Activated, `.*you\s+win\s+the\s+game`, WinGame, "Win the game", ap.activatedParserFactory(WinGame, "Win Game"))
+	ap.addPattern(Activated, `.*each\s+opponent\s+.*loses\s+the\s+game`, LoseGame, "Each opponent loses", ap.activatedParserFactory(LoseGame, "Each Opponent Loses"))
+	ap.addPattern(Activated, `.*target\s+(?:player|opponent)\s+.*loses\s+the\s+game`, LoseGame, "Target player loses", ap.activatedParserFactory(LoseGame, "Target Player Loses"))
+
 	// Triggered abilities - Death triggers
 	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+draw\s+(\d+)\s+cards?`, DrawCards, "Death draw cards", ap.parseDeathDrawCards)
 	ap.addPattern(Triggered, `When\s+.*\s+dies,\s+draw\s+a\s+card`, DrawCards, "Death draw a card", ap.parseDeathDrawCard)

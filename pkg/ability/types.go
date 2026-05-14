@@ -75,6 +75,8 @@ const (
 	AdditionalLand     // Play additional land(s)
 	SacrificePermanent // Sacrifice a permanent as cost or effect
 	ReanimateCreature  // Put target creature card from a graveyard onto the battlefield
+	WinGame            // Controller wins the game / all opponents lose
+	LoseGame           // Target player or each opponent loses the game
 )
 
 // String returns the human-readable name of an EffectType.
@@ -138,6 +140,10 @@ func (et EffectType) String() string {
 		return "SacrificePermanent"
 	case ReanimateCreature:
 		return "ReanimateCreature"
+	case WinGame:
+		return "WinGame"
+	case LoseGame:
+		return "LoseGame"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}

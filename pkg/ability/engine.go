@@ -297,6 +297,22 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		ee.gameState.LoseLife(controller, effect.Value)
 		logger.LogCard("%s loses %d life", controller.GetName(), effect.Value)
 
+	case WinGame:
+		ee.eliminateOpponents(controller, "effect")
+		logger.LogCard("%s wins the game", controller.GetName())
+
+	case LoseGame:
+		if len(targets) > 0 {
+			for _, target := range targets {
+				ee.losePlayerTarget(target, "effect")
+			}
+		} else {
+			// Most parser-generated no-target loss text is either "each opponent loses"
+			// or an alternate-win clause. Treat it as the controller winning.
+			ee.eliminateOpponents(controller, "effect")
+		}
+		logger.LogCard("Lose game effect resolves: %s", effect.Description)
+
 	case PumpCreature:
 		if len(targets) > 0 {
 			power := effect.Value / 100
@@ -518,6 +534,29 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 	return nil
 }
 
+func (ee *ExecutionEngine) eliminateOpponents(controller AbilityPlayer, reason string) {
+	if controller == nil || ee.gameState == nil {
+		return
+	}
+	for _, player := range ee.gameState.GetAllPlayers() {
+		if player == nil || player.GetName() == controller.GetName() {
+			continue
+		}
+		ee.losePlayerTarget(player, reason)
+	}
+}
+
+func (ee *ExecutionEngine) losePlayerTarget(target any, reason string) {
+	switch p := target.(type) {
+	case interface{ Lose(string) }:
+		p.Lose(reason)
+	case *game.Player:
+		p.Lose(reason)
+	case AbilityPlayer:
+		p.SetLifeTotal(0)
+	}
+}
+
 // CanExecuteEffect returns true if the execution engine has a concrete
 // implementation for the given effect type.
 func CanExecuteEffect(effectType EffectType) bool {
@@ -528,7 +567,8 @@ func CanExecuteEffect(effectType EffectType) bool {
 		DiscardCards, SearchLibrary, CreateToken, PreventDamage,
 		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
 		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
-		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature:
+		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature,
+		WinGame, LoseGame:
 		return true
 	default:
 		return false

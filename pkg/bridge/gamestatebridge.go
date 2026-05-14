@@ -24,6 +24,7 @@ type playerAdapter struct{ P *game.Player }
 func (p *playerAdapter) GetName() string    { return p.P.GetName() }
 func (p *playerAdapter) GetLifeTotal() int  { return p.P.GetLifeTotal() }
 func (p *playerAdapter) SetLifeTotal(l int) { p.P.SetLifeTotal(l) }
+func (p *playerAdapter) Lose(reason string) { p.P.Lose(reason) }
 func (p *playerAdapter) GetHand() []any     { return sliceToAny(p.P.GetHand()) }
 func (p *playerAdapter) AddCardToHand(c any) {
 	if sc, ok := c.(game.SimpleCard); ok {
