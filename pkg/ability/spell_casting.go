@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/card"
+	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
 // SpellCastingEngine handles the casting of spells and their integration with the stack
@@ -59,7 +60,7 @@ func (sce *SpellCastingEngine) CastSpell(cardToCast card.Card, caster AbilityPla
 	}
 
 	// Validate targets
-	if err := sce.validateSpellTargets(spell, targets); err != nil {
+	if err := sce.validateSpellTargets(spell, caster, targets); err != nil {
 		return fmt.Errorf("invalid targets for %s: %v", spell.Name, err)
 	}
 
@@ -129,7 +130,7 @@ func (sce *SpellCastingEngine) ActivateAbility(ability *Ability, controller Abil
 	}
 
 	// Validate targets
-	if err := sce.validateAbilityTargets(ability, targets); err != nil {
+	if err := sce.validateAbilityTargets(ability, controller, targets); err != nil {
 		return fmt.Errorf("invalid targets for %s: %v", ability.Name, err)
 	}
 
@@ -183,7 +184,14 @@ func (sce *SpellCastingEngine) cardToSpell(cardToCast card.Card) (*Spell, error)
 
 	// Convert abilities to effects
 	var effects []Effect
+	isPermanent := cardToCast.IsCreature() || cardToCast.IsArtifact() || cardToCast.IsEnchantment() || cardToCast.IsPlaneswalker() || cardToCast.IsLand()
 	for _, ability := range abilities {
+		// Triggered, activated, and mana abilities on permanent spells fire or are
+		// paid for after the permanent is on the battlefield, not during spell
+		// resolution. Skip them here so they can be attached to the permanent.
+		if isPermanent && (ability.Type == Triggered || ability.Type == Activated || ability.Type == Mana) {
+			continue
+		}
 		effects = append(effects, ability.Effects...)
 	}
 
@@ -216,7 +224,11 @@ func (sce *SpellCastingEngine) isSorcerySpell(cardToCast card.Card) bool {
 	return strings.Contains(cardToCast.TypeLine, "Sorcery")
 }
 
-func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, targets []interface{}) error {
+func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, controller AbilityPlayer, targets []interface{}) error {
+	if sce.executionEngine != nil {
+		return sce.executionEngine.validateTargets(&Ability{Effects: spell.Effects}, controller, targets)
+	}
+
 	// Count required targets from effects
 	requiredTargets := 0
 	for _, effect := range spell.Effects {
@@ -231,11 +243,14 @@ func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, targets []inte
 		return fmt.Errorf("spell requires %d targets, got %d", requiredTargets, len(targets))
 	}
 
-	// TODO: Implement detailed target validation (type checking, legality, etc.)
 	return nil
 }
 
-func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, targets []interface{}) error {
+func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, controller AbilityPlayer, targets []interface{}) error {
+	if sce.executionEngine != nil {
+		return sce.executionEngine.validateTargets(ability, controller, targets)
+	}
+
 	// Count required targets from effects
 	requiredTargets := 0
 	for _, effect := range ability.Effects {
@@ -250,13 +265,73 @@ func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, targets 
 		return fmt.Errorf("ability requires %d targets, got %d", requiredTargets, len(targets))
 	}
 
-	// TODO: Implement detailed target validation
 	return nil
 }
 
 func (sce *SpellCastingEngine) paySpellCosts(spell *Spell, caster AbilityPlayer) error {
-	// Simplified cost payment - just check if player can pay
-	// TODO: Implement proper mana cost parsing and payment
+	if spell.ManaCost == "" {
+		return nil
+	}
+
+	cm := card.ParseManaCost(spell.ManaCost)
+	pool := caster.GetManaPool()
+
+	// Check specific colored and colorless costs first
+	specific := []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green, game.Colorless}
+	for _, t := range specific {
+		need := cm.Get(t)
+		if need == 0 {
+			continue
+		}
+		if pool[t] < need {
+			return fmt.Errorf("cannot pay %d %v for %s (have %d)", need, t, spell.Name, pool[t])
+		}
+	}
+
+	// Check generic (Any) cost
+	anyNeed := cm.Get(game.Any)
+	if anyNeed > 0 {
+		totalAvailable := 0
+		for _, v := range pool {
+			totalAvailable += v
+		}
+		totalSpecificNeed := 0
+		for _, t := range specific {
+			totalSpecificNeed += cm.Get(t)
+		}
+		if totalAvailable < totalSpecificNeed+anyNeed {
+			return fmt.Errorf("cannot pay total cost of %d for %s (have %d)", totalSpecificNeed+anyNeed, spell.Name, totalAvailable)
+		}
+	}
+
+	// Deduct specific colored/colorless costs
+	for _, t := range specific {
+		need := cm.Get(t)
+		if need > 0 {
+			pool[t] -= need
+		}
+	}
+
+	// Deduct generic costs greedily from remaining mana
+	for anyNeed > 0 {
+		found := false
+		for _, t := range specific {
+			if pool[t] > 0 {
+				pool[t]--
+				anyNeed--
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
+		}
+	}
+
+	if anyNeed > 0 {
+		return fmt.Errorf("could not pay full generic cost for %s", spell.Name)
+	}
+
 	logger.LogCard("%s pays costs for %s", caster.GetName(), spell.Name)
 	return nil
 }

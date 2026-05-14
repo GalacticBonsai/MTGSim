@@ -50,6 +50,62 @@ func TestSimulateEDHGame_TwoPlayer_DamageWin(t *testing.T) {
 	}
 }
 
+func TestCEDHComboFinish_OracleConsultation(t *testing.T) {
+	winner := game.NewEDHPlayer("Oracle")
+	loser := game.NewEDHPlayer("Opponent")
+	winner.Hand = []game.SimpleCard{
+		{Name: "Thassa's Oracle", TypeLine: "Creature", ManaCost: "{U}{U}", Power: "1", Toughness: "3"},
+		{Name: "Demonic Consultation", TypeLine: "Instant", ManaCost: "{B}"},
+	}
+	winner.AddManaToPool(game.Blue, 2)
+	winner.AddManaToPool(game.Black, 1)
+	g := game.NewGame(winner, loser)
+
+	if !attemptCEDHComboFinish(g, winner, nil, nil) {
+		t.Fatal("expected Oracle/Consultation combo to finish the game")
+	}
+	if !loser.HasLost() || winner.HasLost() {
+		t.Fatalf("expected only opponent to lose, winner lost=%v opponent lost=%v", winner.HasLost(), loser.HasLost())
+	}
+}
+
+func TestCEDHComboFinish_GodoHelm(t *testing.T) {
+	winner := game.NewEDHPlayer("Godo")
+	loser := game.NewEDHPlayer("Opponent")
+	winner.Hand = []game.SimpleCard{{Name: "Helm of the Host", TypeLine: "Legendary Artifact — Equipment", ManaCost: "{4}"}}
+	winner.CommandZone = []game.SimpleCard{{Name: "Godo, Bandit Warlord", TypeLine: "Legendary Creature", ManaCost: "{5}{R}", Power: "3", Toughness: "3"}}
+	winner.AddManaToPool(game.Red, 1)
+	winner.AddManaToPool(game.Colorless, 10)
+	g := game.NewGame(winner, loser)
+
+	if !attemptCEDHComboFinish(g, winner, nil, nil) {
+		t.Fatal("expected Godo/Helm combo to finish the game")
+	}
+	if !loser.HasLost() || winner.HasLost() {
+		t.Fatalf("expected only opponent to lose, winner lost=%v opponent lost=%v", winner.HasLost(), loser.HasLost())
+	}
+}
+
+func TestSimulateEDHGame_ComboEndsBeforeTurnTen(t *testing.T) {
+	library := make([]game.SimpleCard, 0, 30)
+	for i := 0; i < 12; i++ {
+		library = append(library, game.SimpleCard{Name: "Island", TypeLine: "Basic Land — Island"})
+	}
+	for i := 0; i < 9; i++ {
+		library = append(library, game.SimpleCard{Name: "Thassa's Oracle", TypeLine: "Creature", ManaCost: "{U}{U}", Power: "1", Toughness: "3"})
+		library = append(library, game.SimpleCard{Name: "Demonic Consultation", TypeLine: "Instant", ManaCost: "{U}"})
+	}
+	comboSeat := EDHSeat{DeckName: "Oracle Combo", Library: library}
+	defender := makeSeat("Defender", "Island", "Wall", "0", 1, nil)
+	rec, err := SimulateEDHGame(EDHRunOptions{Seats: []EDHSeat{comboSeat, defender}, MaxTurns: 10, RNG: rand.New(rand.NewSource(7))})
+	if err != nil {
+		t.Fatalf("simulate: %v", err)
+	}
+	if rec.Winner != "Oracle Combo" || rec.Turns > 10 {
+		t.Fatalf("expected Oracle Combo to win before turn 10, got winner=%q turns=%d", rec.Winner, rec.Turns)
+	}
+}
+
 func TestSimulateEDHGame_RegistersCommander(t *testing.T) {
 	cmdr := &game.SimpleCard{Name: "Test Cmdr", TypeLine: "Legendary Creature", Power: "5", Toughness: "5"}
 	seats := []EDHSeat{

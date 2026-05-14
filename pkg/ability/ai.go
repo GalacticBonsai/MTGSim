@@ -65,9 +65,14 @@ func (ai *AIDecisionMaker) initializePriorities() {
 	// Creature pumping is situational
 	ai.priorities[PumpCreature] = PriorityMedium
 
-	// Utility effects are lower priority
+	// Card advantage / board development
+	ai.priorities[SearchLibrary] = PriorityHigh
+	ai.priorities[CreateToken] = PriorityMedium
+
+	// Disruption / utility effects
+	ai.priorities[DiscardCards] = PriorityHigh
 	ai.priorities[TapUntap] = PriorityLow
-	ai.priorities[SearchLibrary] = PriorityLow
+	ai.priorities[PreventDamage] = PriorityLow
 }
 
 // DecisionContext provides context for AI decision making.
@@ -465,8 +470,8 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 
 	// Add untapped lands (simplified)
 	for _, land := range player.GetLands() {
-		if permanent, ok := land.(AbilityPermanent); ok {
-			if !permanent.IsTapped() {
+		if tapper, ok := land.(interface{ IsTapped() bool }); ok {
+			if !tapper.IsTapped() {
 				availableMana++
 			}
 		}
@@ -483,6 +488,19 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		boardState.MyCreaturePower += 2 // Assume average power of 2
 	}
 
+	// Populate opponents
+	var opponents []AbilityPlayer
+	for _, p := range ai.engine.gameState.GetAllPlayers() {
+		if p.GetName() != player.GetName() {
+			opponents = append(opponents, p)
+			boardState.OpponentCreatures += len(p.GetCreatures())
+			boardState.OpponentLands += len(p.GetLands())
+			for range p.GetCreatures() {
+				boardState.OpponentPower += 2
+			}
+		}
+	}
+
 	// Calculate threat level (simplified)
 	threatLevel := 0
 	if boardState.OpponentCreatures > boardState.MyCreatures {
@@ -494,6 +512,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 
 	return DecisionContext{
 		Player:            player,
+		Opponents:         opponents,
 		Phase:             phase,
 		AvailableMana:     availableMana,
 		HandSize:          len(player.GetHand()),
@@ -509,9 +528,8 @@ func estimateUtilityPermanents(player AbilityPlayer) int {
 	utility := 0
 	// Lands are not utility for this heuristic; artifacts/enchantments are.
 	for _, perm := range player.GetLands() {
-		if p, ok := perm.(AbilityPermanent); ok {
-			name := p.GetName()
-			if isHighUtilityPermanent(name) {
+		if named, ok := perm.(interface{ GetName() string }); ok {
+			if isHighUtilityPermanent(named.GetName()) {
 				utility++
 			}
 		}
@@ -523,9 +541,8 @@ func estimateUtilityPermanents(player AbilityPlayer) int {
 func estimateLockPermanents(opponent AbilityPlayer) int {
 	lock := 0
 	for _, perm := range opponent.GetLands() {
-		if p, ok := perm.(AbilityPermanent); ok {
-			name := p.GetName()
-			if isLockPiece(name) {
+		if named, ok := perm.(interface{ GetName() string }); ok {
+			if isLockPiece(named.GetName()) {
 				lock++
 			}
 		}
@@ -617,8 +634,12 @@ func (ai *AIDecisionMaker) chooseBasicTarget(targetReq Target, effect Effect, co
 	case CreatureTarget:
 		// Choose a creature (prefer opponent's creatures for damage, our creatures for pumping)
 		if effect.Type == DealDamage || effect.Type == DestroyPermanent {
-			// Target opponent's creatures (simplified)
-			return "opponent_creature"
+			for _, opp := range context.Opponents {
+				creatures := opp.GetCreatures()
+				if len(creatures) > 0 {
+					return creatures[0]
+				}
+			}
 		} else {
 			// Target our creatures
 			if len(context.Player.GetCreatures()) > 0 {
@@ -628,17 +649,19 @@ func (ai *AIDecisionMaker) chooseBasicTarget(targetReq Target, effect Effect, co
 	case PlayerTarget:
 		// Target opponent for damage, self for beneficial effects
 		if effect.Type == DealDamage || effect.Type == LoseLife {
-			return "opponent"
-		} else {
-			return context.Player
+			for _, opp := range context.Opponents {
+				return opp
+			}
 		}
+		return context.Player
 	case AnyTarget:
 		// Choose the most beneficial target
 		if effect.Type == DealDamage {
-			return "opponent"
-		} else {
-			return context.Player
+			for _, opp := range context.Opponents {
+				return opp
+			}
 		}
+		return context.Player
 	}
 	return nil
 }
@@ -709,7 +732,7 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 
 	// Simple strategy: prefer opponents for harmful effects, self for beneficial effects
 	switch effect.Type {
-	case DealDamage, DestroyPermanent, LoseLife, TapUntap:
+	case DealDamage, DestroyPermanent, LoseLife, TapUntap, DiscardCards:
 		// Prefer opponent targets, especially lock pieces or combo pieces when destroying/tapping
 		for _, target := range validTargets {
 			if player, ok := target.(AbilityPlayer); ok {
@@ -720,18 +743,18 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		}
 		// For permanents: prefer opponent combo pieces, then lock pieces
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() != context.Player.GetName() {
-					if isOpponentComboPiece(permanent.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() != context.Player.GetName() {
+					if isOpponentComboPiece(named.GetName()) {
 						return target
 					}
 				}
 			}
 		}
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() != context.Player.GetName() {
-					if isLockPiece(permanent.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() != context.Player.GetName() {
+					if isLockPiece(named.GetName()) {
 						return target
 					}
 				}
@@ -739,8 +762,8 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		}
 		// Fallback: any opponent permanent
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() != context.Player.GetName() {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() != context.Player.GetName() {
 					return target
 				}
 			}
@@ -756,26 +779,26 @@ func (ai *AIDecisionMaker) chooseBestTarget(validTargets []interface{}, effect E
 		}
 		// Prefer protecting our combo pieces, then utility permanents
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() == context.Player.GetName() {
-					if isComboPieceFor(permanent.GetName(), context.Player.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() == context.Player.GetName() {
+					if isComboPieceFor(named.GetName(), context.Player.GetName()) {
 						return target
 					}
 				}
 			}
 		}
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() == context.Player.GetName() {
-					if isHighUtilityPermanent(permanent.GetName()) {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() == context.Player.GetName() {
+					if isHighUtilityPermanent(named.GetName()) {
 						return target
 					}
 				}
 			}
 		}
 		for _, target := range validTargets {
-			if permanent, ok := target.(AbilityPermanent); ok {
-				if permanent.GetController().GetName() == context.Player.GetName() {
+			if named, ok := target.(interface{ GetName() string; GetControllerName() string }); ok {
+				if named.GetControllerName() == context.Player.GetName() {
 					return target
 				}
 			}

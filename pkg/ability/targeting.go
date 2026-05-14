@@ -139,6 +139,12 @@ func (tv *TargetValidator) isValidTargetType(target interface{}, targetType Targ
 		return tv.isPermanent(target)
 	case AnyTarget:
 		return tv.isPlayer(target) || tv.isPermanent(target)
+	case SpellTarget:
+		_, ok := target.(*StackItem)
+		return ok
+	case CardInGraveyardTarget:
+		// Graveyard targets are filtered by getPotentialTargets; accept any non-nil object
+		return target != nil
 	default:
 		return false
 	}
@@ -279,8 +285,8 @@ func (tv *TargetValidator) isCreature(target interface{}) bool {
 		return checker.IsCreature()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "creature")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "creature")
 	}
 	return false
 }
@@ -291,7 +297,7 @@ func (tv *TargetValidator) isPlayer(target interface{}) bool {
 }
 
 func (tv *TargetValidator) isPermanent(target interface{}) bool {
-	_, ok := target.(AbilityPermanent)
+	_, ok := target.(interface{ IsTapped() bool })
 	return ok
 }
 
@@ -301,8 +307,8 @@ func (tv *TargetValidator) isArtifact(target interface{}) bool {
 		return checker.IsArtifact()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "artifact")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "artifact")
 	}
 	return false
 }
@@ -313,8 +319,8 @@ func (tv *TargetValidator) isEnchantment(target interface{}) bool {
 		return checker.IsEnchantment()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "enchantment")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "enchantment")
 	}
 	return false
 }
@@ -325,8 +331,8 @@ func (tv *TargetValidator) isLand(target interface{}) bool {
 		return checker.IsLand()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "land")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "land")
 	}
 	return false
 }
@@ -337,8 +343,8 @@ func (tv *TargetValidator) isPlaneswalker(target interface{}) bool {
 		return checker.IsPlaneswalker()
 	}
 	// Fallback to name-based checking
-	if permanent, ok := target.(AbilityPermanent); ok {
-		return strings.Contains(strings.ToLower(permanent.GetName()), "planeswalker")
+	if named, ok := target.(interface{ GetName() string }); ok {
+		return strings.Contains(strings.ToLower(named.GetName()), "planeswalker")
 	}
 	return false
 }
@@ -387,6 +393,9 @@ func (tv *TargetValidator) isControlledBy(target interface{}, player AbilityPlay
 	if permanent, ok := target.(AbilityPermanent); ok {
 		return permanent.GetController().GetName() == player.GetName()
 	}
+	if named, ok := target.(interface{ GetControllerName() string }); ok {
+		return named.GetControllerName() == player.GetName()
+	}
 	return false
 }
 
@@ -394,12 +403,18 @@ func (tv *TargetValidator) isControlledByOpponent(target interface{}, player Abi
 	if permanent, ok := target.(AbilityPermanent); ok {
 		return permanent.GetController().GetName() != player.GetName()
 	}
+	if named, ok := target.(interface{ GetControllerName() string }); ok {
+		return named.GetControllerName() != player.GetName()
+	}
 	return false
 }
 
 func (tv *TargetValidator) isTapped(target interface{}) bool {
 	if permanent, ok := target.(AbilityPermanent); ok {
 		return permanent.IsTapped()
+	}
+	if tapper, ok := target.(interface{ IsTapped() bool }); ok {
+		return tapper.IsTapped()
 	}
 	return false
 }
@@ -420,4 +435,28 @@ func (tv *TargetValidator) hasProtection(target interface{}, source AbilityPlaye
 	// This would check if the target has protection from the source
 	// For now, simplified implementation
 	return false
+}
+
+// CanExecuteTargetRestriction returns true if the target validator has
+// explicit logic for evaluating a given restriction type (as opposed to
+// silently defaulting to true).
+func CanExecuteTargetRestriction(r TargetRestrictionType) bool {
+	switch r {
+	case CreatureRestriction, ArtifactRestriction, EnchantmentRestriction,
+		LandRestriction, PlaneswalkerRestriction, PermanentRestriction, SpellRestriction, PlayerRestriction,
+		FlyingRestriction, TrampleRestriction, VigilanceRestriction,
+		FirstStrikeRestriction, DeathtouchRestriction, LifelinkRestriction,
+		DoubleStrikeRestriction, HexproofRestriction, ShroudRestriction, ProtectionRestriction,
+		PowerLessEqualRestriction, ToughnessLessEqualRestriction, CMCLessEqualRestriction,
+		PowerGreaterEqualRestriction, ToughnessGreaterEqualRestriction, CMCGreaterEqualRestriction,
+		YouControlRestriction, YouDontControlRestriction, OpponentControlsRestriction,
+		TappedRestriction, UntappedRestriction, AttackingRestriction, BlockingRestriction,
+		EnchantedRestriction, EquippedRestriction,
+		WhiteRestriction, BlueRestriction, BlackRestriction, RedRestriction, GreenRestriction,
+		ColorlessRestriction, MonocoloredRestriction, MulticoloredRestriction,
+		NoRestriction:
+		return true
+	default:
+		return false
+	}
 }

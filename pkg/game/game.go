@@ -99,6 +99,27 @@ func (g *Game) removeDamageFromPermanents() {
 	}
 }
 
+// findNextLivingPlayer searches clockwise from startIdx for the next player
+// who has not lost. It wraps around the player slice. If the only living
+// player is startIdx itself, startIdx is returned. If no living players exist,
+// -1 is returned.
+func (g *Game) findNextLivingPlayer(startIdx int) int {
+	n := len(g.players)
+	if n == 0 {
+		return -1
+	}
+	for i := 1; i <= n; i++ {
+		idx := (startIdx + i) % n
+		if !g.players[idx].HasLost() {
+			return idx
+		}
+	}
+	if !g.players[startIdx].HasLost() {
+		return startIdx
+	}
+	return -1
+}
+
 // AdvancePhase steps to the next phase; on cleanup step completion, rotate to next player's turn.
 func (g *Game) AdvancePhase() {
 	g.clearManaPools()
@@ -121,13 +142,16 @@ func (g *Game) AdvancePhase() {
 	case PhaseCleanup:
 		// end of turn -> next player
 		if len(g.players) > 0 {
-			g.currentIdx = (g.currentIdx + 1) % len(g.players)
-			g.activeIdx = g.currentIdx
+			nextIdx := g.findNextLivingPlayer(g.currentIdx)
+			if nextIdx >= 0 {
+				if nextIdx < g.currentIdx {
+					g.turnNumber++
+				}
+				g.currentIdx = nextIdx
+				g.activeIdx = nextIdx
+			}
 		}
 		g.currentPhase = PhaseUntap
-		if g.currentIdx == 0 { // wrapped around to first player
-			g.turnNumber++
-		}
 	}
 }
 

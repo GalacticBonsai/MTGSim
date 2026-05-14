@@ -85,6 +85,18 @@ func (cl *CardLibrary) SetImageURL(cardName, url string) {
 	cl.Cards[cardName] = s
 }
 
+// Snapshot returns a shallow copy of the underlying card map. The copy is safe
+// to iterate concurrently with further mutations to the library.
+func (cl *CardLibrary) Snapshot() map[string]GlobalCardStats {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	out := make(map[string]GlobalCardStats, len(cl.Cards))
+	for k, v := range cl.Cards {
+		out[k] = v
+	}
+	return out
+}
+
 // Entry is a single row for TopCards results.
 type Entry struct {
 	Name    string

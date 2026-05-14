@@ -188,6 +188,9 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			}
 		}
 	}
+	if attemptCEDHComboFinish(g, ap, log, metrics) {
+		return
+	}
 
 	again := true
 	for again {
@@ -223,6 +226,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 	}
 
 	bridge.AutoActivateMainPhaseAbilities(g)
+	attemptCEDHComboFinish(g, ap, log, metrics)
 }
 
 func isCastablePermanent(c game.SimpleCard) bool {

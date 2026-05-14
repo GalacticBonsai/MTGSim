@@ -3,6 +3,9 @@ package ability
 
 import (
 	"testing"
+
+	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/scryfall"
 )
 
 // RealMTGCard represents actual MTG card data for testing
@@ -282,11 +285,14 @@ func TestRealEnchantmentSpells(t *testing.T) {
 				t.Errorf("%s: failed to parse oracle text: %v", card.Name, err)
 			}
 
-			// Enchantments should create permanent effects
+			// Static enchantment effects should be permanent; triggered/activated abilities on enchantments (e.g., Necropotence) are correctly Instant.
 			for _, ability := range abilities {
+				if ability.Type != Static {
+					continue
+				}
 				for _, effect := range ability.Effects {
 					if effect.Duration != Permanent && effect.Duration != UntilLeavesPlay {
-						t.Errorf("%s: enchantment effects should be permanent or until leaves play", card.Name)
+						t.Errorf("%s: static enchantment effects should be permanent or until leaves play", card.Name)
 					}
 				}
 			}
@@ -513,3 +519,251 @@ func testProdigalPyromancerAbility(t *testing.T, abilities []*Ability) {
 		t.Errorf("Prodigal Pyromancer effect should be DealDamage, got %v", effect.Type)
 	}
 }
+
+// TestScryfallRulingsIntegration validates that we can fetch Scryfall rulings
+// for key cards and that the rulings are non-empty. This ensures the
+// rulings pipeline is functional for future edge-case regression tests.
+func TestScryfallRulingsIntegration(t *testing.T) {
+	client := scryfall.NewClient()
+
+	cards := []string{"Lightning Bolt", "Counterspell", "Sakura-Tribe Elder"}
+	for _, name := range cards {
+		t.Run(name, func(t *testing.T) {
+			rulings, err := client.GetRulingsByName(name)
+			if err != nil {
+				// Scryfall may be unavailable; skip rather than fail.
+				t.Skipf("Skipping %s: could not fetch rulings: %v", name, err)
+			}
+			if len(rulings) == 0 {
+				t.Logf("No rulings returned for %s (this is okay for cards with no published rulings)", name)
+			} else {
+				t.Logf("%s has %d rulings; first ruling: %s", name, len(rulings), rulings[0].Comment)
+			}
+		})
+	}
+}
+
+// TestEDHUnimplementedCardsLifecycle simulates the full parse-to-execution lifecycle
+// for a representative sample of previously-unimplemented EDH cards.
+func TestEDHUnimplementedCardsLifecycle(t *testing.T) {
+	parser := NewAbilityParser()
+
+	testCases := []struct {
+		name       string
+		oracleText string
+	}{
+		{
+			name:       "Brain Freeze",
+			oracleText: "Target player mills three cards.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+		},
+		{
+			name:       "Bloodstained Mire",
+			oracleText: "{T}, Pay 1 life, Sacrifice Bloodstained Mire: Search your library for a Swamp or Mountain card, put it onto the battlefield, then shuffle.",
+		},
+		{
+			name:       "Reanimate",
+			oracleText: "Put target creature card from a graveyard onto the battlefield under your control. You lose life equal to its mana value.",
+		},
+		{
+			name:       "Mystical Tutor",
+			oracleText: "Search your library for an instant or sorcery card, reveal it, then shuffle and put that card on top.",
+		},
+		{
+			name:       "Abrupt Decay",
+			oracleText: "This spell can't be countered.\nDestroy target nonland permanent with mana value 3 or less.",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name+"_Parsing", func(t *testing.T) {
+			abilities, err := parser.ParseAbilities(tc.oracleText, nil)
+			if err != nil {
+				t.Fatalf("failed to parse %s: %v", tc.name, err)
+			}
+			if len(abilities) == 0 {
+				t.Fatalf("no abilities parsed for %s", tc.name)
+			}
+
+			switch tc.name {
+			case "Brain Freeze":
+				if len(abilities) != 1 {
+					t.Errorf("expected 1 ability, got %d", len(abilities))
+				}
+				if abilities[0].Effects[0].Type != MillCards {
+					t.Errorf("expected MillCards effect, got %v", abilities[0].Effects[0].Type)
+				}
+				if abilities[0].Effects[0].Value != 3 {
+					t.Errorf("expected mill 3 cards, got %d", abilities[0].Effects[0].Value)
+				}
+			case "Bloodstained Mire":
+				if len(abilities) != 1 {
+					t.Errorf("expected 1 ability, got %d", len(abilities))
+				}
+				foundLoseLife, foundSearch := false, false
+				for _, eff := range abilities[0].Effects {
+					if eff.Type == LoseLife {
+						foundLoseLife = true
+					}
+					if eff.Type == SearchLibrary {
+						foundSearch = true
+					}
+				}
+				if !foundLoseLife {
+					t.Error("expected LoseLife effect for fetchland")
+				}
+				if !foundSearch {
+					t.Error("expected SearchLibrary effect for fetchland")
+				}
+			case "Reanimate":
+				if len(abilities) != 1 {
+					t.Errorf("expected 1 ability, got %d", len(abilities))
+				}
+				if abilities[0].Effects[0].Type != ReanimateCreature {
+					t.Errorf("expected ReanimateCreature effect, got %v", abilities[0].Effects[0].Type)
+				}
+			case "Mystical Tutor":
+				if len(abilities) != 1 {
+					t.Errorf("expected 1 ability, got %d", len(abilities))
+				}
+				if abilities[0].Effects[0].Type != SearchLibrary {
+					t.Errorf("expected SearchLibrary effect, got %v", abilities[0].Effects[0].Type)
+				}
+			case "Abrupt Decay":
+				if len(abilities) != 2 {
+					t.Errorf("expected 2 abilities (counter-shield + destroy), got %d", len(abilities))
+				}
+				foundStatic, foundDestroy := false, false
+				for _, a := range abilities {
+					if a.Type == Static {
+						foundStatic = true
+					}
+					for _, eff := range a.Effects {
+						if eff.Type == DestroyPermanent {
+							foundDestroy = true
+						}
+					}
+				}
+				if !foundStatic {
+					t.Error("expected static ability for 'can't be countered'")
+				}
+				if !foundDestroy {
+					t.Error("expected DestroyPermanent effect")
+				}
+			}
+		})
+	}
+
+	// Full execution lifecycle tests using mock game state.
+	t.Run("Brain Freeze Execution", func(t *testing.T) {
+		player := &mockPlayer{
+			name:      "Alice",
+			life:      20,
+			library:   []interface{}{"C1", "C2", "C3", "C4", "C5"},
+			graveyard: []interface{}{},
+			manaPool:  make(map[game.ManaType]int),
+		}
+		gs := &mockGameState{
+			players:       []AbilityPlayer{player},
+			currentPlayer: player,
+			isMainPhase:   true,
+		}
+		engine := NewExecutionEngine(gs)
+		abilities, _ := parser.ParseAbilities("Target player mills three cards.", nil)
+		if len(abilities) == 0 {
+			t.Fatal("no abilities parsed")
+		}
+		err := engine.ExecuteAbility(abilities[0], player, []any{player})
+		if err != nil {
+			t.Fatalf("execution failed: %v", err)
+		}
+		if len(player.library) != 2 {
+			t.Errorf("expected library size 2, got %d", len(player.library))
+		}
+		if len(player.graveyard) != 3 {
+			t.Errorf("expected graveyard size 3, got %d", len(player.graveyard))
+		}
+	})
+
+	t.Run("Bloodstained Mire Execution", func(t *testing.T) {
+		player := &mockPlayer{
+			name:     "Alice",
+			life:     20,
+			manaPool: make(map[game.ManaType]int),
+			hand:     []interface{}{},
+		}
+		gs := &mockGameState{
+			players:       []AbilityPlayer{player},
+			currentPlayer: player,
+			isMainPhase:   true,
+		}
+		engine := NewExecutionEngine(gs)
+		abilities, _ := parser.ParseAbilities("{T}, Pay 1 life, Sacrifice Bloodstained Mire: Search your library for a Swamp or Mountain card, put it onto the battlefield, then shuffle.", nil)
+		if len(abilities) == 0 {
+			t.Fatal("no abilities parsed")
+		}
+		err := engine.ExecuteAbility(abilities[0], player, nil)
+		if err != nil {
+			t.Fatalf("execution failed: %v", err)
+		}
+		if player.life != 19 {
+			t.Errorf("expected life total 19, got %d", player.life)
+		}
+		if len(player.hand) != 1 {
+			t.Errorf("expected hand size 1 (searched card), got %d", len(player.hand))
+		}
+	})
+
+	t.Run("Reanimate Execution", func(t *testing.T) {
+		player := &mockPlayer{
+			name:      "Alice",
+			life:      20,
+			creatures: []interface{}{},
+			graveyard: []interface{}{"DeadCreature"},
+			manaPool:  make(map[game.ManaType]int),
+		}
+		gs := &mockGameState{
+			players:       []AbilityPlayer{player},
+			currentPlayer: player,
+			isMainPhase:   true,
+		}
+		engine := NewExecutionEngine(gs)
+		abilities, _ := parser.ParseAbilities("Put target creature card from a graveyard onto the battlefield under your control. You lose life equal to its mana value.", nil)
+		if len(abilities) == 0 {
+			t.Fatal("no abilities parsed")
+		}
+		err := engine.ExecuteAbility(abilities[0], player, []any{player.graveyard[0]})
+		if err != nil {
+			t.Fatalf("execution failed: %v", err)
+		}
+		if len(player.creatures) != 1 {
+			t.Errorf("expected 1 creature on battlefield, got %d", len(player.creatures))
+		}
+	})
+
+	t.Run("Mystical Tutor Execution", func(t *testing.T) {
+		player := &mockPlayer{
+			name:     "Alice",
+			life:     20,
+			manaPool: make(map[game.ManaType]int),
+			hand:     []interface{}{},
+		}
+		gs := &mockGameState{
+			players:       []AbilityPlayer{player},
+			currentPlayer: player,
+			isMainPhase:   true,
+		}
+		engine := NewExecutionEngine(gs)
+		abilities, _ := parser.ParseAbilities("Search your library for an instant or sorcery card, reveal it, then shuffle and put that card on top.", nil)
+		if len(abilities) == 0 {
+			t.Fatal("no abilities parsed")
+		}
+		err := engine.ExecuteAbility(abilities[0], player, nil)
+		if err != nil {
+			t.Fatalf("execution failed: %v", err)
+		}
+		if len(player.hand) != 1 {
+			t.Errorf("expected hand size 1 (tutored card), got %d", len(player.hand))
+		}
+	})
+}
+

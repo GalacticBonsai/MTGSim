@@ -16,6 +16,16 @@ type mockGameState struct {
 	isCombat      bool
 }
 
+type layeredMockGameState struct {
+	mockGameState
+	layered []*game.LayeredEffect
+}
+
+func (m *layeredMockGameState) AddLayeredEffect(effect *game.LayeredEffect) uint64 {
+	m.layered = append(m.layered, effect)
+	return uint64(len(m.layered))
+}
+
 func (m *mockGameState) GetPlayer(name string) AbilityPlayer {
 	for _, p := range m.players {
 		if p.GetName() == name {
@@ -86,6 +96,54 @@ func (m *mockGameState) LoseLife(player AbilityPlayer, amount int) {
 	}
 }
 
+func (m *mockGameState) DiscardCards(player AbilityPlayer, count int) {
+	if mp, ok := player.(*mockPlayer); ok {
+		for i := 0; i < count; i++ {
+			if len(mp.hand) > 0 {
+				mp.hand = mp.hand[:len(mp.hand)-1]
+			}
+		}
+	}
+}
+
+func (m *mockGameState) SearchLibrary(player AbilityPlayer, count int) {
+	if mp, ok := player.(*mockPlayer); ok {
+		for i := 0; i < count; i++ {
+			mp.hand = append(mp.hand, "SearchedCard")
+		}
+	}
+}
+
+func (m *mockGameState) CreateToken(controller AbilityPlayer, token game.SimpleCard) {
+	if mp, ok := controller.(*mockPlayer); ok {
+		mp.creatures = append(mp.creatures, "Token")
+	}
+}
+
+func (m *mockGameState) PreventDamage(target any, amount int) {
+	// No-op for mock
+}
+
+func (m *mockGameState) MillCards(player AbilityPlayer, count int) {
+	if mp, ok := player.(*mockPlayer); ok {
+		for i := 0; i < count && len(mp.library) > 0; i++ {
+			top := mp.library[0]
+			mp.library = mp.library[1:]
+			mp.graveyard = append(mp.graveyard, top)
+		}
+	}
+}
+
+func (m *mockGameState) ReanimateCreature(player AbilityPlayer, card game.SimpleCard) {
+	if mp, ok := player.(*mockPlayer); ok {
+		mp.creatures = append(mp.creatures, card)
+	}
+}
+
+func (m *mockGameState) ScryLibrary(player AbilityPlayer, count int) {
+	// No-op for mock
+}
+
 type mockPlayer struct {
 	name      string
 	life      int
@@ -93,6 +151,8 @@ type mockPlayer struct {
 	manaPool  map[game.ManaType]int
 	creatures []interface{}
 	lands     []interface{}
+	library   []interface{}
+	graveyard []interface{}
 }
 
 func (m *mockPlayer) GetName() string {
@@ -121,6 +181,10 @@ func (m *mockPlayer) GetCreatures() []interface{} {
 
 func (m *mockPlayer) GetLands() []interface{} {
 	return m.lands
+}
+
+func (m *mockPlayer) GetGraveyard() []interface{} {
+	return m.graveyard
 }
 
 func (m *mockPlayer) CanPayCost(cost Cost) bool {
@@ -451,7 +515,7 @@ func TestExecutionEngine_ParseAndRegisterAbilities(t *testing.T) {
 		},
 		{
 			name:        "Parse no abilities",
-			oracleText:  "This creature has flying.",
+			oracleText:  "Some non-ability flavor text.",
 			expectedLen: 0,
 		},
 	}
@@ -548,5 +612,76 @@ func TestExecutionEngine_ActivateManaAbilities(t *testing.T) {
 
 	if totalMana != 1 {
 		t.Errorf("Expected 1 mana in pool, got %d", totalMana)
+	}
+}
+
+func TestHasValidTargetsBasic_CardInGraveyard(t *testing.T) {
+	player := &mockPlayer{
+		name:      "Alice",
+		graveyard: []interface{}{"DeadCreature"},
+	}
+	gs := &mockGameState{
+		players:       []AbilityPlayer{player},
+		currentPlayer: player,
+		isMainPhase:   true,
+	}
+	engine := NewExecutionEngine(gs)
+	target := Target{Type: CardInGraveyardTarget, Required: true}
+	if !engine.hasValidTargetsBasic(target, player) {
+		t.Error("expected hasValidTargetsBasic to return true for non-empty graveyard")
+	}
+}
+
+func TestExecutionEngine_CheckConditionsUsesGameState(t *testing.T) {
+	controller := &mockPlayer{name: "Alice", life: 20, hand: nil, manaPool: map[game.ManaType]int{}}
+	opponent := &mockPlayer{name: "Bob", life: 10, hand: []interface{}{"card"}, manaPool: map[game.ManaType]int{}}
+	gs := &mockGameState{players: []AbilityPlayer{controller, opponent}, currentPlayer: controller, isMainPhase: true}
+	engine := NewExecutionEngine(gs)
+
+	met := Effect{Conditions: []Condition{{Type: NoCardsInHand}, {Type: HaveMoreLifeThanOpponent}}}
+	if !engine.checkConditions(met, controller) {
+		t.Fatal("expected concrete conditions to be met")
+	}
+
+	notMet := Effect{Conditions: []Condition{{Type: NoCardsInHand}}}
+	if engine.checkConditions(notMet, opponent) {
+		t.Fatal("expected non-empty hand condition to fail")
+	}
+}
+
+func TestExecutionEngine_DoesNotTapWhenCostCannotBePaid(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	source := &mockPermanent{id: uuid.New(), name: "Costly Creature", owner: player, controller: player}
+	gs := &mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}
+	engine := NewExecutionEngine(gs)
+
+	ability := &Ability{
+		Name:    "Costly Tap",
+		Type:    Activated,
+		Source:  source,
+		Cost:    Cost{TapCost: true, ManaCost: map[game.ManaType]int{game.Any: 1}},
+		Effects: []Effect{{Type: DrawCards, Value: 1}},
+	}
+	if err := engine.ExecuteAbility(ability, player, nil); err == nil {
+		t.Fatal("expected activation to fail")
+	}
+	if source.tapped {
+		t.Fatal("source tapped even though costs could not be paid")
+	}
+}
+
+func TestExecutionEngine_PumpUsesLayeredEffectsWhenAvailable(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	gs := &layeredMockGameState{mockGameState: mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}}
+	engine := NewExecutionEngine(gs)
+	owner := game.NewPlayer("Owner", 20)
+	creature := game.NewPermanent(game.SimpleCard{Name: "Layered Creature", TypeLine: "Creature", Power: "2", Toughness: "2"}, owner, owner)
+
+	engine.applyPumpEffect(creature, 3, 3, UntilEndOfTurn)
+	if len(gs.layered) != 1 {
+		t.Fatalf("expected one layered effect, got %d", len(gs.layered))
+	}
+	if !gs.layered[0].ExpiresEOT || gs.layered[0].Layer != game.Layer7PT || gs.layered[0].Sublayer != game.Sublayer7C {
+		t.Fatalf("unexpected layered effect: %+v", gs.layered[0])
 	}
 }

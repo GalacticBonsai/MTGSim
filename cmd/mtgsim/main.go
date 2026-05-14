@@ -226,6 +226,31 @@ func abilityCostToGameMana(c abil.Cost) game.Mana {
 	return gm
 }
 
+// manaToString converts a game.Mana cost back into a Scryfall-style mana cost string.
+func manaToString(m game.Mana) string {
+	var s strings.Builder
+	if n := m.Get(game.Any); n > 0 {
+		fmt.Fprintf(&s, "{%d}", n)
+	}
+	colors := []struct {
+		t game.ManaType
+		c string
+	}{
+		{game.White, "W"},
+		{game.Blue, "U"},
+		{game.Black, "B"},
+		{game.Red, "R"},
+		{game.Green, "G"},
+		{game.Colorless, "C"},
+	}
+	for _, col := range colors {
+		for i := 0; i < m.Get(col.t); i++ {
+			fmt.Fprintf(&s, "{%s}", col.c)
+		}
+	}
+	return s.String()
+}
+
 // Check if a mana pool can pay a cost (colored first, Any from remaining total)
 func poolCanPay(pool map[game.ManaType]int, cost game.Mana) bool {
 	if cost == nil {
@@ -332,11 +357,15 @@ type abilityStackAdapter struct {
 	cardDB *card.CardDB
 }
 
-func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, _ string, typeLine string, controller any, targets []any) error {
+func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, manaCost string, typeLine string, controller any, targets []any) error {
 	// Look up the real card from the database to include oracle/effects
 	cc, ok := a.cardDB.GetCardByName(name)
 	if !ok {
 		return fmt.Errorf("card not found: %s", name)
+	}
+	// Use the taxed mana cost passed from the caller if available
+	if manaCost != "" {
+		cc.ManaCost = manaCost
 	}
 	c, ok := controller.(abil.AbilityPlayer)
 	if !ok {
@@ -376,14 +405,48 @@ func napResponseWindow(g *game.Game, nap *game.Player, ap *game.Player, cardDB *
 	produceAllAvailableMana(nap)
 	castInstants(g, nap, ap, cardDB, nap, gs, ai, exec, casts)
 	// Resolve any items added by NAP before returning to AP resolution
-	resolveStackWithPermanents(sce, g)
+	resolveStackWithPermanents(sce, g, gs, exec)
+}
+
+// attachAbilitiesAndExecuteETB parses oracle text abilities onto a permanent and
+// immediately executes any EntersTheBattlefield triggers.
+func attachAbilitiesAndExecuteETB(perm *game.Permanent, oracleText string, exec *abil.ExecutionEngine, gs *bridge.AbilityGameState) {
+	if perm == nil || oracleText == "" {
+		return
+	}
+	abs, err := exec.ParseAndRegisterAbilities(oracleText, perm)
+	if err != nil || len(abs) == 0 {
+		return
+	}
+	var wrapped []any
+	for _, a := range abs {
+		a.Source = perm
+		wrapped = append(wrapped, a)
+	}
+	perm.SetAbilities(wrapped)
+
+	ctrlName := perm.GetControllerName()
+	if ctrlName == "" {
+		return
+	}
+	ctrlAdapter := gs.GetPlayer(ctrlName)
+	if ctrlAdapter == nil {
+		return
+	}
+	for _, a := range abs {
+		if a.Type == abil.Triggered && a.TriggerCondition == abil.EntersTheBattlefield {
+			for _, effect := range a.Effects {
+				_ = exec.ApplyEffect(effect, ctrlAdapter, nil)
+			}
+		}
+	}
 }
 
 // resolveStackWithPermanents resolves the ability stack one item at a time.
 // After each resolution, if the item was a permanent spell, we create the
 // corresponding permanent on the battlefield by moving the card from hand.
 // CR 117.4b: When all players pass in succession, the top object on the stack resolves.
-func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
+func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game, gs *bridge.AbilityGameState, exec *abil.ExecutionEngine) {
 	st := sce.GetStack()
 	for !st.IsEmpty() {
 		item := st.Peek()
@@ -406,10 +469,22 @@ func resolveStackWithPermanents(sce *abil.SpellCastingEngine, g *game.Game) {
 			continue
 		}
 		// Move permanent spells onto the battlefield
+		var perm *game.Permanent
 		if strings.Contains(tl, "Creature") {
-			_, _ = g.SummonCreature(ctrl, name)
+			perm, _ = g.SummonCreature(ctrl, name)
 		} else if strings.Contains(tl, "Enchantment") || strings.Contains(tl, "Artifact") || strings.Contains(tl, "Planeswalker") {
-			_, _ = g.CastPermanent(ctrl, name)
+			perm, _ = g.CastPermanent(ctrl, name)
+		} else if strings.Contains(tl, "Instant") || strings.Contains(tl, "Sorcery") {
+			// Non-permanent spells move from hand to graveyard on resolution
+			idx := ctrl.FindCardInHand(name)
+			if idx >= 0 {
+				card := ctrl.Hand[idx]
+				ctrl.Hand = append(ctrl.Hand[:idx], ctrl.Hand[idx+1:]...)
+				ctrl.Graveyard = append(ctrl.Graveyard, card)
+			}
+		}
+		if perm != nil && item.Spell.OracleText != "" {
+			attachAbilitiesAndExecuteETB(perm, item.Spell.OracleText, exec, gs)
 		}
 		g.ApplyStateBasedActions()
 	}
@@ -590,7 +665,6 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 	for {
 		bestIdx := -1
 		bestPow := -1
-		bestCost := game.Mana{}
 		var bestCard card.Card
 		for i, c := range p.Hand {
 			if !c.IsCreature() {
@@ -603,7 +677,6 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 					if pow > bestPow {
 						bestPow = pow
 						bestIdx = i
-						bestCost = cost
 						bestCard = cardData
 					}
 				}
@@ -612,16 +685,12 @@ func castAllPossibleCreatures(g *game.Game, p *game.Player, cardDB *card.CardDB,
 		if bestIdx < 0 {
 			break
 		}
-		// Pay and cast through the stack (do NOT remove from hand here)
-		if poolPay(p.GetManaPool(), bestCost) {
-			if err := g.CastSimpleSpell(bestCard.Name, int(bestCard.CMC), bestCard.ManaCost, bestCard.TypeLine, controller, nil); err != nil {
-				break
-			}
-			if ctrl, ok := controller.(*game.Player); ok {
-				recordCast(tracker, ctrl, bestCard.Name)
-			}
-		} else {
+		cost := taxedCost(p, bestCard, g)
+		if err := g.CastSimpleSpell(bestCard.Name, int(bestCard.CMC), manaToString(cost), bestCard.TypeLine, controller, nil); err != nil {
 			break
+		}
+		if ctrl, ok := controller.(*game.Player); ok {
+			recordCast(tracker, ctrl, bestCard.Name)
 		}
 	}
 }
@@ -642,10 +711,7 @@ func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB
 			if !poolCanPay(p.GetManaPool(), cost) {
 				continue
 			}
-			if !poolPay(p.GetManaPool(), cost) {
-				continue
-			}
-			if err := g.CastSimpleSpell(cardData.Name, int(cardData.CMC), cardData.ManaCost, cardData.TypeLine, controller, nil); err == nil {
+			if err := g.CastSimpleSpell(cardData.Name, int(cardData.CMC), manaToString(cost), cardData.TypeLine, controller, nil); err == nil {
 				castSomething = true
 				if ctrl, ok := controller.(*game.Player); ok {
 					recordCast(tracker, ctrl, cardData.Name)
@@ -692,7 +758,6 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 	selected := ai.ChooseAbilitiesToActivate(abilities, ctx)
 	for _, ab := range selected {
 		cd := cardByAbility[ab]
-		// Pay cost from game pool
 		gm := abilityCostToGameMana(ab.Cost)
 		if !poolCanPay(p.GetManaPool(), gm) {
 			continue
@@ -703,10 +768,7 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 		for _, t := range ts {
 			anyTargets = append(anyTargets, t)
 		}
-		if !poolPay(p.GetManaPool(), gm) {
-			continue
-		}
-		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, anyTargets)
 		if ctrl, ok := controller.(*game.Player); ok {
 			recordCast(tracker, ctrl, cd.Name)
 		}
@@ -759,10 +821,7 @@ func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.Ca
 		for _, t := range ts {
 			anyTargets = append(anyTargets, t)
 		}
-		if !poolPay(p.GetManaPool(), gm) {
-			continue
-		}
-		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), cd.ManaCost, cd.TypeLine, controller, anyTargets)
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, anyTargets)
 		if ctrl, ok := controller.(*game.Player); ok {
 			recordCast(tracker, ctrl, cd.Name)
 		}
@@ -929,9 +988,12 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 					c := ap.Hand[landIdx]
 					// CR 305.2: A player may play one land during their main phase when they have priority and the stack is empty.
 					// Do not remove from hand here; Player.PlayLand handles the zone change (single removal).
-					if _, err := g.PlayLand(ap, c.Name); err == nil {
+					if perm, err := g.PlayLand(ap, c.Name); err == nil {
 						landDropUsed[ap] = true
 						recordCast(casts, ap, c.Name)
+						if c.OracleText != "" {
+							attachAbilitiesAndExecuteETB(perm, c.OracleText, exec, gs)
+						}
 					}
 				}
 			}
@@ -1188,6 +1250,28 @@ func main() {
 		os.Exit(1)
 	}
 	logger.LogMeta("Found %d deck files", len(deckFiles))
+
+	// Warn about unimplemented cards in discovered decks
+	implTracker := abil.NewImplementationTracker()
+	warnedDecks := map[string]bool{}
+	for _, dPath := range deckFiles {
+		if warnedDecks[dPath] {
+			continue
+		}
+		warnedDecks[dPath] = true
+		m, _, err := deck.ImportDeckfile(dPath, cardDB)
+		if err != nil {
+			continue
+		}
+		unimpl := implTracker.CheckDeck(m.Cards, cardDB)
+		for _, name := range unimpl {
+			logger.LogMeta("Warning: unimplemented card in %s: %s", dPath, name)
+		}
+	}
+	if report, err := card.ComputeImplementationStatus(cardDB, implTracker); err == nil {
+		logger.LogMeta("Implementation status: %d/%d cards (%.1f%%)", report.ImplementedCount, report.TotalCards, report.Percentage)
+		_ = implTracker.Save()
+	}
 
 	// Per-deck stats
 	perDeck := map[string]*deckStats{}

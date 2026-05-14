@@ -24,6 +24,7 @@ type playerAdapter struct{ P *game.Player }
 func (p *playerAdapter) GetName() string    { return p.P.GetName() }
 func (p *playerAdapter) GetLifeTotal() int  { return p.P.GetLifeTotal() }
 func (p *playerAdapter) SetLifeTotal(l int) { p.P.SetLifeTotal(l) }
+func (p *playerAdapter) Lose(reason string) { p.P.Lose(reason) }
 func (p *playerAdapter) GetHand() []any     { return sliceToAny(p.P.GetHand()) }
 func (p *playerAdapter) AddCardToHand(c any) {
 	if sc, ok := c.(game.SimpleCard); ok {
@@ -136,4 +137,67 @@ func (b *AbilityGameState) LoseLife(player abil.AbilityPlayer, amount int) {
 		pa.P.SetLifeTotal(pa.P.GetLifeTotal() - amount)
 	}
 	b.G.ApplyStateBasedActions()
+}
+
+func (b *AbilityGameState) DiscardCards(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		pa.P.Discard(count)
+	}
+}
+
+func (b *AbilityGameState) SearchLibrary(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		pa.P.SearchLibraryToHand(count)
+	}
+}
+
+func (b *AbilityGameState) CreateToken(controller abil.AbilityPlayer, token game.SimpleCard) {
+	if pa, ok := controller.(*playerAdapter); ok {
+		pa.P.PutTokenOnBattlefield(token)
+	}
+}
+
+func (b *AbilityGameState) PreventDamage(target any, amount int) {
+	b.G.AddDamagePrevention(target, amount)
+}
+
+func (b *AbilityGameState) MillCards(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		for i := 0; i < count && len(pa.P.Library) > 0; i++ {
+			top := pa.P.Library[0]
+			pa.P.Library = pa.P.Library[1:]
+			pa.P.Graveyard = append(pa.P.Graveyard, top)
+		}
+	}
+}
+
+func (b *AbilityGameState) ReanimateCreature(player abil.AbilityPlayer, card game.SimpleCard) {
+	if pa, ok := player.(*playerAdapter); ok {
+		pa.P.PutTokenOnBattlefield(card)
+	}
+}
+
+func (b *AbilityGameState) ScryLibrary(player abil.AbilityPlayer, count int) {
+	if pa, ok := player.(*playerAdapter); ok {
+		// Simple scry: look at top N, move bad ones to bottom
+		if count > len(pa.P.Library) {
+			count = len(pa.P.Library)
+		}
+		if count == 0 {
+			return
+		}
+		// Heuristic: keep lands and creatures on top, move other cards to bottom
+		var keep, bottom []game.SimpleCard
+		for i := 0; i < count; i++ {
+			c := pa.P.Library[i]
+			if c.IsLand() || c.IsCreature() {
+				keep = append(keep, c)
+			} else {
+				bottom = append(bottom, c)
+			}
+		}
+		// Rebuild library: remove scried cards, then prepend keep and append bottom
+		rest := pa.P.Library[count:]
+		pa.P.Library = append(append(keep, bottom...), rest...)
+	}
 }

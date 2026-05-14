@@ -549,6 +549,7 @@ type gamePlayer struct {
 	lands     []*gamePermanent
 	creatures []*gamePermanent
 	manaPool  map[game.ManaType]int
+	graveyard []gameCard
 }
 
 func (p *gamePlayer) GetName() string {
@@ -646,6 +647,14 @@ func (p *gamePlayer) PayCost(cost Cost) error {
 
 func (p *gamePlayer) GetManaPool() map[game.ManaType]int {
 	return p.manaPool
+}
+
+func (p *gamePlayer) GetGraveyard() []interface{} {
+	result := make([]interface{}, len(p.graveyard))
+	for i, card := range p.graveyard {
+		result[i] = card
+	}
+	return result
 }
 
 type gameCard struct {
@@ -838,4 +847,44 @@ func (g *gameSimulationState) LoseLife(player AbilityPlayer, amount int) {
 			gamePlayer.life = 0
 		}
 	}
+}
+
+func (g *gameSimulationState) DiscardCards(player AbilityPlayer, count int) {
+	if gamePlayer, ok := player.(*gamePlayer); ok {
+		for i := 0; i < count && len(gamePlayer.hand) > 0; i++ {
+			gamePlayer.hand = gamePlayer.hand[:len(gamePlayer.hand)-1]
+		}
+	}
+}
+
+func (g *gameSimulationState) SearchLibrary(player AbilityPlayer, count int) {
+	if gamePlayer, ok := player.(*gamePlayer); ok {
+		for i := 0; i < count; i++ {
+			gamePlayer.hand = append(gamePlayer.hand, gameCard{name: fmt.Sprintf("Searched %d", i), cardType: "Instant"})
+		}
+	}
+}
+
+func (g *gameSimulationState) CreateToken(controller AbilityPlayer, token game.SimpleCard) {
+	if gamePlayer, ok := controller.(*gamePlayer); ok {
+		gamePlayer.creatures = append(gamePlayer.creatures, &gamePermanent{name: token.Name, power: 0, toughness: 0})
+	}
+}
+
+func (g *gameSimulationState) PreventDamage(target any, amount int) {
+	// No-op for game simulation
+}
+
+func (g *gameSimulationState) MillCards(player AbilityPlayer, count int) {
+	// No-op for game simulation
+}
+
+func (g *gameSimulationState) ReanimateCreature(player AbilityPlayer, card game.SimpleCard) {
+	if gamePlayer, ok := player.(*gamePlayer); ok {
+		gamePlayer.creatures = append(gamePlayer.creatures, &gamePermanent{name: card.Name, power: 0, toughness: 0})
+	}
+}
+
+func (g *gameSimulationState) ScryLibrary(player AbilityPlayer, count int) {
+	// No-op for game simulation
 }

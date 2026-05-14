@@ -56,10 +56,18 @@ func (m *mockStackGameState) DealDamage(source any, target any, amount int) {}
 func (m *mockStackGameState) DrawCards(player AbilityPlayer, count int)     {}
 func (m *mockStackGameState) GainLife(player AbilityPlayer, amount int)     {}
 func (m *mockStackGameState) LoseLife(player AbilityPlayer, amount int)     {}
+func (m *mockStackGameState) DiscardCards(player AbilityPlayer, count int)  {}
+func (m *mockStackGameState) SearchLibrary(player AbilityPlayer, count int) {}
+func (m *mockStackGameState) CreateToken(controller AbilityPlayer, token game.SimpleCard) {}
+func (m *mockStackGameState) PreventDamage(target any, amount int)         {}
+func (m *mockStackGameState) MillCards(player AbilityPlayer, count int)     {}
+func (m *mockStackGameState) ReanimateCreature(player AbilityPlayer, card game.SimpleCard) {}
+func (m *mockStackGameState) ScryLibrary(player AbilityPlayer, count int) {}
 
 // MockPlayer for testing
 type mockStackPlayer struct {
-	name string
+	name     string
+	manaPool map[game.ManaType]int
 }
 
 func (m *mockStackPlayer) GetName() string {
@@ -75,7 +83,12 @@ func (m *mockStackPlayer) RemoveCardFromHand(card any) bool                  { r
 func (m *mockStackPlayer) GetHandSize() int                                  { return 7 }
 func (m *mockStackPlayer) GetLifeTotal() int                                 { return 20 }
 func (m *mockStackPlayer) SetLifeTotal(life int)                             {}
-func (m *mockStackPlayer) GetManaPool() map[game.ManaType]int                { return make(map[game.ManaType]int) }
+func (m *mockStackPlayer) GetManaPool() map[game.ManaType]int                {
+	if m.manaPool == nil {
+		return map[game.ManaType]int{game.Any: 20, game.White: 20, game.Blue: 20, game.Black: 20, game.Red: 20, game.Green: 20, game.Colorless: 20}
+	}
+	return m.manaPool
+}
 func (m *mockStackPlayer) AddMana(manaType game.ManaType, amount int)        {}
 func (m *mockStackPlayer) SpendMana(manaType game.ManaType, amount int) bool { return true }
 func (m *mockStackPlayer) CanPayCost(cost Cost) bool                         { return true }

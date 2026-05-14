@@ -34,8 +34,21 @@ type ImageURIs struct {
 
 // CardData is a minimal Scryfall card object for image lookup.
 type CardData struct {
-	Name      string     `json:"name"`
-	ImageURIs *ImageURIs `json:"image_uris,omitempty"`
+	Name       string     `json:"name"`
+	ScryfallID string     `json:"id"`
+	ImageURIs  *ImageURIs `json:"image_uris,omitempty"`
+}
+
+// RulingData represents a single ruling from Scryfall.
+type RulingData struct {
+	Source    string `json:"source"`
+	Published string `json:"published_at"`
+	Comment   string `json:"comment"`
+}
+
+// RulingsResponse wraps the list of rulings returned by Scryfall.
+type RulingsResponse struct {
+	Data []RulingData `json:"data"`
 }
 
 // Client wraps the Scryfall API with a local file cache.
@@ -82,6 +95,59 @@ func (c *Client) GetCardByName(name string) (*CardData, error) {
 	}
 	c.saveCache(name, &card)
 	return &card, nil
+}
+
+// GetRulingsByName fetches rulings for a card by exact name.
+func (c *Client) GetRulingsByName(name string) ([]RulingData, error) {
+	// First get the card to obtain its Scryfall ID
+	card, err := c.GetCardByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch card for rulings: %w", err)
+	}
+	if card.ScryfallID == "" {
+		return nil, fmt.Errorf("card %s has no Scryfall ID", name)
+	}
+
+	// Check rulings cache
+	cachePath := filepath.Join(c.cacheDir, "rulings", card.ScryfallID+".json")
+	if data, err := os.ReadFile(cachePath); err == nil {
+		var resp RulingsResponse
+		if err := json.Unmarshal(data, &resp); err == nil {
+			return resp.Data, nil
+		}
+	}
+
+	url := fmt.Sprintf("%s/cards/%s/rulings", baseURL, card.ScryfallID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("scryfall rulings API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var rulingsResp RulingsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rulingsResp); err != nil {
+		return nil, err
+	}
+
+	// Cache rulings
+	_ = os.MkdirAll(filepath.Join(c.cacheDir, "rulings"), 0o755)
+	if data, err := json.Marshal(rulingsResp); err == nil {
+		_ = os.WriteFile(cachePath, data, 0o644)
+	}
+
+	return rulingsResp.Data, nil
 }
 
 func (c *Client) cacheFile(name string) string {

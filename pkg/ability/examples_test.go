@@ -32,7 +32,7 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:              "Wall of Omens",
 			oracleText:        "Defender. When Wall of Omens enters the battlefield, draw a card.",
-			expectedAbilities: 1, // ETB draw ability (defender is a keyword)
+			expectedAbilities: 2, // Defender keyword + ETB draw ability
 			description:       "ETB card draw",
 		},
 		{
@@ -44,20 +44,20 @@ func TestRealMagicCards(t *testing.T) {
 		{
 			name:              "Birds of Paradise",
 			oracleText:        "Flying. {T}: Add one mana of any color.",
-			expectedAbilities: 1, // Mana ability (flying is a keyword)
+			expectedAbilities: 2, // Flying keyword + mana ability
 			description:       "Any color mana",
 		},
 		{
 			name:              "Mulldrifter",
 			oracleText:        "Flying. When Mulldrifter enters the battlefield, draw two cards.",
-			expectedAbilities: 1, // ETB draw triggered ability
+			expectedAbilities: 2, // Flying keyword + ETB draw triggered ability
 			description:       "ETB draw multiple cards",
 		},
 		{
 			name:              "Sakura-Tribe Elder",
 			oracleText:        "Sacrifice Sakura-Tribe Elder: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle your library.",
-			expectedAbilities: 0, // Complex ability not yet supported
-			description:       "Complex sacrifice ability",
+			expectedAbilities: 1, // Search library ability now parsed
+			description:       "Sacrifice search ability",
 		},
 		{
 			name:              "Elvish Archdruid",

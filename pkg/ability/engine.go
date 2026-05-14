@@ -3,6 +3,7 @@ package ability
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -25,6 +26,13 @@ type GameState interface {
 	DrawCards(player AbilityPlayer, count int)
 	GainLife(player AbilityPlayer, amount int)
 	LoseLife(player AbilityPlayer, amount int)
+	DiscardCards(player AbilityPlayer, count int)
+	SearchLibrary(player AbilityPlayer, count int)
+	CreateToken(controller AbilityPlayer, token game.SimpleCard)
+	PreventDamage(target any, amount int)
+	MillCards(player AbilityPlayer, count int)
+	ReanimateCreature(player AbilityPlayer, card game.SimpleCard)
+	ScryLibrary(player AbilityPlayer, count int)
 }
 
 // AbilityPlayer represents a player in the game for ability purposes.
@@ -141,15 +149,15 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 
 	// Check tap cost requirements
 	if ability.Cost.TapCost {
-		if permanent, ok := ability.Source.(AbilityPermanent); ok {
-			if permanent.IsTapped() {
+		if tapper, ok := ability.Source.(interface{ IsTapped() bool }); ok {
+			if tapper.IsTapped() {
 				return false // Cannot activate tap abilities when source is tapped
 			}
 
 			// Check summoning sickness for non-mana abilities
 			if ability.Type != Mana {
 				// Check if this permanent has summoning sickness
-				if summoningSickPerm, ok := permanent.(SummoningSickness); ok {
+				if summoningSickPerm, ok := ability.Source.(SummoningSickness); ok {
 					if summoningSickPerm.HasSummoningSickness() {
 						return false // Creatures with summoning sickness cannot use tap abilities (except mana abilities)
 					}
@@ -180,8 +188,8 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, source any) error {
 	// Handle tap costs by tapping the source permanent
 	if ability.Cost.TapCost {
-		if permanent, ok := source.(AbilityPermanent); ok {
-			permanent.Tap()
+		if tapper, ok := source.(interface{ Tap() }); ok {
+			tapper.Tap()
 		}
 	}
 
@@ -219,8 +227,58 @@ func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPl
 	return nil
 }
 
+// checkConditions returns true if all conditions on an effect are met.
+func (ee *ExecutionEngine) checkConditions(effect Effect, controller AbilityPlayer) bool {
+	for _, cond := range effect.Conditions {
+		switch cond.Type {
+		case NoCondition:
+			continue
+		case ControlPermanentType:
+			if !playerControlsMatching(controller, cond.Value) {
+				return false
+			}
+		case HaveMoreLifeThanOpponent:
+			if !ee.hasMoreLifeThanAnOpponent(controller) {
+				return false
+			}
+		case OpponentHasMoreCreatures:
+			if !ee.opponentHasMoreCreatures(controller) {
+				return false
+			}
+		case NoCardsInHand:
+			if len(controller.GetHand()) != 0 {
+				return false
+			}
+		case KickerPaid:
+			return false
+		case UnlessPaysMana:
+			return false
+		case HaveMoreLandsThanOpponent:
+			if !ee.hasMoreLandsThanAnOpponent(controller) {
+				return false
+			}
+		case HaveMoreCardsInHandThanOpponent:
+			if !ee.hasMoreCardsInHandThanAnOpponent(controller) {
+				return false
+			}
+		case ControlCreatureWithPowerGreater:
+			if !playerControlsCreatureWithPowerGreater(controller, cond.Value) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // applyEffect applies a specific effect.
 func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, targets []any) error {
+	if !ee.checkConditions(effect, controller) {
+		logger.LogCard("Effect skipped: conditions not met")
+		return nil
+	}
+
 	switch effect.Type {
 	case DrawCards:
 		ee.gameState.DrawCards(controller, effect.Value)
@@ -250,10 +308,25 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		ee.gameState.LoseLife(controller, effect.Value)
 		logger.LogCard("%s loses %d life", controller.GetName(), effect.Value)
 
+	case WinGame:
+		ee.eliminateOpponents(controller, "effect")
+		logger.LogCard("%s wins the game", controller.GetName())
+
+	case LoseGame:
+		if len(targets) > 0 {
+			for _, target := range targets {
+				ee.losePlayerTarget(target, "effect")
+			}
+		} else {
+			// Most parser-generated no-target loss text is either "each opponent loses"
+			// or an alternate-win clause. Treat it as the controller winning.
+			ee.eliminateOpponents(controller, "effect")
+		}
+		logger.LogCard("Lose game effect resolves: %s", effect.Description)
+
 	case PumpCreature:
 		if len(targets) > 0 {
-			power := effect.Value / 100
-			toughness := effect.Value % 100
+			power, toughness := effectPTDelta(effect)
 			ee.applyPumpEffect(targets[0], power, toughness, effect.Duration)
 			logger.LogCard("Target creature gets %+d/%+d", power, toughness)
 		}
@@ -324,11 +397,203 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		ee.gameState.AddManaToPool(controller, game.Colorless, effect.Value)
 		logger.LogCard("%s adds %d mana", controller.GetName(), effect.Value)
 
+	case DiscardCards:
+		if len(targets) > 0 {
+			if player, ok := targets[0].(AbilityPlayer); ok {
+				ee.gameState.DiscardCards(player, effect.Value)
+				logger.LogCard("%s discards %d cards", player.GetName(), effect.Value)
+			}
+		} else {
+			ee.gameState.DiscardCards(controller, effect.Value)
+			logger.LogCard("%s discards %d cards", controller.GetName(), effect.Value)
+		}
+
+	case SearchLibrary:
+		ee.gameState.SearchLibrary(controller, effect.Value)
+		logger.LogCard("%s searches library for %d cards", controller.GetName(), effect.Value)
+
+	case CreateToken:
+		tokenSpec := effectTokenSpec(effect)
+		for i := 0; i < tokenSpec.Count; i++ {
+			token := game.SimpleCard{
+				Name:      tokenSpec.Name,
+				TypeLine:  tokenSpec.TypeLine,
+				Power:     strconv.Itoa(tokenSpec.Power),
+				Toughness: strconv.Itoa(tokenSpec.Toughness),
+			}
+			ee.gameState.CreateToken(controller, token)
+		}
+		logger.LogCard("%s creates %d %d/%d tokens", controller.GetName(), tokenSpec.Count, tokenSpec.Power, tokenSpec.Toughness)
+
+	case PreventDamage:
+		if effect.Value == 0 {
+			// Fog-style: prevent all damage to all players and permanents this turn
+			for _, player := range ee.gameState.GetAllPlayers() {
+				ee.gameState.PreventDamage(player, 9999)
+			}
+			logger.LogCard("Prevent all combat damage this turn")
+		} else if len(targets) > 0 {
+			for _, target := range targets {
+				ee.gameState.PreventDamage(target, effect.Value)
+				logger.LogCard("Prevent %d damage to target", effect.Value)
+			}
+		}
+
+	case KeywordAbility:
+		// Keyword abilities are static and don't resolve as one-shot effects.
+		// They are parsed for coverage but require no runtime action.
+		logger.LogCard("Keyword ability: %s", effect.Description)
+
+	case ChooseMode:
+		// Modal spells are parsed for coverage; execution picks a mode via AI.
+		logger.LogCard("Choose mode: %s", effect.Description)
+
+	case TakeExtraTurn:
+		// Extra turn effects are parsed for coverage.
+		logger.LogCard("Take extra turn: %s", effect.Description)
+
+	case Exile:
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				owner := perm.GetOwner()
+				if owner != nil {
+					owner.DestroyPermanentToExile(perm)
+					logger.LogCard("Exiled %s", perm.GetName())
+				}
+			}
+		}
+
+	case MillCards:
+		ee.gameState.MillCards(controller, effect.Value)
+		logger.LogCard("%s mills %d cards", controller.GetName(), effect.Value)
+
+	case ScryCards:
+		ee.gameState.ScryLibrary(controller, effect.Value)
+		logger.LogCard("%s scries %d", controller.GetName(), effect.Value)
+
+	case AddCounters:
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				counterType := "+1/+1"
+				if effect.Description != "" && strings.Contains(strings.ToLower(effect.Description), "loyalty") {
+					counterType = "loyalty"
+				}
+				perm.AddCounters(counterType, effect.Value)
+				logger.LogCard("Added %d %s counters to %s", effect.Value, counterType, perm.GetName())
+			}
+		}
+
+	case UntapPermanent:
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				perm.Untap()
+				logger.LogCard("Untapped %s", perm.GetName())
+			}
+		} else {
+			// Untap all permanents controlled by player (e.g., Seedborn Muse)
+			for _, c := range controller.GetCreatures() {
+				if p, ok := c.(*game.Permanent); ok {
+					p.Untap()
+				}
+			}
+			for _, l := range controller.GetLands() {
+				if p, ok := l.(*game.Permanent); ok {
+					p.Untap()
+				}
+			}
+			logger.LogCard("Untapped all permanents for %s", controller.GetName())
+		}
+
+	case CopySpell:
+		logger.LogCard("Copy spell: %s", effect.Description)
+
+	case CantAttackBlock:
+		logger.LogCard("Restriction: %s", effect.Description)
+
+	case AdditionalLand:
+		logger.LogCard("Additional land: %s", effect.Description)
+
+	case SacrificePermanent:
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				owner := perm.GetOwner()
+				if owner != nil {
+					owner.DestroyPermanent(perm)
+					logger.LogCard("Sacrificed %s", perm.GetName())
+				}
+			}
+		}
+
+	case ReanimateCreature:
+		// TODO: use actual target from graveyard once graveyard targeting is fully wired
+		token := game.SimpleCard{
+			Name:      "Reanimated Creature",
+			TypeLine:  "Creature",
+			Power:     "2",
+			Toughness: "2",
+		}
+		ee.gameState.ReanimateCreature(controller, token)
+		logger.LogCard("Reanimated creature from graveyard")
+
 	default:
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
 	}
 
 	return nil
+}
+
+func (ee *ExecutionEngine) eliminateOpponents(controller AbilityPlayer, reason string) {
+	if controller == nil || ee.gameState == nil {
+		return
+	}
+	for _, player := range ee.gameState.GetAllPlayers() {
+		if player == nil || player.GetName() == controller.GetName() {
+			continue
+		}
+		ee.losePlayerTarget(player, reason)
+	}
+}
+
+func (ee *ExecutionEngine) losePlayerTarget(target any, reason string) {
+	switch p := target.(type) {
+	case interface{ Lose(string) }:
+		p.Lose(reason)
+	case *game.Player:
+		p.Lose(reason)
+	case AbilityPlayer:
+		p.SetLifeTotal(0)
+	}
+}
+
+// CanExecuteEffect returns true if the execution engine has a concrete
+// implementation for the given effect type.
+func CanExecuteEffect(effectType EffectType) bool {
+	switch effectType {
+	case DrawCards, DealDamage, GainLife, LoseLife, AddMana,
+		PumpCreature, DestroyPermanent, CounterSpell,
+		TapUntap, ChangeControl, ReturnToHand, SourcePowerDamage,
+		DiscardCards, SearchLibrary, CreateToken, PreventDamage,
+		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
+		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
+		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature,
+		WinGame, LoseGame:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanExecuteCondition returns true if the execution engine can evaluate the
+// given condition type during ability resolution.
+func CanExecuteCondition(conditionType ConditionType) bool {
+	switch conditionType {
+	case NoCondition, ControlPermanentType, HaveMoreLifeThanOpponent,
+		OpponentHasMoreCreatures, NoCardsInHand, HaveMoreLandsThanOpponent,
+		HaveMoreCardsInHandThanOpponent, ControlCreatureWithPowerGreater:
+		return true
+	default:
+		return false
+	}
 }
 
 // determineManaType determines what type of mana an ability produces.
@@ -426,6 +691,15 @@ func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, _ AbilityPlayer) 
 	case PlayerTarget:
 		// Players always exist
 		return true
+	case CardInGraveyardTarget:
+		for _, player := range ee.gameState.GetAllPlayers() {
+			if gp, ok := player.(interface{ GetGraveyard() []any }); ok {
+				if len(gp.GetGraveyard()) > 0 {
+					return true
+				}
+			}
+		}
+		return false
 	case AnyTarget:
 		// Check if any valid targets exist
 		for _, player := range ee.gameState.GetAllPlayers() {
@@ -463,6 +737,12 @@ func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []any {
 			targets = append(targets, player)
 			targets = append(targets, player.GetCreatures()...)
 			targets = append(targets, player.GetLands()...)
+		}
+	case CardInGraveyardTarget:
+		for _, player := range ee.gameState.GetAllPlayers() {
+			if gp, ok := player.(interface{ GetGraveyard() []any }); ok {
+				targets = append(targets, gp.GetGraveyard()...)
+			}
 		}
 	}
 
@@ -515,6 +795,8 @@ func (ee *ExecutionEngine) isValidBasicTarget(target any, targetReq Target) bool
 		return ee.targetValidator.isPermanent(target)
 	case AnyTarget:
 		return ee.targetValidator.isPlayer(target) || ee.targetValidator.isPermanent(target)
+	case CardInGraveyardTarget:
+		return target != nil
 	default:
 		return false
 	}
@@ -542,13 +824,17 @@ func (ee *ExecutionEngine) applyPumpEffect(target any, power, toughness int, dur
 
 // applyTapEffect applies a tap/untap effect.
 func (ee *ExecutionEngine) applyTapEffect(target any, shouldTap bool) {
-	if permanent, ok := target.(AbilityPermanent); ok {
+	if tapper, ok := target.(interface {
+		Tap()
+		Untap()
+		GetName() string
+	}); ok {
 		if shouldTap {
-			permanent.Tap()
-			logger.LogCard("Tapping %s", permanent.GetName())
+			tapper.Tap()
+			logger.LogCard("Tapping %s", tapper.GetName())
 		} else {
-			permanent.Untap()
-			logger.LogCard("Untapping %s", permanent.GetName())
+			tapper.Untap()
+			logger.LogCard("Untapping %s", tapper.GetName())
 		}
 	}
 }
@@ -563,12 +849,12 @@ func (ee *ExecutionEngine) ParseAndRegisterAbilities(oracleText string, source a
 		return nil, err
 	}
 
-	// If no abilities parsed for spell cards with non-empty text, mark as unimplemented
+	// A card with oracle text inherently has abilities. If the parser returns
+	// zero abilities, that is a parser failure, not a missing-ability card.
 	if len(abilities) == 0 {
 		if cc, ok := source.(card.Card); ok {
-			typeLine := cc.TypeLine
-			if (strings.Contains(typeLine, "Instant") || strings.Contains(typeLine, "Sorcery")) && strings.TrimSpace(cc.OracleText) != "" {
-				markUnimplementedCard(cc.Name, "no parsed effects")
+			if strings.TrimSpace(cc.OracleText) != "" && !isBasicLand(cc.TypeLine) {
+				markUnimplementedCard(cc.Name, "parser failed to extract abilities from oracle text")
 			}
 		}
 	}
@@ -586,22 +872,45 @@ func (ee *ExecutionEngine) ApplyEffect(effect Effect, controller AbilityPlayer, 
 	return ee.applyEffect(effect, controller, targets)
 }
 
+// abilitiesFrom extracts abilities from an object, trying AbilityPermanent first
+// then falling back to the duck-typed []any getter used by game.Permanent.
+func abilitiesFrom(v any) []*Ability {
+	if perm, ok := v.(AbilityPermanent); ok {
+		return perm.GetAbilities()
+	}
+	if carrier, ok := v.(interface{ GetAbilities() []any }); ok {
+		var out []*Ability
+		for _, a := range carrier.GetAbilities() {
+			if ab, ok := a.(*Ability); ok {
+				out = append(out, ab)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func isTapped(v any) bool {
+	if tapper, ok := v.(interface{ IsTapped() bool }); ok {
+		return tapper.IsTapped()
+	}
+	return false
+}
+
 // ActivateManaAbilities activates all available mana abilities for a player.
 func (ee *ExecutionEngine) ActivateManaAbilities(player AbilityPlayer) int {
 	totalManaAdded := 0
 
 	// Get all lands controlled by the player
 	for _, land := range player.GetLands() {
-		if permanent, ok := land.(AbilityPermanent); ok {
-			if !permanent.IsTapped() {
-				// Check if this land has mana abilities
-				for _, ability := range permanent.GetAbilities() {
-					if ability.Type == Mana && ee.canActivateAbility(ability, player) {
-						if err := ee.ExecuteAbility(ability, player, nil); err == nil {
-							totalManaAdded++
-							break // Only activate one mana ability per land
-						}
-					}
+		if isTapped(land) {
+			continue
+		}
+		for _, ability := range abilitiesFrom(land) {
+			if ability.Type == Mana && ee.canActivateAbility(ability, player) {
+				if err := ee.ExecuteAbility(ability, player, nil); err == nil {
+					totalManaAdded++
+					break // Only activate one mana ability per land
 				}
 			}
 		}
@@ -616,22 +925,18 @@ func (ee *ExecutionEngine) GetActivatableAbilities(player AbilityPlayer) []*Abil
 
 	// Check creatures for activated abilities
 	for _, creature := range player.GetCreatures() {
-		if permanent, ok := creature.(AbilityPermanent); ok {
-			for _, ability := range permanent.GetAbilities() {
-				if ability.Type == Activated && ee.canActivateAbility(ability, player) {
-					activatable = append(activatable, ability)
-				}
+		for _, ability := range abilitiesFrom(creature) {
+			if ability.Type == Activated && ee.canActivateAbility(ability, player) {
+				activatable = append(activatable, ability)
 			}
 		}
 	}
 
 	// Check lands for non-mana activated abilities
 	for _, land := range player.GetLands() {
-		if permanent, ok := land.(AbilityPermanent); ok {
-			for _, ability := range permanent.GetAbilities() {
-				if ability.Type == Activated && ability.Type != Mana && ee.canActivateAbility(ability, player) {
-					activatable = append(activatable, ability)
-				}
+		for _, ability := range abilitiesFrom(land) {
+			if ability.Type == Activated && ability.Type != Mana && ee.canActivateAbility(ability, player) {
+				activatable = append(activatable, ability)
 			}
 		}
 	}

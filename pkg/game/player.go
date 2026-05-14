@@ -56,12 +56,37 @@ func (p *Player) HasLost() bool         { return p.lost }
 func (p *Player) GetLossReason() string { return p.lossReason }
 func (p *Player) SetLossReason(r string) { p.lossReason = r }
 
-// Lose marks the player as lost with the given reason.
+// Lose marks the player as lost with the given reason and exiles all of their zones.
 func (p *Player) Lose(reason string) {
+	if p.lost {
+		return
+	}
 	p.lost = true
 	if reason != "" {
 		p.lossReason = reason
 	}
+	p.exileAllZones()
+}
+
+// exileAllZones moves all cards/permanents from Battlefield, Hand, Library,
+// Graveyard and CommandZone into Exile. Called automatically by Lose.
+func (p *Player) exileAllZones() {
+	for _, perm := range p.Battlefield {
+		p.Exile = append(p.Exile, perm.GetSource())
+	}
+	p.Battlefield = p.Battlefield[:0]
+
+	p.Exile = append(p.Exile, p.Hand...)
+	p.Hand = p.Hand[:0]
+
+	p.Exile = append(p.Exile, p.Library...)
+	p.Library = p.Library[:0]
+
+	p.Exile = append(p.Exile, p.Graveyard...)
+	p.Graveyard = p.Graveyard[:0]
+
+	p.Exile = append(p.Exile, p.CommandZone...)
+	p.CommandZone = p.CommandZone[:0]
 }
 
 // DeckedOut returns true if the player's library is empty and they would lose from attempting to draw.
@@ -242,6 +267,37 @@ func (p *Player) PayForCommander(c SimpleCard) bool {
 	cost := c.GetManaCost()
 	cost.Add(Any, p.CommanderTax(c.Name))
 	return p.manaPool.Pay(cost)
+}
+
+// Discard moves n cards from hand to graveyard.
+func (p *Player) Discard(n int) []SimpleCard {
+	if n > len(p.Hand) {
+		n = len(p.Hand)
+	}
+	discarded := make([]SimpleCard, n)
+	copy(discarded, p.Hand[:n])
+	p.Hand = p.Hand[n:]
+	p.Graveyard = append(p.Graveyard, discarded...)
+	return discarded
+}
+
+// SearchLibraryToHand moves up to n cards from library to hand.
+func (p *Player) SearchLibraryToHand(n int) []SimpleCard {
+	if n > len(p.Library) {
+		n = len(p.Library)
+	}
+	found := make([]SimpleCard, n)
+	copy(found, p.Library[:n])
+	p.Library = p.Library[n:]
+	p.Hand = append(p.Hand, found...)
+	return found
+}
+
+// PutTokenOnBattlefield creates a token permanent and adds it to the battlefield.
+func (p *Player) PutTokenOnBattlefield(token SimpleCard) *Permanent {
+	perm := NewPermanent(token, p, p)
+	p.Battlefield = append(p.Battlefield, perm)
+	return perm
 }
 
 // Mana pool basics (detailed payment in Task 2)
