@@ -271,15 +271,44 @@ func (s *Stack) passPriorityToNextPlayer() {
 }
 
 func (s *Stack) checkFizzle(item *StackItem) bool {
-	// Check if all targets are still legal
-	// This is a simplified implementation
-	if len(item.Targets) == 0 {
-		return false // No targets required
+	if item == nil || len(item.Targets) == 0 || s.executionEngine == nil {
+		return false
 	}
 
-	// TODO: Implement proper target legality checking
-	// For now, assume targets are still legal
-	return false
+	effects := itemEffects(item)
+	targetIndex := 0
+	requiredTargets := 0
+	legalTargets := 0
+
+	for _, effect := range effects {
+		for _, targetReq := range effect.Targets {
+			if !targetReq.Required {
+				continue
+			}
+			for i := 0; i < targetReq.Count; i++ {
+				requiredTargets++
+				if targetIndex < len(item.Targets) && s.executionEngine.isTargetStillLegal(item.Targets[targetIndex], targetReq, item.Controller) {
+					legalTargets++
+				}
+				targetIndex++
+			}
+		}
+	}
+
+	return requiredTargets > 0 && legalTargets == 0
+}
+
+func itemEffects(item *StackItem) []Effect {
+	if item == nil {
+		return nil
+	}
+	if item.Type == StackItemSpell && item.Spell != nil {
+		return item.Spell.Effects
+	}
+	if item.Type == StackItemAbility && item.Ability != nil {
+		return item.Ability.Effects
+	}
+	return nil
 }
 
 func (s *Stack) resolveSpell(item *StackItem) error {
@@ -288,8 +317,9 @@ func (s *Stack) resolveSpell(item *StackItem) error {
 	}
 
 	// Apply spell effects
+	targetCursor := 0
 	for _, effect := range item.Spell.Effects {
-		err := s.executionEngine.ApplyEffect(effect, item.Controller, item.Targets)
+		err := s.executionEngine.ApplyEffect(effect, item.Controller, targetsForEffect(effect, item.Targets, &targetCursor))
 		if err != nil {
 			return err
 		}
@@ -305,8 +335,9 @@ func (s *Stack) resolveAbility(item *StackItem) error {
 	}
 
 	// Apply ability effects
+	targetCursor := 0
 	for _, effect := range item.Ability.Effects {
-		err := s.executionEngine.ApplyEffect(effect, item.Controller, item.Targets)
+		err := s.executionEngine.ApplyEffect(effect, item.Controller, targetsForEffect(effect, item.Targets, &targetCursor))
 		if err != nil {
 			return err
 		}

@@ -391,9 +391,7 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 		return edh.RecentGames(10)
 	})
 	server.SetCardLibraryProvider(func() map[string]stats.GlobalCardStats {
-		mu.Lock()
-		defer mu.Unlock()
-		return cardLib.Cards
+		return cardLib.Snapshot()
 	})
 	server.SetImplementationReportProvider(func() *card.ImplementationReport {
 		return implReport

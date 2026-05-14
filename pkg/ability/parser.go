@@ -1591,15 +1591,19 @@ func (ap *AbilityParser) parseTargetedLifeGain(matches []string, fullText string
 func (ap *AbilityParser) parseSpellPump(matches []string, fullText string) (*Ability, error) {
 	power := ap.parseIntValue(matches[1])
 	toughness := ap.parseIntValue(matches[2])
+	description := "Target creature gets +" + matches[1] + "/+" + matches[2] + " until end of turn"
 
 	return &Ability{
 		Name: "Spell Pump",
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:     PumpCreature,
-				Value:    power, // Store toughness in description for now
-				Duration: UntilEndOfTurn,
+				Type:        PumpCreature,
+				Value:       LegacyEncodePT(power, toughness),
+				Duration:    UntilEndOfTurn,
+				HasPTDelta: true,
+				PTPower:    power,
+				PTToughness: toughness,
 				Targets: []Target{
 					{
 						Type:     CreatureTarget,
@@ -1607,7 +1611,7 @@ func (ap *AbilityParser) parseSpellPump(matches []string, fullText string) (*Abi
 						Count:    1,
 					},
 				},
-				Description: "Target creature gets +" + matches[1] + "/+" + matches[2] + " until end of turn (toughness: " + strconv.Itoa(toughness) + ")",
+				Description: description,
 			},
 		},
 		TimingRestriction: SorcerySpeed,
@@ -2660,14 +2664,15 @@ func (ap *AbilityParser) parseCreateSpecificToken(matches []string, fullText str
 
 func (ap *AbilityParser) parseCreateMultipleTokens(matches []string, fullText string) (*Ability, error) {
 	// Parse "Create N X/Y ... creature tokens"
-	re := regexp.MustCompile(`(?i)Create (\d+) (\d+)/(\d+) (.+?) creature tokens?`)
+	re := regexp.MustCompile(`(?i)Create (two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)/(\d+) (.+?) creature tokens?`)
 	m := re.FindStringSubmatch(fullText)
 	if len(m) < 4 {
 		return nil, ErrParsingFailed
 	}
-	count, _ := strconv.Atoi(m[1])
+	count := parseIntOrOne(m[1])
 	power, _ := strconv.Atoi(m[2])
 	toughness, _ := strconv.Atoi(m[3])
+	spec := TokenSpec{Count: count, Name: strings.TrimSpace(m[4]) + " Token", TypeLine: "Creature — Token", Power: power, Toughness: toughness}
 	return &Ability{
 		Name: "Create Tokens",
 		Type: Activated,
@@ -2677,6 +2682,8 @@ func (ap *AbilityParser) parseCreateMultipleTokens(matches []string, fullText st
 				Value:       count*1000000 + power*1000 + toughness,
 				Duration:    Instant,
 				Description: fullText,
+				HasToken:    true,
+				Token:       spec,
 			},
 		},
 	}, nil

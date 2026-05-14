@@ -7,6 +7,67 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
+func TestSpellCastingEngineValidateSpellTargetsUsesTargetValidator(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	gs := &mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}
+	ee := NewExecutionEngine(gs)
+	sce := NewSpellCastingEngine(gs, ee)
+
+	spell := &Spell{Effects: []Effect{{Type: PumpCreature, Targets: []Target{{Type: CreatureTarget, Required: true, Count: 1}}}}}
+	if err := sce.validateSpellTargets(spell, player, []interface{}{player}); err == nil {
+		t.Fatal("expected player target to be rejected for creature-targeting spell")
+	}
+}
+
+func TestStackCheckFizzleWhenAllTargetsIllegal(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	gs := &mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}
+	ee := NewExecutionEngine(gs)
+	stack := NewStack(gs, ee)
+
+	item := &StackItem{
+		Type:       StackItemSpell,
+		Controller: player,
+		Targets:    []interface{}{player},
+		Spell: &Spell{Effects: []Effect{{
+			Type:    PumpCreature,
+			Targets: []Target{{Type: CreatureTarget, Required: true, Count: 1}},
+		}}},
+	}
+	if !stack.checkFizzle(item) {
+		t.Fatal("expected spell to fizzle when its only required target is illegal")
+	}
+}
+
+func TestStackResolutionBindsTargetsPerEffect(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	gs := &mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}
+	ee := NewExecutionEngine(gs)
+	stack := NewStack(gs, ee)
+
+	owner := game.NewPlayer("Owner", 20)
+	creature := game.NewPermanent(game.SimpleCard{Name: "Test Creature", TypeLine: "Creature", Power: "2", Toughness: "2"}, owner, owner)
+	item := &StackItem{
+		Type:       StackItemSpell,
+		Controller: player,
+		Targets:    []interface{}{player, creature},
+		Spell: &Spell{Effects: []Effect{
+			{Type: DealDamage, Value: 2, Targets: []Target{{Type: PlayerTarget, Required: true, Count: 1}}},
+			{Type: PumpCreature, Value: LegacyEncodePT(3, 3), HasPTDelta: true, PTPower: 3, PTToughness: 3, Duration: UntilEndOfTurn, Targets: []Target{{Type: CreatureTarget, Required: true, Count: 1}}},
+		}},
+	}
+
+	if err := stack.resolveSpell(item); err != nil {
+		t.Fatalf("resolveSpell failed: %v", err)
+	}
+	if player.life != 18 {
+		t.Fatalf("expected first target to take damage, life=%d", player.life)
+	}
+	if creature.GetPower() != 5 || creature.GetToughness() != 5 {
+		t.Fatalf("expected second target to get +3/+3, got %d/%d", creature.GetPower(), creature.GetToughness())
+	}
+}
+
 // TestFixedManaCosts tests spells with fixed mana costs
 func TestFixedManaCosts(t *testing.T) {
 	testCases := []struct {

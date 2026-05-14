@@ -228,32 +228,43 @@ func (ee *ExecutionEngine) resolveAbility(ability *Ability, controller AbilityPl
 }
 
 // checkConditions returns true if all conditions on an effect are met.
-// For now, conditions are treated as optimistically satisfiable during
-// engine execution so that parsed conditional abilities resolve.
 func (ee *ExecutionEngine) checkConditions(effect Effect, controller AbilityPlayer) bool {
 	for _, cond := range effect.Conditions {
 		switch cond.Type {
 		case NoCondition:
-			return true
+			continue
 		case ControlPermanentType:
-			// Optimistically assume the controller has the required permanent type
-			return true
+			if !playerControlsMatching(controller, cond.Value) {
+				return false
+			}
 		case HaveMoreLifeThanOpponent:
-			return true
+			if !ee.hasMoreLifeThanAnOpponent(controller) {
+				return false
+			}
 		case OpponentHasMoreCreatures:
-			return true
+			if !ee.opponentHasMoreCreatures(controller) {
+				return false
+			}
 		case NoCardsInHand:
-			return true
+			if len(controller.GetHand()) != 0 {
+				return false
+			}
 		case KickerPaid:
-			return true
+			return false
 		case UnlessPaysMana:
-			return true
+			return false
 		case HaveMoreLandsThanOpponent:
-			return true
+			if !ee.hasMoreLandsThanAnOpponent(controller) {
+				return false
+			}
 		case HaveMoreCardsInHandThanOpponent:
-			return true
+			if !ee.hasMoreCardsInHandThanAnOpponent(controller) {
+				return false
+			}
 		case ControlCreatureWithPowerGreater:
-			return true
+			if !playerControlsCreatureWithPowerGreater(controller, cond.Value) {
+				return false
+			}
 		default:
 			return false
 		}
@@ -315,8 +326,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 
 	case PumpCreature:
 		if len(targets) > 0 {
-			power := effect.Value / 100
-			toughness := effect.Value % 100
+			power, toughness := effectPTDelta(effect)
 			ee.applyPumpEffect(targets[0], power, toughness, effect.Duration)
 			logger.LogCard("Target creature gets %+d/%+d", power, toughness)
 		}
@@ -580,8 +590,7 @@ func CanExecuteEffect(effectType EffectType) bool {
 func CanExecuteCondition(conditionType ConditionType) bool {
 	switch conditionType {
 	case NoCondition, ControlPermanentType, HaveMoreLifeThanOpponent,
-		OpponentHasMoreCreatures, NoCardsInHand, KickerPaid,
-		UnlessPaysMana, HaveMoreLandsThanOpponent,
+		OpponentHasMoreCreatures, NoCardsInHand, HaveMoreLandsThanOpponent,
 		HaveMoreCardsInHandThanOpponent, ControlCreatureWithPowerGreater:
 		return true
 	default:

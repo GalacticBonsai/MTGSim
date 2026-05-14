@@ -168,9 +168,18 @@ func testCardImplementation(c card.Card) (bool, string) {
 
 	// Verify every parsed effect is supported by the execution engine.
 	for _, ab := range abilities {
+		if ab.Approximate {
+			return false, ab.ApproximationReason
+		}
 		for _, eff := range ab.Effects {
 			if !CanExecuteEffect(eff.Type) {
 				return false, fmt.Sprintf("unsupported effect: %s", eff.Type.String())
+			}
+			if eff.Approximate {
+				return false, eff.ApproximationReason
+			}
+			if reason := approximateRuntimeReason(eff.Type); reason != "" {
+				return false, reason
 			}
 			for _, cond := range eff.Conditions {
 				if !CanExecuteCondition(cond.Type) {
@@ -194,6 +203,10 @@ func testCardImplementation(c card.Card) (bool, string) {
 	}
 
 	return true, ""
+}
+
+func approximateRuntimeReason(effectType EffectType) string {
+	return approximateRuntimeReasons[effectType]
 }
 
 func isBasicLand(typeLine string) bool {

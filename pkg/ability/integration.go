@@ -2,6 +2,8 @@
 package ability
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/game"
@@ -67,9 +69,9 @@ type PermanentInterface interface {
 // NewGameAdapter creates a new game adapter.
 func NewGameAdapter(game GameInterface) *GameAdapter {
 	adapter := &GameAdapter{
-		game:          game,
-		parser:        NewAbilityParser(),
-		currentPhase:  "Main",
+		game:         game,
+		parser:       NewAbilityParser(),
+		currentPhase: "Main",
 	}
 
 	// Create ability engine with adapter as game state
@@ -258,13 +260,45 @@ func (pa *PlayerAdapter) GetLands() []interface{} {
 }
 
 func (pa *PlayerAdapter) CanPayCost(cost Cost) bool {
-	return pa.player.CanPayManaCost(cost.ManaCost)
+	if !pa.player.CanPayManaCost(cost.ManaCost) {
+		return false
+	}
+	if cost.LifeCost > 0 && pa.player.GetLifeTotal() < cost.LifeCost {
+		return false
+	}
+	if cost.DiscardCost > 0 && len(pa.player.GetHand()) < cost.DiscardCost {
+		return false
+	}
+	if cost.SacrificeCost && len(pa.player.GetCreatures())+len(pa.player.GetLands())+len(pa.player.GetArtifacts())+len(pa.player.GetEnchantments())+len(pa.player.GetPlaneswalkers()) == 0 {
+		return false
+	}
+	return true
 }
 
 func (pa *PlayerAdapter) PayCost(cost Cost) error {
-	// Handle tap costs, sacrifice costs, etc.
-	// For now, just handle mana costs
-	return pa.player.PayManaCost(cost.ManaCost)
+	if !pa.CanPayCost(cost) {
+		return ErrInvalidCost
+	}
+	if err := pa.player.PayManaCost(cost.ManaCost); err != nil {
+		return err
+	}
+	if cost.LifeCost > 0 {
+		pa.player.SetLifeTotal(pa.player.GetLifeTotal() - cost.LifeCost)
+	}
+	if cost.DiscardCost > 0 {
+		if discarder, ok := pa.player.(interface{ Discard(int) []card.Card }); ok {
+			discarder.Discard(cost.DiscardCost)
+		} else {
+			return fmt.Errorf("discard cost not supported by player adapter")
+		}
+	}
+	if cost.SacrificeCost {
+		if sacrificer, ok := pa.player.(interface{ SacrificePermanent() error }); ok {
+			return sacrificer.SacrificePermanent()
+		}
+		return fmt.Errorf("sacrifice cost not supported by player adapter")
+	}
+	return nil
 }
 
 func (pa *PlayerAdapter) GetManaPool() map[game.ManaType]int {

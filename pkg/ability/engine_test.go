@@ -16,6 +16,16 @@ type mockGameState struct {
 	isCombat      bool
 }
 
+type layeredMockGameState struct {
+	mockGameState
+	layered []*game.LayeredEffect
+}
+
+func (m *layeredMockGameState) AddLayeredEffect(effect *game.LayeredEffect) uint64 {
+	m.layered = append(m.layered, effect)
+	return uint64(len(m.layered))
+}
+
 func (m *mockGameState) GetPlayer(name string) AbilityPlayer {
 	for _, p := range m.players {
 		if p.GetName() == name {
@@ -622,4 +632,56 @@ func TestHasValidTargetsBasic_CardInGraveyard(t *testing.T) {
 	}
 }
 
+func TestExecutionEngine_CheckConditionsUsesGameState(t *testing.T) {
+	controller := &mockPlayer{name: "Alice", life: 20, hand: nil, manaPool: map[game.ManaType]int{}}
+	opponent := &mockPlayer{name: "Bob", life: 10, hand: []interface{}{"card"}, manaPool: map[game.ManaType]int{}}
+	gs := &mockGameState{players: []AbilityPlayer{controller, opponent}, currentPlayer: controller, isMainPhase: true}
+	engine := NewExecutionEngine(gs)
 
+	met := Effect{Conditions: []Condition{{Type: NoCardsInHand}, {Type: HaveMoreLifeThanOpponent}}}
+	if !engine.checkConditions(met, controller) {
+		t.Fatal("expected concrete conditions to be met")
+	}
+
+	notMet := Effect{Conditions: []Condition{{Type: NoCardsInHand}}}
+	if engine.checkConditions(notMet, opponent) {
+		t.Fatal("expected non-empty hand condition to fail")
+	}
+}
+
+func TestExecutionEngine_DoesNotTapWhenCostCannotBePaid(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	source := &mockPermanent{id: uuid.New(), name: "Costly Creature", owner: player, controller: player}
+	gs := &mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}
+	engine := NewExecutionEngine(gs)
+
+	ability := &Ability{
+		Name:    "Costly Tap",
+		Type:    Activated,
+		Source:  source,
+		Cost:    Cost{TapCost: true, ManaCost: map[game.ManaType]int{game.Any: 1}},
+		Effects: []Effect{{Type: DrawCards, Value: 1}},
+	}
+	if err := engine.ExecuteAbility(ability, player, nil); err == nil {
+		t.Fatal("expected activation to fail")
+	}
+	if source.tapped {
+		t.Fatal("source tapped even though costs could not be paid")
+	}
+}
+
+func TestExecutionEngine_PumpUsesLayeredEffectsWhenAvailable(t *testing.T) {
+	player := &mockPlayer{name: "Alice", life: 20, manaPool: map[game.ManaType]int{}}
+	gs := &layeredMockGameState{mockGameState: mockGameState{players: []AbilityPlayer{player}, currentPlayer: player, isMainPhase: true}}
+	engine := NewExecutionEngine(gs)
+	owner := game.NewPlayer("Owner", 20)
+	creature := game.NewPermanent(game.SimpleCard{Name: "Layered Creature", TypeLine: "Creature", Power: "2", Toughness: "2"}, owner, owner)
+
+	engine.applyPumpEffect(creature, 3, 3, UntilEndOfTurn)
+	if len(gs.layered) != 1 {
+		t.Fatalf("expected one layered effect, got %d", len(gs.layered))
+	}
+	if !gs.layered[0].ExpiresEOT || gs.layered[0].Layer != game.Layer7PT || gs.layered[0].Sublayer != game.Sublayer7C {
+		t.Fatalf("unexpected layered effect: %+v", gs.layered[0])
+	}
+}

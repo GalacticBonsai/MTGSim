@@ -320,6 +320,58 @@ func TestAbilityParser_ParseStaticAbilities(t *testing.T) {
 	}
 }
 
+func TestAbilityParser_TypedPumpPayloads(t *testing.T) {
+	parser := NewAbilityParser()
+	abilities, err := parser.ParseAbilities("Target creature gets +3/+3 until end of turn.", nil)
+	if err != nil {
+		t.Fatalf("ParseAbilities() error = %v", err)
+	}
+	if len(abilities) != 1 || len(abilities[0].Effects) != 1 {
+		t.Fatalf("expected one pump effect, got %#v", abilities)
+	}
+
+	effect := abilities[0].Effects[0]
+	power, toughness := effectPTDelta(effect)
+	if !effect.HasPTDelta || power != 3 || toughness != 3 {
+		t.Fatalf("expected typed +3/+3 payload, got has=%v %+d/%+d value=%d", effect.HasPTDelta, power, toughness, effect.Value)
+	}
+}
+
+func TestAbilityParser_TypedTokenPayloads(t *testing.T) {
+	parser := NewAbilityParser()
+	abilities, err := parser.ParseAbilities("Create two 2/2 white Knight creature tokens.", nil)
+	if err != nil {
+		t.Fatalf("ParseAbilities() error = %v", err)
+	}
+	if len(abilities) != 1 || len(abilities[0].Effects) != 1 {
+		t.Fatalf("expected one token effect, got %#v", abilities)
+	}
+
+	spec := effectTokenSpec(abilities[0].Effects[0])
+	if !abilities[0].Effects[0].HasToken || spec.Count != 2 || spec.Power != 2 || spec.Toughness != 2 {
+		t.Fatalf("expected two 2/2 tokens, got has=%v spec=%+v", abilities[0].Effects[0].HasToken, spec)
+	}
+}
+
+func TestAbilityParser_FetchlandLifePaymentIsCostOnly(t *testing.T) {
+	parser := NewAbilityParser()
+	abilities, err := parser.ParseAbilities("{T}, Pay 1 life, Sacrifice Fetch: Search your library for a land card, put it onto the battlefield.", nil)
+	if err != nil {
+		t.Fatalf("ParseAbilities() error = %v", err)
+	}
+	if len(abilities) != 1 {
+		t.Fatalf("expected one fetchland ability, got %d", len(abilities))
+	}
+	if abilities[0].Cost.LifeCost != 1 {
+		t.Fatalf("expected life cost, got %+v", abilities[0].Cost)
+	}
+	for _, effect := range abilities[0].Effects {
+		if effect.Type == LoseLife {
+			t.Fatal("life payment should not also be encoded as a resolving LoseLife effect")
+		}
+	}
+}
+
 func TestAbilityParser_ParseComplexAbilities(t *testing.T) {
 	parser := NewAbilityParser()
 

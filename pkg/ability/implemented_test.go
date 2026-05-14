@@ -46,6 +46,34 @@ func TestEvaluateCard_ImplementedSpell(t *testing.T) {
 	}
 }
 
+func TestEvaluateCard_HeuristicParserIsNotFullyImplemented(t *testing.T) {
+	impl, reason := testCardImplementation(card.Card{
+		Name:       "Mystery Engine",
+		TypeLine:   "Artifact",
+		OracleText: "{2}: Do something unusual.",
+	})
+	if impl {
+		t.Fatal("heuristic generic parser match should not count as fully implemented")
+	}
+	if !strings.Contains(reason, "heuristic parser pattern") {
+		t.Fatalf("expected heuristic reason, got %q", reason)
+	}
+}
+
+func TestEvaluateCard_RuntimePlaceholderIsNotFullyImplemented(t *testing.T) {
+	impl, reason := testCardImplementation(card.Card{
+		Name:       "Simple Charm",
+		TypeLine:   "Instant",
+		OracleText: "Choose one — Draw a card.",
+	})
+	if impl {
+		t.Fatal("modal placeholder should not count as fully implemented")
+	}
+	if !strings.Contains(reason, "modal choices") {
+		t.Fatalf("expected modal placeholder reason, got %q", reason)
+	}
+}
+
 func TestEvaluateCard_UnimplementedSorcery(t *testing.T) {
 	tracker := NewImplementationTracker()
 	impl, reason := tracker.EvaluateCard(card.Card{
@@ -273,5 +301,3 @@ func TestAnalyzeParserFailures(t *testing.T) {
 		t.Logf("  %s: %d", kcs[i].word, kcs[i].count)
 	}
 }
-
-

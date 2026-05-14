@@ -60,7 +60,7 @@ func (sce *SpellCastingEngine) CastSpell(cardToCast card.Card, caster AbilityPla
 	}
 
 	// Validate targets
-	if err := sce.validateSpellTargets(spell, targets); err != nil {
+	if err := sce.validateSpellTargets(spell, caster, targets); err != nil {
 		return fmt.Errorf("invalid targets for %s: %v", spell.Name, err)
 	}
 
@@ -130,7 +130,7 @@ func (sce *SpellCastingEngine) ActivateAbility(ability *Ability, controller Abil
 	}
 
 	// Validate targets
-	if err := sce.validateAbilityTargets(ability, targets); err != nil {
+	if err := sce.validateAbilityTargets(ability, controller, targets); err != nil {
 		return fmt.Errorf("invalid targets for %s: %v", ability.Name, err)
 	}
 
@@ -224,7 +224,11 @@ func (sce *SpellCastingEngine) isSorcerySpell(cardToCast card.Card) bool {
 	return strings.Contains(cardToCast.TypeLine, "Sorcery")
 }
 
-func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, targets []interface{}) error {
+func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, controller AbilityPlayer, targets []interface{}) error {
+	if sce.executionEngine != nil {
+		return sce.executionEngine.validateTargets(&Ability{Effects: spell.Effects}, controller, targets)
+	}
+
 	// Count required targets from effects
 	requiredTargets := 0
 	for _, effect := range spell.Effects {
@@ -239,11 +243,14 @@ func (sce *SpellCastingEngine) validateSpellTargets(spell *Spell, targets []inte
 		return fmt.Errorf("spell requires %d targets, got %d", requiredTargets, len(targets))
 	}
 
-	// TODO: Implement detailed target validation (type checking, legality, etc.)
 	return nil
 }
 
-func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, targets []interface{}) error {
+func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, controller AbilityPlayer, targets []interface{}) error {
+	if sce.executionEngine != nil {
+		return sce.executionEngine.validateTargets(ability, controller, targets)
+	}
+
 	// Count required targets from effects
 	requiredTargets := 0
 	for _, effect := range ability.Effects {
@@ -258,7 +265,6 @@ func (sce *SpellCastingEngine) validateAbilityTargets(ability *Ability, targets 
 		return fmt.Errorf("ability requires %d targets, got %d", requiredTargets, len(targets))
 	}
 
-	// TODO: Implement detailed target validation
 	return nil
 }
 

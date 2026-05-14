@@ -61,16 +61,16 @@ const (
 	TapUntap
 	ChangeControl
 	PreventDamage
-	SourcePowerDamage // e.g., Rabid Bite style: first target deals damage equal to its power to second target
-	ChooseMode        // Modal spells/actions with choices represented explicitly instead of fake draw effects
-	TakeExtraTurn     // Extra-turn effects; execution engines may queue an additional turn
-	KeywordAbility    // Static keyword abilities (flying, trample, haste, etc.)
-	Exile             // Exile a permanent, card, or token
-	MillCards         // Put cards from library into graveyard
-	ScryCards         // Look at top N cards of library and reorder
-	AddCounters       // Put +1/+1 counters, proliferate, etc.
-	UntapPermanent    // Untap target permanent or all
-	CopySpell         // Copy target instant, sorcery, or permanent
+	SourcePowerDamage  // e.g., Rabid Bite style: first target deals damage equal to its power to second target
+	ChooseMode         // Modal spells/actions with choices represented explicitly instead of fake draw effects
+	TakeExtraTurn      // Extra-turn effects; execution engines may queue an additional turn
+	KeywordAbility     // Static keyword abilities (flying, trample, haste, etc.)
+	Exile              // Exile a permanent, card, or token
+	MillCards          // Put cards from library into graveyard
+	ScryCards          // Look at top N cards of library and reorder
+	AddCounters        // Put +1/+1 counters, proliferate, etc.
+	UntapPermanent     // Untap target permanent or all
+	CopySpell          // Copy target instant, sorcery, or permanent
 	CantAttackBlock    // Restriction: can't attack, can't block, etc.
 	AdditionalLand     // Play additional land(s)
 	SacrificePermanent // Sacrifice a permanent as cost or effect
@@ -244,6 +244,15 @@ type Condition struct {
 	Value string // e.g., "Forest", "3"
 }
 
+// TokenSpec describes a token-producing effect without overloading Effect.Value.
+type TokenSpec struct {
+	Count     int
+	Name      string
+	TypeLine  string
+	Power     int
+	Toughness int
+}
+
 // Effect represents the effect of an ability.
 type Effect struct {
 	Type        EffectType
@@ -252,6 +261,34 @@ type Effect struct {
 	Targets     []Target
 	Conditions  []Condition // Additional conditions for the effect
 	Description string      // Human-readable description
+
+	// Typed payload fields. These are preferred for effects where a single int
+	// is ambiguous, while Value remains for simple amounts and legacy parsers.
+	HasPTDelta  bool
+	PTPower     int
+	PTToughness int
+	HasToken    bool
+	Token       TokenSpec
+
+	// Approximate marks parser/runtime support that is recognized but not exact.
+	Approximate         bool
+	ApproximationReason string
+}
+
+// LegacyEncodePT keeps older tests/serialisation stable while typed P/T fields
+// carry the authoritative values. It cannot represent mixed-sign deltas.
+func LegacyEncodePT(power, toughness int) int {
+	if power < 0 || toughness < 0 {
+		return power*100 - absInt(toughness)
+	}
+	return power*100 + toughness
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // EffectDuration represents how long an effect lasts.
@@ -354,19 +391,21 @@ type TriggeredAbility interface {
 
 // Ability represents a Magic: The Gathering ability.
 type Ability struct {
-	ID                uuid.UUID
-	Name              string
-	Type              AbilityType
-	Source            interface{} // The card or permanent that has this ability
-	Cost              Cost
-	Effects           []Effect
-	TriggerCondition  TriggerCondition
-	TimingRestriction TimingRestriction
-	UsesPerTurn       int // 0 = unlimited, -1 = once per game
-	UsedThisTurn      int
-	IsOptional        bool
-	OracleText        string
-	ParsedFromText    bool
+	ID                  uuid.UUID
+	Name                string
+	Type                AbilityType
+	Source              interface{} // The card or permanent that has this ability
+	Cost                Cost
+	Effects             []Effect
+	TriggerCondition    TriggerCondition
+	TimingRestriction   TimingRestriction
+	UsesPerTurn         int // 0 = unlimited, -1 = once per game
+	UsedThisTurn        int
+	IsOptional          bool
+	OracleText          string
+	ParsedFromText      bool
+	Approximate         bool
+	ApproximationReason string
 }
 
 // CanActivate checks if an ability can be activated by the given player.
