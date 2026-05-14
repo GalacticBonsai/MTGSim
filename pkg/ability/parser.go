@@ -587,12 +587,7 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `(?i)^Tap\s+(?:\d+|X)\s+target\s+(.*)`, TapUntap, "Tap target spell", ap.activatedParserFactory(TapUntap, "Tap Target Spell"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+amass\s+(\d+)`, CreateToken, "Creature dies amass", ap.triggeredParserFactory(CreateToken, Dies, "Creature Dies Amass"))
 
-
-
 }
-
-
-
 
 // addPattern adds a new pattern to the parser.
 func (ap *AbilityParser) addPattern(abilityType AbilityType, pattern string, effectType EffectType, description string, parser func([]string, string) (*Ability, error)) {
@@ -1601,8 +1596,8 @@ func (ap *AbilityParser) parseSpellPump(matches []string, fullText string) (*Abi
 				Type:        PumpCreature,
 				Value:       LegacyEncodePT(power, toughness),
 				Duration:    UntilEndOfTurn,
-				HasPTDelta: true,
-				PTPower:    power,
+				HasPTDelta:  true,
+				PTPower:     power,
 				PTToughness: toughness,
 				Targets: []Target{
 					{
@@ -1898,8 +1893,8 @@ func (ap *AbilityParser) parseConditionalControl(matches []string, fullText stri
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type: effectType,
-				Value: value,
+				Type:     effectType,
+				Value:    value,
 				Duration: Instant,
 				Conditions: []Condition{
 					{Type: ControlPermanentType, Value: conditionValue},
@@ -1923,8 +1918,8 @@ func (ap *AbilityParser) parseConditionalOpponentCreatures(matches []string, ful
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type: effectType,
-				Value: value,
+				Type:     effectType,
+				Value:    value,
 				Duration: Instant,
 				Conditions: []Condition{
 					{Type: OpponentHasMoreCreatures},
@@ -1948,8 +1943,8 @@ func (ap *AbilityParser) parseConditionalHellbent(matches []string, fullText str
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type: effectType,
-				Value: value,
+				Type:     effectType,
+				Value:    value,
 				Duration: Instant,
 				Conditions: []Condition{
 					{Type: NoCardsInHand},
@@ -1970,13 +1965,13 @@ func (ap *AbilityParser) parseConditionalETBControl(matches []string, fullText s
 	effectType, value := ap.inferEffectFromText(effectText)
 
 	return &Ability{
-		Name: "Conditional ETB Control",
-		Type: Triggered,
+		Name:             "Conditional ETB Control",
+		Type:             Triggered,
 		TriggerCondition: EntersTheBattlefield,
 		Effects: []Effect{
 			{
-				Type: effectType,
-				Value: value,
+				Type:     effectType,
+				Value:    value,
 				Duration: Instant,
 				Conditions: []Condition{
 					{Type: ControlPermanentType, Value: conditionValue},
@@ -2200,7 +2195,6 @@ func (ap *AbilityParser) parseRabidBite(matches []string, fullText string) (*Abi
 	}, nil
 }
 
-
 // --- Phase 1: Tap/Untap parsers ---
 
 func (ap *AbilityParser) parseTapTarget(matches []string, fullText string) (*Ability, error) {
@@ -2210,10 +2204,10 @@ func (ap *AbilityParser) parseTapTarget(matches []string, fullText string) (*Abi
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:     TapUntap,
-				Value:    1, // positive => tap
-				Duration: Instant,
-				Targets:  []Target{{Type: targetType, Required: true, Count: 1}},
+				Type:        TapUntap,
+				Value:       1, // positive => tap
+				Duration:    Instant,
+				Targets:     []Target{{Type: targetType, Required: true, Count: 1}},
 				Description: "Tap target " + matches[1],
 			},
 		},
@@ -2228,10 +2222,10 @@ func (ap *AbilityParser) parseTapAll(matches []string, fullText string) (*Abilit
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:     TapUntap,
-				Value:    1, // positive => tap
-				Duration: Instant,
-				Targets:  []Target{{Type: targetType, Required: false, Count: 0}}, // mass effect
+				Type:        TapUntap,
+				Value:       1, // positive => tap
+				Duration:    Instant,
+				Targets:     []Target{{Type: targetType, Required: false, Count: 0}}, // mass effect
 				Description: "Tap all " + matches[1],
 			},
 		},
@@ -2246,10 +2240,10 @@ func (ap *AbilityParser) parseUntapTarget(matches []string, fullText string) (*A
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:     TapUntap,
-				Value:    -1, // negative => untap
-				Duration: Instant,
-				Targets:  []Target{{Type: targetType, Required: true, Count: 1}},
+				Type:        TapUntap,
+				Value:       -1, // negative => untap
+				Duration:    Instant,
+				Targets:     []Target{{Type: targetType, Required: true, Count: 1}},
 				Description: "Untap target " + matches[1],
 			},
 		},
@@ -2264,10 +2258,10 @@ func (ap *AbilityParser) parseUntapAllControlled(matches []string, fullText stri
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:     TapUntap,
-				Value:    -1,
-				Duration: Instant,
-				Targets:  []Target{{Type: targetType, Required: false, Count: 0}},
+				Type:        TapUntap,
+				Value:       -1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: targetType, Required: false, Count: 0}},
 				Description: "Untap all " + matches[1] + " you control",
 			},
 		},
@@ -2281,10 +2275,10 @@ func (ap *AbilityParser) parseFreezeTarget(matches []string, fullText string) (*
 		Type: Activated,
 		Effects: []Effect{
 			{
-				Type:     TapUntap,
-				Value:    1,
-				Duration: Instant,
-				Targets:  []Target{{Type: CreatureTarget, Required: true, Count: 1}},
+				Type:        TapUntap,
+				Value:       1,
+				Duration:    Instant,
+				Targets:     []Target{{Type: CreatureTarget, Required: true, Count: 1}},
 				Description: "Target creature doesn't untap during its controller's next untap step",
 			},
 		},
@@ -2389,8 +2383,8 @@ func (ap *AbilityParser) parseControllerDiscard(matches []string, fullText strin
 func (ap *AbilityParser) parseCombatDamageDiscard(matches []string, fullText string) (*Ability, error) {
 	count := ap.parseDiscardCount(matches[2])
 	return &Ability{
-		Name: "Combat Damage Discard",
-		Type: Triggered,
+		Name:             "Combat Damage Discard",
+		Type:             Triggered,
 		TriggerCondition: DealsCombatDamage,
 		Effects: []Effect{
 			{
@@ -2520,14 +2514,14 @@ func (ap *AbilityParser) parseKeywordAbilities(matches []string, fullText string
 		})
 	}
 	if len(effects) == 0 {
-			return nil, ErrParsingFailed
-		}
-		return &Ability{
-			Name:    "Keyword Abilities",
-			Type:    Static,
-			Effects: effects,
-		}, nil
+		return nil, ErrParsingFailed
 	}
+	return &Ability{
+		Name:    "Keyword Abilities",
+		Type:    Static,
+		Effects: effects,
+	}, nil
+}
 
 func (ap *AbilityParser) parseAuraEnchantment(matches []string, fullText string) (*Ability, error) {
 	return &Ability{
@@ -2554,9 +2548,9 @@ func (ap *AbilityParser) parseEquippedPump(matches []string, fullText string) (*
 		Type: Static,
 		Effects: []Effect{
 			{
-				Type:     PumpCreature,
-				Value:    power*1000 + toughness,
-				Duration: Permanent,
+				Type:        PumpCreature,
+				Value:       power*1000 + toughness,
+				Duration:    Permanent,
 				Description: fullText,
 			},
 		},
@@ -2933,6 +2927,7 @@ func (ap *AbilityParser) parseETBLoseLife(matches []string, fullText string) (*A
 	v, _ := strconv.Atoi(matches[1])
 	return makeTriggeredAbility("ETB Lose Life", LoseLife, v, Instant, fullText), nil
 }
+
 // Attack trigger parsers
 func (ap *AbilityParser) parseAttackDamage(matches []string, fullText string) (*Ability, error) {
 	if len(matches) < 3 {
@@ -3024,7 +3019,6 @@ func (ap *AbilityParser) parseDeathExile(matches []string, fullText string) (*Ab
 	return makeTriggeredAbilityWithCondition("Death Exile", Exile, 0, Instant, fullText, Dies), nil
 }
 
-
 func (ap *AbilityParser) parseETBTap(matches []string, fullText string) (*Ability, error) {
 	return makeTriggeredAbility("ETB Tap", TapUntap, 0, Instant, fullText), nil
 }
@@ -3044,7 +3038,6 @@ func (ap *AbilityParser) parseEndStepTrigger(matches []string, fullText string) 
 func (ap *AbilityParser) parseEndOfCombatTrigger(matches []string, fullText string) (*Ability, error) {
 	return makeTriggeredAbilityWithCondition("End of Combat Trigger", DrawCards, 0, Instant, fullText, EndOfTurn), nil
 }
-
 
 func (ap *AbilityParser) parseBlockPump(matches []string, fullText string) (*Ability, error) {
 	if len(matches) < 3 {

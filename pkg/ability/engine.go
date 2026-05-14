@@ -413,19 +413,17 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("%s searches library for %d cards", controller.GetName(), effect.Value)
 
 	case CreateToken:
-		count := effect.Value / 1000000
-		power := (effect.Value % 1000000) / 1000
-		toughness := effect.Value % 1000
-		for i := 0; i < count; i++ {
+		tokenSpec := effectTokenSpec(effect)
+		for i := 0; i < tokenSpec.Count; i++ {
 			token := game.SimpleCard{
-				Name:      "Token",
-				TypeLine:  "Creature — Token",
-				Power:     strconv.Itoa(power),
-				Toughness: strconv.Itoa(toughness),
+				Name:      tokenSpec.Name,
+				TypeLine:  tokenSpec.TypeLine,
+				Power:     strconv.Itoa(tokenSpec.Power),
+				Toughness: strconv.Itoa(tokenSpec.Toughness),
 			}
 			ee.gameState.CreateToken(controller, token)
 		}
-		logger.LogCard("%s creates %d %d/%d tokens", controller.GetName(), count, power, toughness)
+		logger.LogCard("%s creates %d %d/%d tokens", controller.GetName(), tokenSpec.Count, tokenSpec.Power, tokenSpec.Toughness)
 
 	case PreventDamage:
 		if effect.Value == 0 {
@@ -826,7 +824,11 @@ func (ee *ExecutionEngine) applyPumpEffect(target any, power, toughness int, dur
 
 // applyTapEffect applies a tap/untap effect.
 func (ee *ExecutionEngine) applyTapEffect(target any, shouldTap bool) {
-	if tapper, ok := target.(interface{ Tap(); Untap(); GetName() string }); ok {
+	if tapper, ok := target.(interface {
+		Tap()
+		Untap()
+		GetName() string
+	}); ok {
 		if shouldTap {
 			tapper.Tap()
 			logger.LogCard("Tapping %s", tapper.GetName())
