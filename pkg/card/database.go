@@ -8,10 +8,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 const (
-	CardDBFile = "cardDB.json"
+	CardDBFile = ".cache/cardDB.json"
 	CardDBURL  = "https://data.scryfall.io/oracle-cards/oracle-cards-20250204100217.json"
 )
 
@@ -56,6 +57,13 @@ func (db *CardDB) ListAll() []Card {
 // LoadCardDatabase loads the card database from file or downloads it if not present.
 func LoadCardDatabase() (*CardDB, error) {
 	var cards []Card
+
+	// Ensure cache directory exists
+	cacheDir := filepath.Dir(CardDBFile)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		log.Printf("META: Error creating cache directory: %v", err)
+		return nil, err
+	}
 
 	// Try to load from file first
 	if file, err := os.ReadFile(CardDBFile); err == nil {

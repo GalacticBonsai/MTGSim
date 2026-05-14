@@ -27,8 +27,7 @@ go.work.sum
 # generated decks
 decks/Generated
 
-#downloaded code
-cardDB.json
+# downloaded code and cache files
 .cache
 card_library.json
 
