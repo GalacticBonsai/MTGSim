@@ -37,14 +37,14 @@ type ImplementationReportProvider func() *card.ImplementationReport
 
 // Server serves the dashboard.
 type Server struct {
-	provider            ResultsProvider
-	edhProvider         EDHResultsProvider
-	edhGames            EDHGamesProvider
-	edhSummary          EDHSummaryProvider
-	cardLibrary         CardLibraryProvider
-	implReport          ImplementationReportProvider
-	port                int
-	mux                 *http.ServeMux
+	provider    ResultsProvider
+	edhProvider EDHResultsProvider
+	edhGames    EDHGamesProvider
+	edhSummary  EDHSummaryProvider
+	cardLibrary CardLibraryProvider
+	implReport  ImplementationReportProvider
+	port        int
+	mux         *http.ServeMux
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
@@ -108,14 +108,23 @@ type resultsResponse struct {
 	TotalGames  int       `json:"total_games"`
 	UniqueDecks int       `json:"unique_decks"`
 	Decks       []deckRow `json:"decks"`
+
+	TotalDecks int  `json:"totalDecks,omitempty"`
+	Truncated  bool `json:"truncated,omitempty"`
 }
 
 // handleResults returns deck win/loss aggregates derived from simulation.Results.
 func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	const maxDecks = 10
+
 	snapshot := s.provider()
+
 	rows := make([]deckRow, 0, len(snapshot))
+
 	totalRecords := 0
+
 	for _, res := range snapshot {
 		rows = append(rows, deckRow{
 			Name:    res.Name,
@@ -123,35 +132,68 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 			Losses:  res.Losses,
 			WinRate: res.WinPercentage(),
 		})
+
 		totalRecords += res.Wins + res.Losses
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].WinRate > rows[j].WinRate })
-	// Each game contributes one win and one loss across the deck pool.
-	json.NewEncoder(w).Encode(resultsResponse{
+
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].WinRate > rows[j].WinRate
+	})
+
+	resp := resultsResponse{
 		TotalGames:  totalRecords / 2,
 		UniqueDecks: len(rows),
-		Decks:       rows,
-	})
+		TotalDecks:  len(rows),
+	}
+
+	if len(rows) > maxDecks {
+		resp.Truncated = true
+		resp.Decks = rows[:maxDecks]
+	} else {
+		resp.Decks = rows
+	}
+
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 type edhResultsResponse struct {
-	Enabled bool                      `json:"enabled"`
-	Decks   []simulation.EDHDeckStats `json:"decks"`
-	Summary simulation.EDHSummary     `json:"summary"`
+	Enabled    bool                      `json:"enabled"`
+	Decks      []simulation.EDHDeckStats `json:"decks"`
+	Summary    simulation.EDHSummary     `json:"summary"`
+	TotalDecks int                       `json:"totalDecks,omitempty"`
+	Truncated  bool                      `json:"truncated,omitempty"`
 }
 
-// handleEDHResults returns per-deck EDH aggregates if an EDH provider
-// is registered; otherwise responds with {"enabled": false}.
 func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
 	if s.edhProvider == nil {
-		_ = json.NewEncoder(w).Encode(edhResultsResponse{Enabled: false})
+		_ = json.NewEncoder(w).Encode(edhResultsResponse{
+			Enabled: false,
+		})
 		return
 	}
-	resp := edhResultsResponse{Enabled: true, Decks: s.edhProvider()}
+
+	const maxDecks = 10
+
+	allDecks := s.edhProvider()
+
+	resp := edhResultsResponse{
+		Enabled:    true,
+		TotalDecks: len(allDecks),
+	}
+
+	if len(allDecks) > maxDecks {
+		resp.Truncated = true
+		resp.Decks = allDecks[:maxDecks]
+	} else {
+		resp.Decks = allDecks
+	}
+
 	if s.edhSummary != nil {
 		resp.Summary = s.edhSummary()
 	}
+
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
@@ -170,7 +212,7 @@ func (s *Server) handleEDHGames(w http.ResponseWriter, r *http.Request) {
 }
 
 type cardLibraryResponse struct {
-	Enabled bool                          `json:"enabled"`
+	Enabled bool                             `json:"enabled"`
 	Cards   map[string]stats.GlobalCardStats `json:"cards"`
 }
 
@@ -184,7 +226,7 @@ func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 type implementationResponse struct {
-	Enabled bool                     `json:"enabled"`
+	Enabled bool                       `json:"enabled"`
 	Report  *card.ImplementationReport `json:"report"`
 }
 
@@ -256,6 +298,41 @@ const htmlDashboard = `
 		.search-box::placeholder { color: #666; }
 		.search-box:focus { outline: none; border-color: #5a6dd8; }
 		.search-meta { color: #888; font-size: 0.85em; margin-bottom: 10px; }
+		.card-thumb-wrapper {
+			position: relative;
+			display: inline-block;
+		}
+
+		.card-thumb {
+			height: 64px;
+			border-radius: 6px;
+			transition: transform 0.15s ease;
+		}
+
+		.card-thumb:hover {
+			transform: scale(1.05);
+		}
+
+		.card-preview {
+			display: none;
+			position: absolute;
+			z-index: 1000;
+			left: 80px;
+			top: -40px;
+			background: #000;
+			padding: 8px;
+			border-radius: 10px;
+			box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+		}
+
+		.card-thumb-wrapper:hover .card-preview {
+			display: block;
+		}
+
+		.card-preview-img {
+			width: 320px;
+			border-radius: 12px;
+		}
 	</style>
 </head>
 <body>
@@ -377,14 +454,51 @@ const htmlDashboard = `
 
 		<div id="card-library" class="tab-content">
 			<h3>Global Card Library</h3>
-			<p style="color:#888; margin-bottom:10px;">Aggregated across all simulation runs. Cards with at least 5 casts.</p>
+			<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+	<input
+		type="text"
+		id="cardLibrarySearch"
+		class="search-box"
+		placeholder="Search cards..."
+		oninput="filterCardLibrary()"
+		style="max-width:300px;"
+	>
+
+	<label style="color:#888;font-size:0.9em;">
+		Min Casts:
+		<input
+			type="number"
+			id="cardLibraryMinCasts"
+			value="5"
+			min="1"
+			oninput="filterCardLibrary()"
+			style="width:80px;margin-left:6px;background:#0a0e27;color:#fff;border:1px solid #1a1f3a;padding:6px;border-radius:4px;"
+		>
+	</label>
+
+	<label style="color:#888;font-size:0.9em;">
+		Limit:
+		<select
+			id="cardLibraryLimit"
+			onchange="filterCardLibrary()"
+			style="margin-left:6px;background:#0a0e27;color:#fff;border:1px solid #1a1f3a;padding:6px;border-radius:4px;"
+		>
+			<option value="50">50</option>
+			<option value="100" selected>100</option>
+			<option value="250">250</option>
+			<option value="500">500</option>
+		</select>
+	</label>
+</div>
+
+<div id="cardLibraryMeta" class="search-meta"></div>
 			<table class="table" id="cardLibrary">
 				<thead>
 					<tr>
-						<th title="Card name">Card</th>
-						<th title="Total casts across all runs">Casts</th>
-						<th title="Wins when this card was cast">Wins</th>
-						<th title="Win percentage when cast (Wins / Casts)">Win Rate</th>
+						<th class="th-sort" onclick="sortCardLibrary('name')">Card</th>
+						<th class="th-sort" onclick="sortCardLibrary('casts')">Casts</th>
+						<th class="th-sort" onclick="sortCardLibrary('wins')">Wins</th>
+						<th class="th-sort" onclick="sortCardLibrary('winRate')">Win Rate</th>
 					</tr>
 				</thead>
 				<tbody id="cardLibraryBody">
@@ -439,8 +553,11 @@ const htmlDashboard = `
 			btn.classList.add('active');
 		}
 
+		// globals
 		let currentEDHData = null;
 		let edhSortState = { key: 'win_rate', dir: 'desc' };
+		let cardLibrarySortKey = 'winRate';
+		let cardLibrarySortAsc = false;
 
 		function sortEDH(key) {
 			if (!currentEDHData || !currentEDHData.decks) return;
@@ -509,11 +626,25 @@ const htmlDashboard = `
 
 		function renderDecks(data) {
 			const decks = data.decks || [];
+
 			let html = '';
+
+			if (data.truncated) {
+				html += '<tr><td colspan="4" style="color:#888;">'
+					+ 'Showing first '
+					+ decks.length
+					+ ' of '
+					+ data.totalDecks
+					+ ' decks'
+					+ '</td></tr>';
+			}
+
 			for (let d of decks) {
 				html += '<tr title="' + d.name + ': ' + d.wins + 'W / ' + d.losses + 'L (' + (d.win_rate || 0).toFixed(1) + '% win rate)"><td>' + d.name + '</td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
 			}
-			document.getElementById('decksBody').innerHTML = html || '<tr><td colspan="4">No data</td></tr>';
+
+			document.getElementById('decksBody').innerHTML =
+				html || '<tr><td colspan="4">No data</td></tr>';
 		}
 
 		function renderEDH(data) {
@@ -608,27 +739,111 @@ const htmlDashboard = `
 			}
 
 			function renderCardLibrary(cards) {
-				let rows = [];
+				currentCardLibraryRows = [];
+
 				for (let [name, perf] of Object.entries(cards)) {
-					if (perf.casts >= 5) {
-						rows.push({
-							name: name,
-							casts: perf.casts,
-							wins: perf.wins,
-							winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0,
-							image_url: perf.image_url || ''
-						});
-					}
+					currentCardLibraryRows.push({
+						name: name,
+						casts: perf.casts || 0,
+						wins: perf.wins || 0,
+						winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0,
+						image_url: perf.image_url || ''
+					});
 				}
-				rows.sort((a, b) => b.winRate - a.winRate || b.casts - a.casts);
-				rows = rows.slice(0, 100);
+
+				// IMPORTANT: ensure UI renders even if inputs are missing
+				if (!document.getElementById('cardLibrarySearch')) {
+					document.getElementById('cardLibraryBody').innerHTML =
+						'<tr><td colspan="4">Loading controls...</td></tr>';
+					return;
+				}
+
+				filterCardLibrary();
+			}
+			
+			function sortCardLibrary(key) {
+				if (cardLibrarySortKey === key) {
+					cardLibrarySortAsc = !cardLibrarySortAsc;
+				} else {
+					cardLibrarySortKey = key;
+					cardLibrarySortAsc = false;
+				}
+
+				filterCardLibrary();
+			}
+
+			function filterCardLibrary() {
+				let rows = [...currentCardLibraryRows];
+
+				const searchEl = document.getElementById('cardLibrarySearch');
+				const minEl = document.getElementById('cardLibraryMinCasts');
+				const limitEl = document.getElementById('cardLibraryLimit');
+
+				const search = (searchEl ? searchEl.value : '').toLowerCase();
+				const minCasts = parseInt(minEl ? minEl.value : '5');
+				const limit = parseInt(limitEl ? limitEl.value : '100');
+
+				rows = rows.filter(r => {
+					return r.casts >= minCasts &&
+						r.name.toLowerCase().includes(search);
+				});
+
+				rows.sort((a, b) => {
+					let av = a[cardLibrarySortKey];
+					let bv = b[cardLibrarySortKey];
+
+					if (typeof av === 'string') av = av.toLowerCase();
+					if (typeof bv === 'string') bv = bv.toLowerCase();
+
+					if (av < bv) return cardLibrarySortAsc ? -1 : 1;
+					if (av > bv) return cardLibrarySortAsc ? 1 : -1;
+					return 0;
+				});
+
+				const total = rows.length;
+
+				rows = rows.slice(0, limit);
+
 				let html = '';
+
 				for (let c of rows) {
-					let img = c.image_url ? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;" alt="">' : '';
-					let tooltip = c.name + ': ' + c.casts + ' casts, ' + c.wins + ' wins (' + c.winRate.toFixed(1) + '% win rate)';
-					html += '<tr title="' + tooltip + '"><td>' + img + c.name + '</td><td>' + c.casts + '</td><td>' + c.wins + '</td><td><strong>' + c.winRate.toFixed(1) + '%</strong></td></tr>';
+					let img = '';
+
+					if (c.image_url) {
+						img =
+							'<div class="card-thumb-wrapper">' +
+								'<img src="' + c.image_url + '" class="card-thumb">' +
+								'<div class="card-preview">' +
+									'<img src="' + c.image_url + '" class="card-preview-img">' +
+								'</div>' +
+							'</div>';
+					}
+
+					let tooltip =
+						c.name + ': ' +
+						c.casts + ' casts, ' +
+						c.wins + ' wins (' +
+						c.winRate.toFixed(1) + '% win rate)';
+
+					html +=
+						'<tr title="' + tooltip + '">' +
+							'<td>' +
+								'<div style="display:flex;align-items:center;gap:12px;">' +
+									img +
+									'<span>' + c.name + '</span>' +
+								'</div>' +
+							'</td>' +
+							'<td>' + c.casts + '</td>' +
+							'<td>' + c.wins + '</td>' +
+							'<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>' +
+						'</tr>';
 				}
-				document.getElementById('cardLibraryBody').innerHTML = html || '<tr><td colspan="4">No cards with enough sample size yet</td></tr>';
+
+				document.getElementById('cardLibraryBody').innerHTML =
+					html || '<tr><td colspan="4">No matching cards</td></tr>';
+
+				document.getElementById('cardLibraryMeta').textContent =
+					'Showing ' + rows.length + ' of ' + total + ' matching cards';
 			}
 
 			async function loadEDHGames() {
@@ -757,7 +972,7 @@ const htmlDashboard = `
 				}
 				document.getElementById('implByType').innerHTML = typeHtml || '<div class="loading">No data</div>';
 
-				renderImplementationTable(report);
+				applyImplFilterAndSort();
 			}
 
 		setInterval(loadResults, 5000);
