@@ -301,7 +301,22 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 		}
 		out = append(out, row)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].WinRate > out[j].WinRate })
+	sort.Slice(out, func(i, j int) bool {
+		// Sort by win rate (descending)
+		if out[i].WinRate != out[j].WinRate {
+			return out[i].WinRate > out[j].WinRate
+		}
+		// Tiebreak: games played (descending)
+		if out[i].Games != out[j].Games {
+			return out[i].Games > out[j].Games
+		}
+		// Tiebreak: commander name (ascending)
+		if out[i].CommanderName != out[j].CommanderName {
+			return out[i].CommanderName < out[j].CommanderName
+		}
+		// Tiebreak: deck name (ascending)
+		return out[i].DeckName < out[j].DeckName
+	})
 	return out
 }
 
