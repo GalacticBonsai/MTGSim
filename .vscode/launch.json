@@ -16,7 +16,26 @@
         "-log=META"
       ],
       "console": "integratedTerminal"
-    }
+    },
+ {
+      "name": "Debug download_edh_decks.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/download_edh_decks.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "TOPDECK_API_KEY": "API_KEY"
+      },
+      "args": [
+        "--days",
+        "30",
+        "--min-participants",
+        "20",
+        "--verbose"
+      ],
+      "justMyCode": true
+    },
   ]
 }
 

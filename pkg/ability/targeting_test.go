@@ -23,9 +23,6 @@ type mockTargetPermanent struct {
 	power          int
 	toughness      int
 	cmc            int
-	abilities      []string
-	hasHexproof    bool
-	hasShroud      bool
 }
 
 func (m *mockTargetPermanent) GetID() uuid.UUID {

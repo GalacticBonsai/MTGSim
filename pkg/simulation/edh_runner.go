@@ -194,20 +194,6 @@ func seatCommanderNames(s EDHSeat) []string {
 
 
 
-// edhGameStateSnapshot returns a string representation of the current EDH game state
-// used to detect if the game is making progress across turns.
-func edhGameStateSnapshot(g *game.Game) string {
-	var b strings.Builder
-	for _, p := range g.GetPlayersRaw() {
-		fmt.Fprintf(&b, "%s:L%d,lost:%v,Lib%d,Hand%d,BF%d,G%d,E%d;",
-			p.GetName(), p.GetLifeTotal(), p.HasLost(),
-			len(p.Library), len(p.Hand), len(p.Battlefield),
-			len(p.Graveyard), len(p.Exile))
-	}
-	fmt.Fprintf(&b, "T%d,A%d", g.GetTurnNumber(), g.GetCurrentPhase())
-	return b.String()
-}
-
 // edhActionStateSnapshot returns a string representation of the current EDH game state
 // excluding turn and phase numbers so it can be used to detect meaningful progress
 // across individual phase actions.

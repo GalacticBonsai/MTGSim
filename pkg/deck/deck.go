@@ -211,9 +211,6 @@ func importDeckfileWithCommanders(filename string, cardDB CardDatabase, inferCom
 		cardData, exists := cardDB.GetCardByName(name)
 		if !exists {
 			logger.LogDeck("Card not found: %s", name)
-			if !inferCommander {
-				continue
-			}
 			cardData = card.Card{Name: name}
 		}
 

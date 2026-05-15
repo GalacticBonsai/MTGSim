@@ -275,7 +275,9 @@ func (gsi *GameStackIntegration) cardToSpell(cardToCast card.Card) (*Spell, erro
 // MainPhaseWithStack handles main phase with stack integration
 func (gsi *GameStackIntegration) MainPhaseWithStack(playerName string) error {
 	gsi.SetPhase("Main Phase")
-	gsi.SetActivePlayer(playerName)
+	if err := gsi.SetActivePlayer(playerName); err != nil {
+		return err
+	}
 
 	logger.LogCard("Main phase for %s with stack integration", playerName)
 
@@ -286,7 +288,9 @@ func (gsi *GameStackIntegration) MainPhaseWithStack(playerName string) error {
 // CombatPhaseWithStack handles combat phase with stack integration
 func (gsi *GameStackIntegration) CombatPhaseWithStack(playerName string) error {
 	gsi.SetPhase("Combat Phase")
-	gsi.SetActivePlayer(playerName)
+	if err := gsi.SetActivePlayer(playerName); err != nil {
+		return err
+	}
 
 	logger.LogCard("Combat phase for %s with stack integration", playerName)
 
@@ -297,7 +301,9 @@ func (gsi *GameStackIntegration) CombatPhaseWithStack(playerName string) error {
 // EndStepWithStack handles end step with stack integration
 func (gsi *GameStackIntegration) EndStepWithStack(playerName string) error {
 	gsi.SetPhase("End Step")
-	gsi.SetActivePlayer(playerName)
+	if err := gsi.SetActivePlayer(playerName); err != nil {
+		return err
+	}
 
 	logger.LogCard("End step for %s with stack integration", playerName)
 

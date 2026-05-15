@@ -12,7 +12,6 @@ type mockTimingGameState struct {
 	currentPhase   string
 	stackEmpty     bool
 	hasPriority    bool
-	activePlayer   string
 	priorityPlayer string
 	isMainPhase    bool
 	isCombatPhase  bool

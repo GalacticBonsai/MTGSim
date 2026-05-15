@@ -599,17 +599,14 @@ func TestEDHUnimplementedCardsLifecycle(t *testing.T) {
 				if len(abilities) != 1 {
 					t.Errorf("expected 1 ability, got %d", len(abilities))
 				}
-				foundLoseLife, foundSearch := false, false
+				if abilities[0].Cost.LifeCost != 1 {
+					t.Errorf("expected life cost 1, got %d", abilities[0].Cost.LifeCost)
+				}
+				foundSearch := false
 				for _, eff := range abilities[0].Effects {
-					if eff.Type == LoseLife {
-						foundLoseLife = true
-					}
 					if eff.Type == SearchLibrary {
 						foundSearch = true
 					}
-				}
-				if !foundLoseLife {
-					t.Error("expected LoseLife effect for fetchland")
 				}
 				if !foundSearch {
 					t.Error("expected SearchLibrary effect for fetchland")

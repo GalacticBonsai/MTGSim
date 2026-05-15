@@ -90,15 +90,6 @@ func (g *Game) LoseGame(loser *Player, reason string) {
 	}
 }
 
-// removeDamageFromPermanents removes all damage from permanents during cleanup step.
-func (g *Game) removeDamageFromPermanents() {
-	for _, pl := range g.players {
-		for _, perm := range pl.Battlefield {
-			perm.ClearDamage()
-		}
-	}
-}
-
 // findNextLivingPlayer searches clockwise from startIdx for the next player
 // who has not lost. It wraps around the player slice. If the only living
 // player is startIdx itself, startIdx is returned. If no living players exist,

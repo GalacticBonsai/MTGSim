@@ -234,6 +234,10 @@ func (m *mockPlayer) PayCost(cost Cost) error {
 			}
 		}
 	}
+	// Handle life cost
+	if cost.LifeCost > 0 {
+		m.life -= cost.LifeCost
+	}
 	return nil
 }
 

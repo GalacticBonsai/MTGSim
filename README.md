@@ -34,7 +34,7 @@ MTGSim lets you import decklists, simulate thousands of games, and analyze perfo
 ## Requirements
 
 - Go 1.21+ (Go 1.23.x recommended — `go.mod` pins `toolchain go1.23.4`)
-- Internet access **only** if `cardDB.json` is missing (one-time Scryfall download)
+- Internet access **only** if the card database is missing (one-time Scryfall download)
 
 ## Quick start
 
@@ -43,7 +43,7 @@ git clone https://github.com/mtgsim/mtgsim.git
 cd MTGSim
 ```
 
-On first run the simulator checks for `cardDB.json` in the repo root. If it is missing, it downloads the pinned Scryfall oracle snapshot and caches it locally automatically.
+On first run the simulator checks for `.cache/cardDB.json`. If it is missing, it downloads the pinned Scryfall oracle snapshot and caches it locally automatically.
 
 ### 1️⃣ Run a 1v1 batch
 
@@ -271,14 +271,15 @@ MTGSim/
 ├── internal/logger/      # Internal logging helpers
 ├── decks/                # Sample 1v1 and EDH decklists
 ├── meta/                 # Deck generation utilities
-└── cardDB.json           # Cached Scryfall oracle DB (created/updated locally)
+└── .cache/
+    └── cardDB.json       # Cached Scryfall oracle DB (created/updated locally)
 ```
 
 ## Architecture overview
 
 ```mermaid
 graph LR
-    A[Deck files<br/>.deck .dck .txt] -->|pkg/deck| B(Card DB<br/>cardDB.json)
+    A[Deck files<br/>.deck .dck .txt] -->|pkg/deck| B(Card DB<br/>.cache/cardDB.json)
     B --> C[pkg/card]
     C --> D[pkg/game<br/>Core engine]
     D --> E[pkg/simulation<br/>1v1 & EDH runners]

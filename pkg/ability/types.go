@@ -450,7 +450,6 @@ type AbilityEngine struct {
 	abilities      map[uuid.UUID]*Ability
 	triggeredQueue []*Ability
 	stack          []*StackObject
-	priorityPlayer interface{}
 	gameState      GameState
 }
 

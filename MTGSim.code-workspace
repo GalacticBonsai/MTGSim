@@ -21,7 +21,7 @@
 			"**/*.exe": true,
 			"**/*.test": true,
 			"**/*.out": true,
-			"**/cardDB.json": true,
+			"**/.cache": true,
 			"**/simulation.log": true
 		},
 		"editor.formatOnSave": true,

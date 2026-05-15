@@ -284,39 +284,6 @@ func poolCanPay(pool map[game.ManaType]int, cost game.Mana) bool {
 	return true
 }
 
-// Deduct a cost from a pool (assumes can pay)
-func poolPay(pool map[game.ManaType]int, cost game.Mana) bool {
-	if !poolCanPay(pool, cost) {
-		return false
-	}
-	specific := []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green, game.Colorless}
-	for _, t := range specific {
-		need := cost.Get(t)
-		if need == 0 {
-			continue
-		}
-		pool[t] -= need
-	}
-	anyNeed := cost.Get(game.Any)
-	for anyNeed > 0 {
-		progress := false
-		for _, t := range specific {
-			if anyNeed == 0 {
-				break
-			}
-			if pool[t] > 0 {
-				pool[t]--
-				anyNeed--
-				progress = true
-			}
-		}
-		if !progress {
-			break
-		}
-	}
-	return true
-}
-
 // Determine mana types a permanent can produce
 func producerTypes(perm *game.Permanent) []game.ManaType {
 	is, types := card.CheckManaProducer(perm.GetSource().OracleText)
@@ -387,12 +354,7 @@ func (a *abilityStackAdapter) EnqueueSpell(name string, _ int, manaCost string, 
 			}
 		}
 	}
-	// Convert []any targets -> []interface{}
-	var ts []interface{}
-	for _, t := range targets {
-		ts = append(ts, t)
-	} // S1011
-	return a.sce.CastSpell(cc, c, ts)
+	return a.sce.CastSpell(cc, c, targets)
 }
 
 func (a *abilityStackAdapter) Size() int { return a.sce.GetStack().Size() }
@@ -530,17 +492,6 @@ func clonePool(mp map[game.ManaType]int) map[game.ManaType]int {
 		cp[k] = v
 	}
 	return cp
-}
-
-func chooseMaxNeedColor(need map[game.ManaType]int) (game.ManaType, int) {
-	order := []game.ManaType{game.White, game.Blue, game.Black, game.Red, game.Green}
-	bestT, bestV := game.White, 0
-	for _, t := range order {
-		if need[t] > bestV {
-			bestT, bestV = t, need[t]
-		}
-	}
-	return bestT, bestV
 }
 
 // Produce mana tailored to hand needs using a greedy allocation over producers.
@@ -764,11 +715,7 @@ func castSorceries(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.C
 		}
 		// Choose targets via AI
 		ts := ai.ChooseTargetsFor(ab, ctx)
-		var anyTargets []any
-		for _, t := range ts {
-			anyTargets = append(anyTargets, t)
-		}
-		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, anyTargets)
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, ts)
 		if ctrl, ok := controller.(*game.Player); ok {
 			recordCast(tracker, ctrl, cd.Name)
 		}
@@ -817,11 +764,7 @@ func castInstants(g *game.Game, p *game.Player, dp *game.Player, cardDB *card.Ca
 			continue
 		}
 		ts := ai.ChooseTargetsFor(ab, ctx)
-		var anyTargets []any
-		for _, t := range ts {
-			anyTargets = append(anyTargets, t)
-		}
-		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, anyTargets)
+		_ = g.CastSimpleSpell(cd.Name, int(cd.CMC), manaToString(gm), cd.TypeLine, controller, ts)
 		if ctrl, ok := controller.(*game.Player); ok {
 			recordCast(tracker, ctrl, cd.Name)
 		}
@@ -855,13 +798,6 @@ func applySideboardSwap(main deck.Deck, side deck.Deck, n int) (deck.Deck, deck.
 	// put removed main into sideboard to keep total constant
 	side.Cards = append(side.Cards, removedMain...)
 	return main, side
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // Build a game using pkg/game with libraries populated from deck cards.
@@ -1126,7 +1062,7 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 	return p1, p2, false, turns, dur, casts
 }
 
-func atoiSafe(s string) int { var v int; fmt.Sscanf(strings.TrimSpace(s), "%d", &v); return v }
+func atoiSafe(s string) int { var v int; _, _ = fmt.Sscanf(strings.TrimSpace(s), "%d", &v); return v }
 
 func opponentOf(g *game.Game, p *game.Player) *game.Player {
 	for _, o := range g.GetPlayersRaw() {
@@ -1233,7 +1169,7 @@ func main() {
 
 	// Discover deck files
 	deckFiles := []string{}
-	filepath.WalkDir(*decksDirFlag, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(*decksDirFlag, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -1244,7 +1180,9 @@ func main() {
 			deckFiles = append(deckFiles, path)
 		}
 		return nil
-	})
+	}); err != nil {
+		logger.LogMeta("Error walking deck directory: %v", err)
+	}
 	if len(deckFiles) < 2 {
 		fmt.Fprintln(os.Stderr, "Error: need at least two .deck files in the specified directory")
 		os.Exit(1)
