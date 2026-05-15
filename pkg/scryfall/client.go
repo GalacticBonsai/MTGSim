@@ -55,14 +55,19 @@ type RulingsResponse struct {
 type Client struct {
 	httpClient *http.Client
 	cacheDir   string
+	imageCacheDir string
 }
 
 // NewClient creates a Scryfall client with the default cache directory.
 func NewClient() *Client {
-	return &Client{
+	c := &Client{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		cacheDir:   ".cache/scryfall",
+		imageCacheDir: ".cache/scryfall/images",
 	}
+	// Ensure image cache directory exists
+	_ = os.MkdirAll(c.imageCacheDir, 0o755)
+	return c
 }
 
 // GetCardByName fetches a card's data by exact name, checking the local cache first.
@@ -173,4 +178,92 @@ func (c *Client) saveCache(name string, card *CardData) {
 	_ = os.MkdirAll(c.cacheDir, 0o755)
 	data, _ := json.Marshal(card)
 	_ = os.WriteFile(c.cacheFile(name), data, 0o644)
+}
+
+// DownloadAndCacheImage downloads an image from the given URL and caches it locally.
+// Returns the local file path if successful, or the original URL if download fails.
+// The image is cached by its URL hash to avoid re-downloading identical images.
+func (c *Client) DownloadAndCacheImage(imageURL string) (string, error) {
+	if imageURL == "" {
+		return "", fmt.Errorf("empty image URL")
+	}
+
+	// Generate a cache key from the URL
+	cacheKey := urlToCacheKey(imageURL)
+	cachedPath := filepath.Join(c.imageCacheDir, cacheKey)
+
+	// Check if image is already cached
+	if _, err := os.Stat(cachedPath); err == nil {
+		return cachedPath, nil
+	}
+
+	// Download the image
+	req, err := http.NewRequest("GET", imageURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request for image %s: %w", imageURL, err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to download image %s: %w", imageURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("image download returned status %d for %s", resp.StatusCode, imageURL)
+	}
+
+	// Ensure cache directory exists
+	_ = os.MkdirAll(c.imageCacheDir, 0o755)
+
+	// Read image data
+	imageData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read image data from %s: %w", imageURL, err)
+	}
+
+	// Write to cache
+	if err := os.WriteFile(cachedPath, imageData, 0o644); err != nil {
+		return "", fmt.Errorf("failed to cache image to %s: %w", cachedPath, err)
+	}
+
+	return cachedPath, nil
+}
+
+// GetCachedImagePath returns the cached path for an image URL if it exists, or "" if not cached.
+func (c *Client) GetCachedImagePath(imageURL string) string {
+	if imageURL == "" {
+		return ""
+	}
+
+	cacheKey := urlToCacheKey(imageURL)
+	cachedPath := filepath.Join(c.imageCacheDir, cacheKey)
+
+	if _, err := os.Stat(cachedPath); err == nil {
+		return cachedPath
+	}
+	return ""
+}
+
+// urlToCacheKey generates a safe filename from a URL using the file extension and a hash.
+func urlToCacheKey(imageURL string) string {
+	// Extract the file extension (e.g., .jpg from the URL)
+	ext := ".jpg" // default to jpg since Scryfall uses jpg mostly
+	if strings.Contains(imageURL, ".png") {
+		ext = ".png"
+	}
+
+	// Use a hash of the URL to create a unique filename
+	hash := fmt.Sprintf("%x", hashString(imageURL))
+	return hash + ext
+}
+
+// hashString returns a simple hash of a string for use as a filename.
+func hashString(s string) uint32 {
+	hash := uint32(5381)
+	for _, c := range s {
+		hash = ((hash << 5) + hash) + uint32(c)
+	}
+	return hash
 }
