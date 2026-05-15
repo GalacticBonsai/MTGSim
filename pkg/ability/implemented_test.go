@@ -46,17 +46,17 @@ func TestEvaluateCard_ImplementedSpell(t *testing.T) {
 	}
 }
 
-func TestEvaluateCard_HeuristicParserIsNotFullyImplemented(t *testing.T) {
+func TestEvaluateCard_UnsupportedActivatedAbilityIsNotImplemented(t *testing.T) {
 	impl, reason := testCardImplementation(card.Card{
 		Name:       "Mystery Engine",
 		TypeLine:   "Artifact",
 		OracleText: "{2}: Do something unusual.",
 	})
 	if impl {
-		t.Fatal("heuristic generic parser match should not count as fully implemented")
+		t.Fatal("unsupported activated ability should not count as fully implemented")
 	}
-	if !strings.Contains(reason, "heuristic parser pattern") {
-		t.Fatalf("expected heuristic reason, got %q", reason)
+	if !strings.Contains(reason, "parser failed") {
+		t.Fatalf("expected parser failure reason, got %q", reason)
 	}
 }
 

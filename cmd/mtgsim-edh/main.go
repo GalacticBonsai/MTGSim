@@ -211,15 +211,30 @@ func main() {
 		if _, ok := imageCache[name]; ok {
 			continue
 		}
+		var imageURL string
 		if c, ok := cardDB.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
-			cardLib.SetImageURL(name, c.ImageURIs.Normal)
-			imageCache[name] = c.ImageURIs.Normal
-			continue
+			imageURL = c.ImageURIs.Normal
+		} else {
+			cd, err := scryfallClient.GetCardByName(name)
+			if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
+				imageURL = cd.ImageURIs.Normal
+			}
 		}
-		cd, err := scryfallClient.GetCardByName(name)
-		if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
-			cardLib.SetImageURL(name, cd.ImageURIs.Normal)
-			imageCache[name] = cd.ImageURIs.Normal
+
+		// Download and cache the image if we have a URL
+		if imageURL != "" {
+			// Store URL first for web display
+			cardLib.SetImageURL(name, imageURL)
+			imageCache[name] = imageURL
+
+			// Download and cache the image file for offline use
+			// Do this asynchronously to not block the main process
+			go func(url string) {
+				if _, err := scryfallClient.DownloadAndCacheImage(url); err != nil {
+					// Image caching failed, but we still have the URL for fallback
+					logger.LogMeta("Failed to cache image for card: %v", err)
+				}
+			}(imageURL)
 		}
 	}
 

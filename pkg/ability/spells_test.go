@@ -156,7 +156,7 @@ func TestNonCreatureSpells(t *testing.T) {
 			name:            "Drain Life",
 			oracleText:      "Drain Life deals X damage to any target. You gain life equal to the damage dealt.",
 			spellType:       "Sorcery",
-			expectedEffects: 1, // Currently parsed as single X-cost damage effect
+			expectedEffects: 2, // Two separate abilities: damage and life gain
 			expectedTargets: 1,
 			description:     "Damage with life gain",
 		},

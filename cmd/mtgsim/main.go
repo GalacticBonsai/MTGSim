@@ -1115,22 +1115,31 @@ func buildComboIndex(d deck.Deck, client *combo.Client, cache map[string]*combo.
 	return ci
 }
 
-// enrichCardLibraryImages backfills image URLs from the card database.
+// enrichCardLibraryImages backfills image URLs from the card database and downloads them to cache.
 func enrichCardLibraryImages(lib *stats.CardLibrary, db *card.CardDB, sfClient *scryfall.Client, cache map[string]string) {
 	for name := range lib.Cards {
+		var imageURL string
+
 		if url, ok := cache[name]; ok && url != "" {
-			lib.SetImageURL(name, url)
-			continue
+			imageURL = url
+		} else if c, ok := db.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
+			imageURL = c.ImageURIs.Normal
+			cache[name] = imageURL
+		} else {
+			cd, err := sfClient.GetCardByName(name)
+			if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
+				imageURL = cd.ImageURIs.Normal
+				cache[name] = imageURL
+			}
 		}
-		if c, ok := db.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
-			lib.SetImageURL(name, c.ImageURIs.Normal)
-			cache[name] = c.ImageURIs.Normal
-			continue
-		}
-		cd, err := sfClient.GetCardByName(name)
-		if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
-			lib.SetImageURL(name, cd.ImageURIs.Normal)
-			cache[name] = cd.ImageURIs.Normal
+
+		// Store URL for web display and download to cache
+		if imageURL != "" {
+			lib.SetImageURL(name, imageURL)
+			// Download and cache the image file for offline use
+			if _, err := sfClient.DownloadAndCacheImage(imageURL); err != nil {
+				logger.LogMeta("Failed to cache image for %s: %v", name, err)
+			}
 		}
 	}
 }

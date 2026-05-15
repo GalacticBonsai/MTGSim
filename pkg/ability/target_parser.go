@@ -50,10 +50,13 @@ func (tp *TargetParser) initializePatterns() {
 	tp.addPattern(`target\s+creature\s+with\s+toughness\s+(\d+)\s+or\s+less`, tp.parseCreatureToughnessLessEqual, "Target creature with toughness X or less")
 	tp.addPattern(`target\s+creature\s+with\s+toughness\s+(\d+)\s+or\s+greater`, tp.parseCreatureToughnessGreaterEqual, "Target creature with toughness X or greater")
 
-	// CMC restrictions
+	// CMC / mana value restrictions
 	tp.addPattern(`target\s+creature\s+with\s+converted\s+mana\s+cost\s+(\d+)\s+or\s+less`, tp.parseCreatureCMCLessEqual, "Target creature with CMC X or less")
 	tp.addPattern(`target\s+creature\s+with\s+mana\s+cost\s+(\d+)\s+or\s+less`, tp.parseCreatureCMCLessEqual, "Target creature with mana cost X or less")
+	tp.addPattern(`target\s+creature\s+with\s+mana\s+value\s+(\d+)\s+or\s+less`, tp.parseCreatureCMCLessEqual, "Target creature with mana value X or less")
 	tp.addPattern(`target\s+permanent\s+with\s+converted\s+mana\s+cost\s+(\d+)\s+or\s+less`, tp.parsePermanentCMCLessEqual, "Target permanent with CMC X or less")
+	tp.addPattern(`target\s+permanent\s+with\s+mana\s+value\s+(\d+)\s+or\s+less`, tp.parsePermanentCMCLessEqual, "Target permanent with mana value X or less")
+	tp.addPattern(`target\s+.*\s+with\s+mana\s+value\s+(\d+)\s+or\s+less`, tp.parsePermanentCMCLessEqual, "Target with mana value X or less")
 
 	// Control restrictions
 	tp.addPattern(`target\s+creature\s+you\s+control`, tp.parseCreatureYouControl, "Target creature you control")

@@ -56,6 +56,7 @@ func (gs *tdGameState) PreventDamage(any, int)                               {}
 func (gs *tdGameState) MillCards(abil.AbilityPlayer, int)                     {}
 func (gs *tdGameState) ReanimateCreature(abil.AbilityPlayer, game.SimpleCard) {}
 func (gs *tdGameState) ScryLibrary(abil.AbilityPlayer, int)                  {}
+func (gs *tdGameState) TakeExtraTurn()                                       {}
 
 // --- Tests ---
 

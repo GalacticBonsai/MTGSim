@@ -208,6 +208,10 @@ func (ga *GameAdapter) ScryLibrary(player AbilityPlayer, count int) {
 	// No-op: legacy adapter cannot manipulate library through PlayerInterface
 }
 
+func (ga *GameAdapter) TakeExtraTurn() {
+	// No-op: legacy adapter cannot queue extra turns through PlayerInterface
+}
+
 // PlayerAdapter adapts existing player structures to the ability system.
 type PlayerAdapter struct {
 	player  PlayerInterface

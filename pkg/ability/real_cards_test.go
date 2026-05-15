@@ -612,11 +612,20 @@ func TestEDHUnimplementedCardsLifecycle(t *testing.T) {
 					t.Error("expected SearchLibrary effect for fetchland")
 				}
 			case "Reanimate":
-				if len(abilities) != 1 {
-					t.Errorf("expected 1 ability, got %d", len(abilities))
+				// Reanimate has two effects: reanimate and lose life
+				if len(abilities) < 1 {
+					t.Errorf("expected at least 1 ability, got %d", len(abilities))
 				}
-				if abilities[0].Effects[0].Type != ReanimateCreature {
-					t.Errorf("expected ReanimateCreature effect, got %v", abilities[0].Effects[0].Type)
+				foundReanimate := false
+				for _, ab := range abilities {
+					for _, eff := range ab.Effects {
+						if eff.Type == ReanimateCreature {
+							foundReanimate = true
+						}
+					}
+				}
+				if !foundReanimate {
+					t.Errorf("expected ReanimateCreature effect among abilities, got %+v", abilities)
 				}
 			case "Mystical Tutor":
 				if len(abilities) != 1 {

@@ -33,6 +33,7 @@ type GameState interface {
 	MillCards(player AbilityPlayer, count int)
 	ReanimateCreature(player AbilityPlayer, card game.SimpleCard)
 	ScryLibrary(player AbilityPlayer, count int)
+	TakeExtraTurn()
 }
 
 // AbilityPlayer represents a player in the game for ability purposes.
@@ -449,8 +450,17 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Choose mode: %s", effect.Description)
 
 	case TakeExtraTurn:
-		// Extra turn effects are parsed for coverage.
+		// Queue an extra turn via the game state.
+		ee.gameState.TakeExtraTurn()
 		logger.LogCard("Take extra turn: %s", effect.Description)
+
+	case LookAtLibraryTop:
+		// Informational: no game-state change.
+		logger.LogCard("Look at top of library: %s", effect.Description)
+
+	case RevealInformation:
+		// Informational: no game-state change.
+		logger.LogCard("Reveal information: %s", effect.Description)
 
 	case Exile:
 		if len(targets) > 0 {
@@ -576,7 +586,7 @@ func CanExecuteEffect(effectType EffectType) bool {
 		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
 		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
 		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature,
-		WinGame, LoseGame:
+		WinGame, LoseGame, LookAtLibraryTop, RevealInformation:
 		return true
 	default:
 		return false

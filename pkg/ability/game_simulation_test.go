@@ -888,3 +888,7 @@ func (g *gameSimulationState) ReanimateCreature(player AbilityPlayer, card game.
 func (g *gameSimulationState) ScryLibrary(player AbilityPlayer, count int) {
 	// No-op for game simulation
 }
+
+func (g *gameSimulationState) TakeExtraTurn() {
+	// No-op for game simulation
+}

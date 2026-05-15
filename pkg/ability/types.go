@@ -77,6 +77,8 @@ const (
 	ReanimateCreature  // Put target creature card from a graveyard onto the battlefield
 	WinGame            // Controller wins the game / all opponents lose
 	LoseGame           // Target player or each opponent loses the game
+	LookAtLibraryTop   // Look at top N cards of library (informational; no game state change)
+	RevealInformation  // Reveal hand, top card, etc. (informational; no game state change)
 )
 
 // String returns the human-readable name of an EffectType.
@@ -144,6 +146,10 @@ func (et EffectType) String() string {
 		return "WinGame"
 	case LoseGame:
 		return "LoseGame"
+	case LookAtLibraryTop:
+		return "LookAtLibraryTop"
+	case RevealInformation:
+		return "RevealInformation"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}
