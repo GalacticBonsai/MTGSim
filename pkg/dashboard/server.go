@@ -248,7 +248,7 @@ func (s *Server) handleImplementation(w http.ResponseWriter, r *http.Request) {
 // handleHealth returns server health.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":    "healthy",
 		"timestamp": time.Now(),
 	})

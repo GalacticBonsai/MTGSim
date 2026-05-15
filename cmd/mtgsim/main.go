@@ -1126,7 +1126,7 @@ func playOneGame(g *game.Game, p1, p2 *game.Player, verbosity int, cardDB *card.
 	return p1, p2, false, turns, dur, casts
 }
 
-func atoiSafe(s string) int { var v int; fmt.Sscanf(strings.TrimSpace(s), "%d", &v); return v }
+func atoiSafe(s string) int { var v int; _, _ = fmt.Sscanf(strings.TrimSpace(s), "%d", &v); return v }
 
 func opponentOf(g *game.Game, p *game.Player) *game.Player {
 	for _, o := range g.GetPlayersRaw() {
@@ -1233,7 +1233,7 @@ func main() {
 
 	// Discover deck files
 	deckFiles := []string{}
-	filepath.WalkDir(*decksDirFlag, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(*decksDirFlag, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -1244,7 +1244,9 @@ func main() {
 			deckFiles = append(deckFiles, path)
 		}
 		return nil
-	})
+	}); err != nil {
+		logger.LogMeta("Error walking deck directory: %v", err)
+	}
 	if len(deckFiles) < 2 {
 		fmt.Fprintln(os.Stderr, "Error: need at least two .deck files in the specified directory")
 		os.Exit(1)

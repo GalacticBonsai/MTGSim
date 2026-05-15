@@ -261,7 +261,9 @@ func TestStackIntegrationSorceryTiming(t *testing.T) {
 	}
 
 	// Clear the stack
-	spellCastingEngine.ResolveStack()
+	if err := spellCastingEngine.ResolveStack(); err != nil {
+		t.Fatalf("Failed to resolve stack: %v", err)
+	}
 
 	// Test 3: Cannot cast sorcery with non-empty stack
 	t.Log("Test 3: Cannot cast sorcery with non-empty stack")
