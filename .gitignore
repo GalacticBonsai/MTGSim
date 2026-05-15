@@ -8,10 +8,10 @@
 *.so
 *.dylib
 
-# Built binaries
-mtgsim
-mtgsim-dashboard
-mtgsim-edh
+# Built binaries (root level only)
+/mtgsim
+/mtgsim-dashboard
+/mtgsim-edh
 
 # Test binary, built with `go test -c`
 *.test

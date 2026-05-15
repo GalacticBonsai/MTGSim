@@ -190,7 +190,9 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for i := range gamesChan {
+				mu.Lock()
 				pod := pickPod(seats, *podSize, rng, *mulligans)
+				mu.Unlock()
 				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
 					Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
 					RecordEvents: *replayDir != "",
