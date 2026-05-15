@@ -556,9 +556,9 @@ func (ee *ExecutionEngine) eliminateOpponents(controller AbilityPlayer, reason s
 
 func (ee *ExecutionEngine) losePlayerTarget(target any, reason string) {
 	switch p := target.(type) {
-	case interface{ Lose(string) }:
-		p.Lose(reason)
 	case *game.Player:
+		p.Lose(reason)
+	case interface{ Lose(string) }:
 		p.Lose(reason)
 	case AbilityPlayer:
 		p.SetLifeTotal(0)

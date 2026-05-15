@@ -44,7 +44,7 @@
 				document.getElementById('edhSummarySection').style.display = '';
 				renderEDHSummary(data.summary || {});
 				renderEDH(data);
-				populateCommanderDropdown(data.decks || []);
+				renderTopCards(data);
 			}
 		} catch (err) {
 			console.error('Error loading EDH results:', err);
@@ -104,8 +104,6 @@
 		const decks = (data.decks || []).slice();
 		const key = edhSortState.key;
 		const dir = edhSortState.dir;
-		currentEDHData = data;
-		renderTopCardsByCommander();
 		const numericKeys = ['games','wins','losses','win_rate','avg_final_life','commander_damage_kos','life_loss_kos','mill_kos','avg_commander_casts','avg_mana_spent','avg_cards_played','avg_lands_played','avg_spells_cast','avg_creatures_cast','avg_combat_damage','max_storm_count','eliminations','avg_mulligans'];
 		const isNum = numericKeys.includes(key);
 		decks.sort((a, b) => {
@@ -152,7 +150,7 @@
 		document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
 	}
 
-	function renderTopCardsByCommander() {
+	function renderTopCardsForCommander() {
 		 const commander = document.getElementById("commanderSelect").value;
 
 		let decks = allEDHDecks;
@@ -189,7 +187,7 @@
 				: '';
 
 			let tooltip =
-				c.name + ' (' + c.commander + ') in ' + c.deck +
+				c.name + ' in ' + c.deck +
 				': ' + c.casts + ' casts, ' + c.wins + ' wins';
 
 			html +=
@@ -220,7 +218,7 @@
 			)].sort();
 
 			select.innerHTML = '<option value="">All Commanders</option>' +
-				commanders.map(c => '<option value="${c}">${c}</option>').join("");
+				commanders.map(c => '<option value="' + c + '">' + c + '</option>').join("");
 		}
 		function filterCommanders() {
 			const q = document.getElementById("commanderSearch").value.toLowerCase();

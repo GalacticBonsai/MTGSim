@@ -139,14 +139,6 @@ func (mp *ManaPool) Pay(cost Mana) bool {
 	return true
 }
 
-func (mp *ManaPool) total() int {
-	sum := 0
-	for _, v := range mp.pool {
-		sum += v
-	}
-	return sum
-}
-
 // parseManaCost parses Scryfall-style mana costs such as "{2}{W}{U}" into
 // the engine's Mana representation. Generic numeric symbols become Any;
 // colored and colorless symbols remain specific requirements. X is tracked

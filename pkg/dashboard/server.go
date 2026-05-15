@@ -258,13 +258,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	data, _ := staticFS.ReadFile("static/index.html")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 func serveStatic(name, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", contentType)
 		data, _ := staticFS.ReadFile("static/" + name)
-		w.Write(data)
+		_, _ = w.Write(data)
 	}
 }

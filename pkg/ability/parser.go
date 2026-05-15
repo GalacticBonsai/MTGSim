@@ -3031,14 +3031,6 @@ func (ap *AbilityParser) parseAnyAttackTrigger(matches []string, fullText string
 	return makeTriggeredAbilityWithCondition("Any Attack Trigger", KeywordAbility, 0, Instant, fullText, AttacksOrBlocks), nil
 }
 
-func (ap *AbilityParser) parseEndStepTrigger(matches []string, fullText string) (*Ability, error) {
-	return makeTriggeredAbilityWithCondition("End Step Trigger", DrawCards, 0, Instant, fullText, EndOfTurn), nil
-}
-
-func (ap *AbilityParser) parseEndOfCombatTrigger(matches []string, fullText string) (*Ability, error) {
-	return makeTriggeredAbilityWithCondition("End of Combat Trigger", DrawCards, 0, Instant, fullText, EndOfTurn), nil
-}
-
 func (ap *AbilityParser) parseBlockPump(matches []string, fullText string) (*Ability, error) {
 	if len(matches) < 3 {
 		return nil, ErrParsingFailed
