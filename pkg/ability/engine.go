@@ -708,6 +708,9 @@ func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, _ AbilityPlayer) 
 			}
 		}
 		return true // Players are always valid targets
+	case SpellTarget:
+		// Spells on the stack are dynamic targets; assume possible
+		return true
 	}
 	return false
 }
@@ -742,6 +745,13 @@ func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []any {
 		for _, player := range ee.gameState.GetAllPlayers() {
 			if gp, ok := player.(interface{ GetGraveyard() []any }); ok {
 				targets = append(targets, gp.GetGraveyard()...)
+			}
+		}
+	case SpellTarget:
+		// Stack items are dynamic; potential targets are queried from the stack
+		if s, ok := ee.gameState.(interface{ GetStack() *Stack }); ok {
+			for _, item := range s.GetStack().GetItems() {
+				targets = append(targets, item)
 			}
 		}
 	}
@@ -797,6 +807,9 @@ func (ee *ExecutionEngine) isValidBasicTarget(target any, targetReq Target) bool
 		return ee.targetValidator.isPlayer(target) || ee.targetValidator.isPermanent(target)
 	case CardInGraveyardTarget:
 		return target != nil
+	case SpellTarget:
+		_, ok := target.(*StackItem)
+		return ok
 	default:
 		return false
 	}
@@ -809,6 +822,20 @@ func (ee *ExecutionEngine) applyPumpEffect(target any, power, toughness int, dur
 		if duration == UntilEndOfTurn || duration == Instant || duration == UntilEndOfCombat {
 			gp.AddTempBuff(power, toughness)
 			logger.LogCard("Applying temporary +%d/+%d to %s (duration: %v)", power, toughness, gp.GetName(), duration)
+			// Also register as a layered effect when the game state supports it
+			if lgs, ok := ee.gameState.(interface{ AddLayeredEffect(*game.LayeredEffect) uint64 }); ok {
+				lgs.AddLayeredEffect(&game.LayeredEffect{
+					Layer:    game.Layer7PT,
+					Sublayer: game.Sublayer7C,
+					Source:   gp,
+					Affects:  func(p *game.Permanent) bool { return p == gp },
+					Apply: func(_ *game.Permanent, v *game.PermanentView) {
+						v.Power += power
+						v.Toughness += toughness
+					},
+					ExpiresEOT: true,
+				})
+			}
 			return
 		}
 		// For permanent duration, adjust base stats (simplified)

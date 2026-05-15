@@ -115,7 +115,7 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Static, `Other\s+creatures\s+you\s+control\s+get\s+\+(\d+)/\+(\d+)`, PumpCreature, "Static pump others", ap.parseStaticPumpOthers)
 
 	// Keyword abilities — broad regex for comma-separated keyword lists on a single line.
-	ap.addPattern(Static, `(?i)^(?:(?:Flying|Trample|Haste|Vigilance|First strike|Lifelink|Deathtouch|Menace|Reach|Hexproof|Defender|Flash|Indestructible|Double strike|Shroud|Intimidate|Fear|Shadow|Infect|Wither|Prowess|Cascade|Convoke|Delve|Dredge|Persist|Undying|Unearth|Morph|Manifest|Embalm|Eternalize|Aftermath|Adventure|Mutate|Foretell|Strive|Rebound|Suspend|Madness|Buyback|Replicate|Splice|Transmute|Regenerate|Ward\s*\{[^}]+\}|Bloodthirst\s*\d+|Annihilator\s*\d+|Protection from [^.,;()]+)(?:\s*\([^)]*\)|\s*[,;]\s*|)*)+$`, KeywordAbility, "Keyword abilities", ap.parseKeywordAbilities)
+	ap.addPattern(Static, `(?i)^(?:(?:Flying|Trample|Haste|Vigilance|First strike|Lifelink|Deathtouch|Menace|Reach|Hexproof|Defender|Flash|Indestructible|Double strike|Shroud|Intimidate|Fear|Shadow|Infect|Wither|Prowess|Cascade|Convoke|Delve|Dredge|Persist|Undying|Unearth|Morph|Manifest|Embalm|Eternalize|Aftermath|Adventure|Mutate|Foretell|Strive|Rebound|Suspend|Madness|Buyback|Replicate|Splice|Transmute|Regenerate|Ward\s*\{[^}]+\}|Bloodthirst\s*\d+|Annihilator\s*\d+|Protection from [^.,;()]+)(?:\s*\([^)]*\)|\s*[,;]\s*)*)+$`, KeywordAbility, "Keyword abilities", ap.parseKeywordAbilities)
 
 	// Aura enchantments
 	ap.addPattern(Static, `(?i)^Enchant\s+(creature|land|artifact|enchantment|planeswalker|permanent)$`, PumpCreature, "Aura enchantment", ap.parseAuraEnchantment)
@@ -576,14 +576,14 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Creature dies +1/+1 counter", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Counter"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+proliferate`, AddCounters, "Creature dies proliferate", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Proliferate"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+explore`, AddCounters, "Creature dies explore", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Explore"))
-	ap.addPattern(Activated, `\+(\d+):\s*.*`, DrawCards, "Planeswalker + loyalty", ap.activatedParserFactory(DrawCards, "Planeswalker Plus Loyalty"))
-	ap.addPattern(Activated, `-(\d+):\s*.*`, DealDamage, "Planeswalker - loyalty", ap.activatedParserFactory(DealDamage, "Planeswalker Minus Loyalty"))
-	ap.addPattern(Activated, `\{([WUBRG])\}:\s*.*`, AddMana, "Colored activated ability", ap.activatedParserFactory(AddMana, "Colored Activated"))
-	ap.addPattern(Activated, `\{(\d+)\}:\s*.*`, DrawCards, "Generic activated ability", ap.activatedParserFactory(DrawCards, "Generic Activated"))
-	ap.addPattern(Activated, `\{(\d+)\},\s*\{T\}:\s*.*`, DrawCards, "Generic tap activated ability", ap.activatedParserFactory(DrawCards, "Generic Tap Activated"))
-	ap.addPattern(Activated, `\{T\},\s*[^:]+:\s*.*`, DrawCards, "Comma tap activated ability", ap.activatedParserFactory(DrawCards, "Comma Tap Activated"))
-	ap.addPattern(Activated, `Tap\s+an\s+untapped\s+[^:]+:\s*.*`, DrawCards, "Tap untapped activated", ap.activatedParserFactory(DrawCards, "Tap Untapped Activated"))
-	ap.addPattern(Activated, `Tap\s+(?:\d+|X)\s+[^:]*:\s*.*`, DrawCards, "Tap multiple activated", ap.activatedParserFactory(DrawCards, "Tap Multiple Activated"))
+	ap.addPattern(Activated, `\+(\d+):\s*.*`, DrawCards, "Planeswalker + loyalty", ap.heuristicActivatedParserFactory(DrawCards, "Planeswalker Plus Loyalty"))
+	ap.addPattern(Activated, `-(\d+):\s*.*`, DealDamage, "Planeswalker - loyalty", ap.heuristicActivatedParserFactory(DealDamage, "Planeswalker Minus Loyalty"))
+	ap.addPattern(Activated, `\{([WUBRG])\}:\s*.*`, AddMana, "Colored activated ability", ap.heuristicActivatedParserFactory(AddMana, "Colored Activated"))
+	ap.addPattern(Activated, `\{(\d+)\}:\s*.*`, DrawCards, "Generic activated ability", ap.heuristicActivatedParserFactory(DrawCards, "Generic Activated"))
+	ap.addPattern(Activated, `\{(\d+)\},\s*\{T\}:\s*.*`, DrawCards, "Generic tap activated ability", ap.heuristicActivatedParserFactory(DrawCards, "Generic Tap Activated"))
+	ap.addPattern(Activated, `\{T\},\s*[^:]+:\s*.*`, DrawCards, "Comma tap activated ability", ap.heuristicActivatedParserFactory(DrawCards, "Comma Tap Activated"))
+	ap.addPattern(Activated, `Tap\s+an\s+untapped\s+[^:]+:\s*.*`, DrawCards, "Tap untapped activated", ap.heuristicActivatedParserFactory(DrawCards, "Tap Untapped Activated"))
+	ap.addPattern(Activated, `Tap\s+(?:\d+|X)\s+[^:]*:\s*.*`, DrawCards, "Tap multiple activated", ap.heuristicActivatedParserFactory(DrawCards, "Tap Multiple Activated"))
 	ap.addPattern(Activated, `(?i)^Tap\s+(?:\d+|X)\s+target\s+(.*)`, TapUntap, "Tap target spell", ap.activatedParserFactory(TapUntap, "Tap Target Spell"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+amass\s+(\d+)`, CreateToken, "Creature dies amass", ap.triggeredParserFactory(CreateToken, Dies, "Creature Dies Amass"))
 
@@ -3411,12 +3411,6 @@ func (ap *AbilityParser) parseFetchland(matches []string, fullText string) (*Abi
 		},
 		Effects: []Effect{
 			{
-				Type:        LoseLife,
-				Value:       1,
-				Duration:    Instant,
-				Description: "Pay 1 life",
-			},
-			{
 				Type:        SearchLibrary,
 				Value:       1,
 				Duration:    Instant,
@@ -3503,5 +3497,21 @@ func (ap *AbilityParser) activatedParserFactory(effectType EffectType, name stri
 			}
 		}
 		return makeActivatedAbility(name, effectType, value, Instant, fullText), nil
+	}
+}
+
+func (ap *AbilityParser) heuristicActivatedParserFactory(effectType EffectType, name string) func([]string, string) (*Ability, error) {
+	return func(matches []string, fullText string) (*Ability, error) {
+		var value int
+		if len(matches) > 1 {
+			value, _ = strconv.Atoi(matches[1])
+			if value == 0 && matches[1] != "0" {
+				value = parseIntOrOne(matches[1])
+			}
+		}
+		ab := makeActivatedAbility(name, effectType, value, Instant, fullText)
+		ab.Approximate = true
+		ab.ApproximationReason = "heuristic parser pattern"
+		return ab, nil
 	}
 }

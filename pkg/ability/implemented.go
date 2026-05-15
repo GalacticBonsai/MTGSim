@@ -14,6 +14,10 @@ import (
 
 var implementationCacheFile = ".cache/implemented.json"
 
+// sharedParser is a singleton AbilityParser reused across card evaluations to
+// avoid recompiling ~500 regex patterns for every card.
+var sharedParser = NewAbilityParser()
+
 // ImplementationStatus tracks whether a card is fully supported by the engine.
 type ImplementationStatus struct {
 	Implemented bool   `json:"implemented"`
@@ -154,8 +158,7 @@ func testCardImplementation(c card.Card) (bool, string) {
 		return true, ""
 	}
 
-	parser := NewAbilityParser()
-	abilities, err := parser.ParseAbilities(oracle, c)
+	abilities, err := sharedParser.ParseAbilities(oracle, c)
 	if err != nil {
 		return false, fmt.Sprintf("parse error: %v", err)
 	}
