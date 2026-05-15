@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>MTGSim Dashboard</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+	<div class="container">
+		<header>
+			<h1>🧙 MTGSim Dashboard</h1>
+			<p class="subtitle">Magic: The Gathering Simulation Statistics</p>
+		</header>
+
+		<div class="tabs">
+			<button class="tab-btn active" onclick="showTab('overview', this)" title="Aggregate 1v1 simulation results and deck win rates">Overview</button>
+			<button class="tab-btn" onclick="showTab('edh-decks', this)" title="Commander deck performance across all pods">EDH Decks</button>
+			<button class="tab-btn" onclick="showTab('top-cards', this)" title="Highest win-rate cards when cast (minimum 5 casts)">Top Cards</button>
+			<button class="tab-btn" onclick="showTab('recent-pods', this)" title="Last 10 EDH pods with per-player breakdowns">Recent Pods</button>
+			<button class="tab-btn" onclick="showTab('card-library', this)" title="Global card statistics across all simulation runs">Card Library</button>
+			<button class="tab-btn" onclick="showTab('implementation', this)" title="Card implementation status by parser and engine support">Implementation</button>
+		</div>
+		<div id="overview" class="tab-content active">
+
+		<div class="grid" id="summary">
+			<div class="loading">Loading...</div>
+		</div>
+
+		<h3>Deck Performance</h3>
+		<table class="table" id="decks">
+			<thead>
+				<tr>
+					<th title="Deck file name">Deck Name</th>
+					<th title="Games won">Wins</th>
+					<th title="Games lost">Losses</th>
+					<th title="Win percentage (Wins / Total Games)">Win Rate</th>
+				</tr>
+			</thead>
+			<tbody id="decksBody">
+				<tr><td colspan="4" class="loading">Loading...</td></tr>
+			</tbody>
+		</table>
+
+			<div id="edhSummarySection" style="display:none">
+				<h3>EDH Tuning Highlights</h3>
+				<div class="grid" id="edhSummary">
+					<div class="loading">Loading EDH telemetry...</div>
+				</div>
+			</div>
+		</div>
+		<div id="edh-decks" class="tab-content">
+		<h3>EDH / Commander Performance</h3>
+			<table class="table" id="edhDecks">
+				<thead>
+					<tr>
+						<th class="th-sort" data-sort-key="deck_name" onclick="sortEDH('deck_name')" title="Deck file name">Deck</th>
+						<th class="th-sort" data-sort-key="commander_name" onclick="sortEDH('commander_name')" title="Commander card name">Commander</th>
+						<th class="th-sort" data-sort-key="games" onclick="sortEDH('games')" title="Total pods played">Games</th>
+						<th class="th-sort" data-sort-key="wins" onclick="sortEDH('wins')" title="Pods won">Wins</th>
+						<th class="th-sort" data-sort-key="losses" onclick="sortEDH('losses')" title="Pods lost">Losses</th>
+						<th class="th-sort" data-sort-key="win_rate" onclick="sortEDH('win_rate')" title="Win percentage (Wins / Games)">Win Rate</th>
+						<th class="th-sort" data-sort-key="avg_final_life" onclick="sortEDH('avg_final_life')" title="Average remaining life total at pod end">Avg Life</th>
+						<th class="th-sort" data-sort-key="commander_damage_kos" onclick="sortEDH('commander_damage_kos')" title="Eliminations via commander damage">Cmdr Dmg KOs</th>
+							<th class="th-sort" data-sort-key="life_loss_kos" onclick="sortEDH('life_loss_kos')" title="Eliminations via life loss (non-commander)">Life KOs</th>
+							<th class="th-sort" data-sort-key="mill_kos" onclick="sortEDH('mill_kos')" title="Eliminations via decking or mill">Mill KOs</th>
+							<th class="th-sort" data-sort-key="avg_commander_casts" onclick="sortEDH('avg_commander_casts')" title="Average commander casts per pod">Avg Cmdr Casts</th>
+					<th class="th-sort" data-sort-key="avg_mana_spent" onclick="sortEDH('avg_mana_spent')" title="Average mana spent per pod">Avg Mana</th>
+					<th class="th-sort" data-sort-key="avg_cards_played" onclick="sortEDH('avg_cards_played')" title="Average cards played per pod">Avg Cards</th>
+					<th class="th-sort" data-sort-key="avg_lands_played" onclick="sortEDH('avg_lands_played')" title="Average lands played per pod">Avg Lands</th>
+					<th class="th-sort" data-sort-key="avg_spells_cast" onclick="sortEDH('avg_spells_cast')" title="Average non-creature spells cast per pod">Avg Spells</th>
+					<th class="th-sort" data-sort-key="avg_creatures_cast" onclick="sortEDH('avg_creatures_cast')" title="Average creatures cast per pod">Avg Creatures</th>
+							<th class="th-sort" data-sort-key="avg_combat_damage" onclick="sortEDH('avg_combat_damage')" title="Average combat damage dealt per pod">Avg Combat</th>
+							<th class="th-sort" data-sort-key="max_storm_count" onclick="sortEDH('max_storm_count')" title="Highest storm count reached">Max Storm</th>
+							<th class="th-sort" data-sort-key="eliminations" onclick="sortEDH('eliminations')" title="Total eliminations caused">KOs</th>
+						<th class="th-sort" data-sort-key="avg_mulligans" onclick="sortEDH('avg_mulligans')" title="Average mulligans per pod">Avg Mulls</th>
+					</tr>
+				</thead>
+				<tbody id="edhDecksBody">
+					<tr><td colspan="20" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div id="top-cards" class="tab-content">
+			<h3>Top Cards by Win Rate When Cast</h3>
+			<p style="color:#888; margin-bottom:10px;">Cards with at least 5 casts. Sorted by win rate, then by cast volume.</p>
+			<input id="commanderSearch" class="search-box" placeholder="Search commanders..." oninput="filterCommanders()" />
+
+			<select id="commanderSelect" onchange="renderTopCardsForCommander()">
+				<option value="">All Commanders</option>
+			</select>
+			<table class="table" id="topCards">
+				<thead>
+					<tr>
+						<th title="Deck that played this card">Deck</th>
+						<th title="Card name">Card</th>
+						<th title="Total times this card was cast">Casts</th>
+						<th title="Games won when this card was cast">Wins</th>
+						<th title="Win percentage when cast (Wins / Casts)">Win Rate</th>
+					</tr>
+				</thead>
+				<tbody id="topCardsBody">
+					<tr><td colspan="5" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div id="recent-pods" class="tab-content">
+				<h3>Recent EDH Pods</h3>
+				<table class="table" id="edhGames">
+					<thead>
+						<tr>
+							<th title="Deck that won the pod (or Draw)">Winner</th>
+							<th title="Number of turns the pod lasted">Turns</th>
+							<th title="Highest storm count reached">Max Storm</th>
+							<th title="Total mana spent by all players">Mana</th>
+							<th title="Total cards played by all players">Cards</th>
+							<th title="Total combat damage dealt">Combat</th>
+							<th title="Per-player pod summary">Players</th>
+							<th title="Number of game events logged">Events</th>
+							<th title="Type of the final game event">Last Event</th>
+						</tr>
+					</thead>
+					<tbody id="edhGamesBody">
+						<tr><td colspan="9" class="loading">Loading...</td></tr>
+					</tbody>
+				</table>
+		</div>
+
+		<div id="card-library" class="tab-content">
+			<h3>Global Card Library</h3>
+			<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+	<input
+		type="text"
+		id="cardLibrarySearch"
+		class="search-box"
+		placeholder="Search cards..."
+		oninput="filterCardLibrary()"
+		style="max-width:300px;"
+	>
+
+	<label style="color:#888;font-size:0.9em;">
+		Min Casts:
+		<input
+			type="number"
+			id="cardLibraryMinCasts"
+			value="5"
+			min="1"
+			oninput="filterCardLibrary()"
+			style="width:80px;margin-left:6px;background:#0a0e27;color:#fff;border:1px solid #1a1f3a;padding:6px;border-radius:4px;"
+		>
+	</label>
+
+	<label style="color:#888;font-size:0.9em;">
+		Limit:
+		<select
+			id="cardLibraryLimit"
+			onchange="filterCardLibrary()"
+			style="margin-left:6px;background:#0a0e27;color:#fff;border:1px solid #1a1f3a;padding:6px;border-radius:4px;"
+		>
+			<option value="50">50</option>
+			<option value="100" selected>100</option>
+			<option value="250">250</option>
+			<option value="500">500</option>
+		</select>
+	</label>
+</div>
+
+<div id="cardLibraryMeta" class="search-meta"></div>
+			<table class="table" id="cardLibrary">
+				<thead>
+					<tr>
+						<th class="th-sort" onclick="sortCardLibrary('name')">Card</th>
+						<th class="th-sort" onclick="sortCardLibrary('casts')">Casts</th>
+						<th class="th-sort" onclick="sortCardLibrary('wins')">Wins</th>
+						<th class="th-sort" onclick="sortCardLibrary('winRate')">Win Rate</th>
+					</tr>
+				</thead>
+				<tbody id="cardLibraryBody">
+					<tr><td colspan="4" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div id="implementation" class="tab-content">
+			<h3>Implementation</h3>
+			<p style="color:#888; margin-bottom:10px;">Cards evaluated against the ability parser and execution engine.</p>
+			<div class="grid" id="implSummary">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>By Color</h3>
+			<div class="chart-container" id="implByColor" style="max-width:600px;margin:0 auto;">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>By Set</h3>
+			<div class="chart-container" id="implBySet" style="max-width:600px;margin:0 auto;">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>By Type</h3>
+			<div class="chart-container" id="implByType" style="max-width:600px;margin:0 auto;">
+				<div class="loading">Loading...</div>
+			</div>
+			<h3>Unimplemented Cards</h3>
+			<input type="text" id="implSearch" class="search-box" placeholder="Search unimplemented cards by name..." oninput="filterImplCards()">
+			<div class="search-meta" id="implSearchMeta"></div>
+			<table class="table" id="implCards">
+				<thead>
+					<tr>
+						<th onclick="sortImplTable('name')" title="Click to sort by card name">Card ▲▼</th>
+						<th onclick="sortImplTable('type')" title="Click to sort by card type">Type ▲▼</th>
+						<th onclick="sortImplTable('set')" title="Click to sort by set code">Set ▲▼</th>
+						<th onclick="sortImplTable('colors')" title="Click to sort by color identity">Color ▲▼</th>
+						<th title="Why the card is not yet fully implemented">Reason</th>
+					</tr>
+				</thead>
+				<tbody id="implCardsBody">
+					<tr><td colspan="5" class="loading">Loading...</td></tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+
+	<script src="/app.js"></script>
+</body>
+</html>
