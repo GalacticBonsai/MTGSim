@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -175,36 +176,60 @@ func main() {
 		}
 	}
 
-	for i := 0; i < *games; i++ {
-		pod := pickPod(seats, *podSize, rng, *mulligans)
-		rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
-			Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
-			RecordEvents: *replayDir != "",
-		})
-		if err != nil {
-			logger.LogMeta("Pod %d skipped: %v", i+1, err)
-			continue
-		}
-		mu.Lock()
-		edhResults.RecordGame(rec)
-		recordLegacy(legacyResults, rec)
-		for _, p := range rec.Players {
-			for cName, perf := range p.CardStats {
-				wins := 0
-				if p.DeckName == rec.Winner {
-					wins = perf.Casts
-				}
-				cardLib.RecordCounts(cName, perf.Casts, wins)
-			}
-		}
-		mu.Unlock()
-		if *replayDir != "" {
-			writeReplay(*replayDir, i+1, rec)
-		}
-		if (i+1)%10 == 0 {
-			logger.LogMeta("Completed %d/%d pods", i+1, *games)
-		}
+	// Cap CPU at ~80% by using 80% of available cores
+	numWorkers := (runtime.NumCPU() * 4) / 5
+	if numWorkers < 1 {
+		numWorkers = 1
 	}
+	gamesChan := make(chan int, numWorkers)
+	var wg sync.WaitGroup
+
+	// Start worker goroutines
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range gamesChan {
+				pod := pickPod(seats, *podSize, rng, *mulligans)
+				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
+					Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
+					RecordEvents: *replayDir != "",
+				})
+				if err != nil {
+					logger.LogMeta("Pod %d skipped: %v", i+1, err)
+					continue
+				}
+				mu.Lock()
+				edhResults.RecordGame(rec)
+				recordLegacy(legacyResults, rec)
+				for _, p := range rec.Players {
+					for cName, perf := range p.CardStats {
+						wins := 0
+						if p.DeckName == rec.Winner {
+							wins = perf.Casts
+						}
+						cardLib.RecordCounts(cName, perf.Casts, wins)
+					}
+				}
+				mu.Unlock()
+				if *replayDir != "" {
+					writeReplay(*replayDir, i+1, rec)
+				}
+				if (i+1)%10 == 0 {
+					logger.LogMeta("Completed %d/%d pods", i+1, *games)
+				}
+			}
+		}()
+	}
+
+	// Send game indices to workers
+	for i := 0; i < *games; i++ {
+		gamesChan <- i
+	}
+	close(gamesChan)
+
+	// Wait for all workers to complete
+	wg.Wait()
 
 	// Backfill image URLs for any newly recorded cards.
 	for name := range cardLib.Cards {

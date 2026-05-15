@@ -7,6 +7,10 @@
 *.dll
 *.so
 *.dylib
+
+# Built binaries
+mtgsim
+mtgsim-dashboard
 mtgsim-edh
 
 # Test binary, built with `go test -c`
