@@ -127,3 +127,42 @@ func (c *Card) HasKeyword(keyword string) bool {
 	}
 	return false
 }
+
+// IsCounterspell returns true if the card is a counterspell (instant that counters spells).
+func (c *Card) IsCounterspell() bool {
+	if !c.IsInstant() {
+		return false
+	}
+	oracleText := strings.ToLower(c.OracleText)
+	return strings.Contains(oracleText, "counter target spell")
+}
+
+// HasAlternateCosts returns true if the card has alternate casting costs indicated by "or" in mana cost.
+// This is a simplified check for cards that offer choices like "{U}{B} or {3}{B}".
+func (c *Card) HasAlternateCosts() bool {
+	return strings.Contains(c.ManaCost, " or ")
+}
+
+// GetAlternateCosts parses alternate casting costs from the mana cost string.
+// Returns a slice of mana cost strings for each option.
+func (c *Card) GetAlternateCosts() []string {
+	if !c.HasAlternateCosts() {
+		return []string{c.ManaCost}
+	}
+	costs := strings.Split(c.ManaCost, " or ")
+	for i := range costs {
+		costs[i] = strings.TrimSpace(costs[i])
+	}
+	return costs
+}
+
+// GetMinCastingCost returns the minimum CMC from all available casting costs.
+// Useful for identifying the cheapest way to cast a spell.
+func (c *Card) GetMinCastingCost() float32 {
+	if !c.HasAlternateCosts() {
+		return c.CMC
+	}
+	// For cards with alternate costs, return the actual CMC
+	// (Scryfall already computes the minimum CMC for cards with alternate costs)
+	return c.CMC
+}

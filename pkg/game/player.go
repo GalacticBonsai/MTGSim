@@ -243,16 +243,55 @@ func (p *Player) GetLands() []*Permanent {
 	return out
 }
 
-// CanPayForCard checks if the player can pay the mana cost of the given card.
+// CanPayForCard checks if the player can pay the mana cost of the given card,
+// prioritizing cheaper alternate costs if available.
 func (p *Player) CanPayForCard(c SimpleCard) bool {
-	cost := c.GetManaCost()
-	return p.manaPool.CanPay(cost)
+	if !c.HasAlternateCosts() {
+		cost := c.GetManaCost()
+		return p.manaPool.CanPay(cost)
+	}
+	// For cards with alternate costs, check if we can pay ANY of them
+	// This allows the player to pay the most efficient cost available
+	costs := c.GetAlternateCosts()
+	for _, cost := range costs {
+		if p.manaPool.CanPay(cost) {
+			return true
+		}
+	}
+	return false
 }
 
-// PayForCard pays the mana cost of the given card if possible.
+// PayForCard pays the mana cost of the given card if possible,
+// prioritizing cheaper alternate costs if available.
 func (p *Player) PayForCard(c SimpleCard) bool {
-	cost := c.GetManaCost()
-	return p.manaPool.Pay(cost)
+	if !c.HasAlternateCosts() {
+		cost := c.GetManaCost()
+		return p.manaPool.Pay(cost)
+	}
+	// For cards with alternate costs, try to pay the minimum cost first
+	// Then try other costs in order of ascending cost
+	costs := c.GetAlternateCosts()
+	type costWithTotal struct {
+		mana  Mana
+		total int
+	}
+	var sortedCosts []costWithTotal
+	for _, cost := range costs {
+		sortedCosts = append(sortedCosts, costWithTotal{cost, cost.Total()})
+	}
+	// Simple sort by total cost (insertion sort is fine for small lists)
+	for i := 1; i < len(sortedCosts); i++ {
+		for j := i; j > 0 && sortedCosts[j].total < sortedCosts[j-1].total; j-- {
+			sortedCosts[j], sortedCosts[j-1] = sortedCosts[j-1], sortedCosts[j]
+		}
+	}
+	// Try paying from cheapest to most expensive
+	for _, ct := range sortedCosts {
+		if p.manaPool.Pay(ct.mana) {
+			return true
+		}
+	}
+	return false
 }
 
 // CanPayForCommander checks the printed commander cost plus commander tax.
