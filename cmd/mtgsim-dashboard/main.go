@@ -19,6 +19,72 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 )
 
+// GameRunner manages running games and updating results
+type GameRunner struct {
+	deckFiles  []string
+	cardDB     *card.CardDB
+	results    *simulation.Results
+	mu         *sync.Mutex
+	rng        *rand.Rand
+	running    bool
+}
+
+// RunGames runs the specified number of games
+func (gr *GameRunner) RunGames(count int) {
+	go func() {
+		gr.mu.Lock()
+		if gr.running {
+			gr.mu.Unlock()
+			logger.LogMeta("Games already running")
+			return
+		}
+		gr.running = true
+		gr.mu.Unlock()
+		
+		logger.LogMeta("Starting %d games...", count)
+		
+		for i := 0; i < count; i++ {
+			d1Path := gr.deckFiles[gr.rng.Intn(len(gr.deckFiles))]
+			d2Path := gr.deckFiles[gr.rng.Intn(len(gr.deckFiles))]
+			for d2Path == d1Path && len(gr.deckFiles) > 1 {
+				d2Path = gr.deckFiles[gr.rng.Intn(len(gr.deckFiles))]
+			}
+
+			m1, _, err1 := deck.ImportDeckfile(d1Path, gr.cardDB)
+			m2, _, err2 := deck.ImportDeckfile(d2Path, gr.cardDB)
+			if err1 != nil || err2 != nil || m1.Size() == 0 || m2.Size() == 0 {
+				logger.LogMeta("Skipping game due to deck import error")
+				continue
+			}
+
+			winner, loser := simulateGame(m1, m2)
+			if winner != nil && loser != nil {
+				gr.mu.Lock()
+				gr.results.AddWin(winner.GetName())
+				gr.results.AddLoss(loser.GetName())
+				gr.mu.Unlock()
+			}
+
+			if (i+1)%10 == 0 {
+				logger.LogMeta("Completed %d/%d games", i+1, count)
+			}
+		}
+		
+		logger.LogMeta("Batch of %d games completed!", count)
+		
+		gr.mu.Lock()
+		gr.running = false
+		gr.mu.Unlock()
+	}()
+}
+
+// IsRunning returns whether games are currently running
+func (gr *GameRunner) IsRunning() bool {
+	gr.mu.Lock()
+	defer gr.mu.Unlock()
+	return gr.running
+}
+
 func main() {
 	games := flag.Int("games", 50, "Number of games to simulate")
 	decksDir := flag.String("decks", "decks/1v1", "Directory containing deck files")
@@ -52,7 +118,19 @@ func main() {
 		return results.GetResults()
 	}
 
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	
+	// Create game runner that can be triggered via API
+	gameRunner := &GameRunner{
+		deckFiles:    deckFiles,
+		cardDB:       cardDB,
+		results:      results,
+		mu:           &mu,
+		rng:          rng,
+	}
+
 	server := dashboard.NewServer(provider, *port)
+	server.SetGameRunner(gameRunner)
 	go func() {
 		if err := server.Start(); err != nil {
 			logger.LogMeta("Dashboard error: %v", err)
@@ -63,34 +141,8 @@ func main() {
 	fmt.Printf("\n🧙 MTGSim Dashboard available at: http://localhost:%d\n\n", *port)
 	logger.LogMeta("Starting %d games...", *games)
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	for i := 0; i < *games; i++ {
-		d1Path := deckFiles[rng.Intn(len(deckFiles))]
-		d2Path := deckFiles[rng.Intn(len(deckFiles))]
-		for d2Path == d1Path && len(deckFiles) > 1 {
-			d2Path = deckFiles[rng.Intn(len(deckFiles))]
-		}
-
-		m1, _, err1 := deck.ImportDeckfile(d1Path, cardDB)
-		m2, _, err2 := deck.ImportDeckfile(d2Path, cardDB)
-		if err1 != nil || err2 != nil || m1.Size() == 0 || m2.Size() == 0 {
-			logger.LogMeta("Skipping game %d due to deck import error", i+1)
-			continue
-		}
-
-		winner, loser := simulateGame(m1, m2)
-		if winner != nil && loser != nil {
-			mu.Lock()
-			results.AddWin(winner.GetName())
-			results.AddLoss(loser.GetName())
-			mu.Unlock()
-		}
-
-		if (i+1)%10 == 0 {
-			logger.LogMeta("Completed %d/%d games", i+1, *games)
-		}
-	}
+	// Run initial games
+	gameRunner.RunGames(*games)
 
 	logger.LogMeta("Simulation completed!")
 

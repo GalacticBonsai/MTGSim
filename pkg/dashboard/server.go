@@ -39,6 +39,12 @@ type CardLibraryProvider func() map[string]stats.GlobalCardStats
 // ImplementationReportProvider returns the card implementation report.
 type ImplementationReportProvider func() *card.ImplementationReport
 
+// GameRunner interface for triggering more games
+type GameRunner interface {
+	RunGames(count int)
+	IsRunning() bool
+}
+
 // Server serves the dashboard.
 type Server struct {
 	provider    ResultsProvider
@@ -47,6 +53,7 @@ type Server struct {
 	edhSummary  EDHSummaryProvider
 	cardLibrary CardLibraryProvider
 	implReport  ImplementationReportProvider
+	gameRunner  GameRunner
 	port        int
 	mux         *http.ServeMux
 }
@@ -77,6 +84,9 @@ func (s *Server) SetCardLibraryProvider(p CardLibraryProvider) { s.cardLibrary =
 // SetImplementationReportProvider attaches an implementation report for /api/implementation.
 func (s *Server) SetImplementationReportProvider(p ImplementationReportProvider) { s.implReport = p }
 
+// SetGameRunner attaches a game runner for /api/run-games endpoint.
+func (s *Server) SetGameRunner(gr GameRunner) { s.gameRunner = gr }
+
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
 	s.registerRoutes()
@@ -90,6 +100,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/card-library", s.handleCardLibrary)
 	s.mux.HandleFunc("/api/implementation", s.handleImplementation)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
+	s.mux.HandleFunc("/api/run-games", s.handleRunGames)
+	s.mux.HandleFunc("/api/game-status", s.handleGameStatus)
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -251,6 +263,50 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":    "healthy",
 		"timestamp": time.Now(),
+	})
+}
+
+// handleRunGames triggers running more games
+func (s *Server) handleRunGames(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	if s.gameRunner == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "game runner not configured",
+		})
+		return
+	}
+	
+	// Get count from query parameter, default to 100
+	countStr := r.URL.Query().Get("count")
+	count := 100
+	if countStr != "" {
+		fmt.Sscanf(countStr, "%d", &count)
+	}
+	if count < 1 || count > 10000 {
+		count = 100
+	}
+	
+	s.gameRunner.RunGames(count)
+	
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"message": "games started",
+		"count":   count,
+	})
+}
+
+// handleGameStatus returns the current status of game running
+func (s *Server) handleGameStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	running := false
+	if s.gameRunner != nil {
+		running = s.gameRunner.IsRunning()
+	}
+	
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"running": running,
 	})
 }
 
