@@ -154,7 +154,8 @@
 			let displayName = getDeckDisplayName(d.deck_name);
 			let tooltip = d.deck_name + ' (' + (d.commander_name || 'No Commander') + ') — ' + d.games + ' pods, ' + d.wins + 'W / ' + d.losses + 'L';
 			let selected = selectedDeck && selectedDeck.deck_name === d.deck_name ? ' style="background:#3a3a3a;"' : '';
-			html += '<tr title="' + tooltip + '" onclick="selectDeck(' + "'" + d.deck_name.replace(/'/g, "\\'") + "'" + ')"' + selected + ' style="cursor:pointer;">'
+			let escapedDeckName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			html += '<tr title="' + tooltip + '" onclick="selectDeck(' + "'" + escapedDeckName + "'" + ')"' + selected + ' style="cursor:pointer;">'
 				+ '<td>' + displayName + '</td>'
 				+ '<td>' + (d.commander_name || '-') + '</td>'
 				+ '<td>' + d.games + '</td>'
