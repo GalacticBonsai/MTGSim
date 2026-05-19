@@ -106,7 +106,7 @@ func tryBreachBrainFreeze(g *game.Game, p *game.Player, log *EDHEventLog, metric
 	if !pieceAccessible(p, "Underworld Breach") || !pieceAccessible(p, "Brain Freeze") {
 		return false
 	}
-	if !(pieceAccessible(p, "Lion's Eye Diamond") || pieceAccessible(p, "Grinding Station") || len(p.Graveyard) >= 8) {
+	if !pieceAccessible(p, "Lion's Eye Diamond") && !pieceAccessible(p, "Grinding Station") && len(p.Graveyard) < 8 {
 		return false
 	}
 	if ensurePiece(g, p, "Underworld Breach", log, metrics) && castComboSpell(g, p, "Brain Freeze", log, metrics) {

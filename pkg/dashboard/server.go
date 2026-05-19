@@ -282,7 +282,7 @@ func (s *Server) handleRunGames(w http.ResponseWriter, r *http.Request) {
 	countStr := r.URL.Query().Get("count")
 	count := 100
 	if countStr != "" {
-		fmt.Sscanf(countStr, "%d", &count)
+		_, _ = fmt.Sscanf(countStr, "%d", &count)
 	}
 	if count < 1 || count > 10000 {
 		count = 100

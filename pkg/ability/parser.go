@@ -3794,19 +3794,3 @@ func (ap *AbilityParser) activatedParserFactory(effectType EffectType, name stri
 		return makeActivatedAbility(name, effectType, value, Instant, fullText), nil
 	}
 }
-
-func (ap *AbilityParser) heuristicActivatedParserFactory(effectType EffectType, name string) func([]string, string) (*Ability, error) {
-	return func(matches []string, fullText string) (*Ability, error) {
-		var value int
-		if len(matches) > 1 {
-			value, _ = strconv.Atoi(matches[1])
-			if value == 0 && matches[1] != "0" {
-				value = parseIntOrOne(matches[1])
-			}
-		}
-		ab := makeActivatedAbility(name, effectType, value, Instant, fullText)
-		ab.Approximate = true
-		ab.ApproximationReason = "heuristic parser pattern"
-		return ab, nil
-	}
-}

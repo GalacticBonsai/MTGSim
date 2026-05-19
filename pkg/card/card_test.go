@@ -304,9 +304,9 @@ func TestLoadCardDatabaseFromFile(t *testing.T) {
 
 	// Ensure cleanup and restore
 	defer func() {
-		os.Remove(CardDBFile)
+		_ = os.Remove(CardDBFile)
 		if existing {
-			os.Rename(backup, CardDBFile)
+			_ = os.Rename(backup, CardDBFile)
 		}
 	}()
 

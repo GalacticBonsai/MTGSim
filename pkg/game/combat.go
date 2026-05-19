@@ -78,7 +78,7 @@ func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	}
 	// CR 702.9: a creature with flying can be blocked only by creatures
 	// with flying or reach.
-	if attacker.HasKeyword(KWFlying) && !(blocker.HasKeyword(KWFlying) || blocker.HasKeyword(KWReach)) {
+	if attacker.HasKeyword(KWFlying) && !blocker.HasKeyword(KWFlying) && !blocker.HasKeyword(KWReach) {
 		return fmt.Errorf("flying creature can only be blocked by flying or reach")
 	}
 	g.combat.blocks[attacker] = append(g.combat.blocks[attacker], blocker)

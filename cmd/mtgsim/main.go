@@ -651,7 +651,7 @@ func castNonCreaturePermanents(g *game.Game, p *game.Player, cardDB *card.CardDB
 	for {
 		castSomething := false
 		for _, c := range p.Hand {
-			if !(c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()) {
+			if !c.IsArtifact() && !c.IsEnchantment() && !c.IsPlaneswalker() {
 				continue
 			}
 			cardData, ok := cardDB.GetCardByName(c.Name)

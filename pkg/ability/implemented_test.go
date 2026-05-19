@@ -111,7 +111,7 @@ func TestImplementationTracker_Persistence(t *testing.T) {
 		t.Error("Expected TestCard123 to survive reload")
 	}
 
-	os.Remove(implementationCacheFile)
+	_ = os.Remove(implementationCacheFile)
 }
 
 func TestUpdateImplementationCache(t *testing.T) {

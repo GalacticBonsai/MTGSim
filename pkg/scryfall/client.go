@@ -87,7 +87,7 @@ func (c *Client) GetCardByName(name string) (*CardData, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -134,7 +134,7 @@ func (c *Client) GetRulingsByName(name string) ([]RulingData, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -208,7 +208,7 @@ func (c *Client) DownloadAndCacheImage(imageURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to download image %s: %w", imageURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("image download returned status %d for %s", resp.StatusCode, imageURL)
