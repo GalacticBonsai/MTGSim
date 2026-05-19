@@ -35,6 +35,9 @@ type Game struct {
 	// triggers and watchers
 	triggers []*Trigger
 	watchers []Watcher
+
+	// extra turns queued by card effects (e.g. Time Warp)
+	extraTurns int
 }
 
 // ApplyTempPump grants a temporary power/toughness boost until end of turn.
@@ -68,6 +71,9 @@ func (g *Game) GetActivePlayerRaw() *Player  { return g.GetPlayerByIndex(g.activ
 
 func (g *Game) GetTurnNumber() int     { return g.turnNumber }
 func (g *Game) GetCurrentPhase() Phase { return g.currentPhase }
+
+// TakeExtraTurn queues one extra turn for the active player.
+func (g *Game) TakeExtraTurn() { g.extraTurns++ }
 func (g *Game) IsMainPhase() bool {
 	return g.currentPhase == PhaseMain1 || g.currentPhase == PhaseMain2
 }
@@ -131,8 +137,11 @@ func (g *Game) AdvancePhase() {
 		g.currentPhase = PhaseCleanup
 		g.clearUntilEndOfTurnEffects()
 	case PhaseCleanup:
-		// end of turn -> next player
-		if len(g.players) > 0 {
+		// end of turn -> next player (or extra turn)
+		if g.extraTurns > 0 {
+			g.extraTurns--
+			g.turnNumber++
+		} else if len(g.players) > 0 {
 			nextIdx := g.findNextLivingPlayer(g.currentIdx)
 			if nextIdx >= 0 {
 				if nextIdx < g.currentIdx {

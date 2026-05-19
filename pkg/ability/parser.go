@@ -287,7 +287,7 @@ func (ap *AbilityParser) initializePatterns() {
 	// More spell patterns
 	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gets\s+\+(\d+)/\+(\d+)\s+and\s+gains\s+.+`, PumpCreature, "Target pump and gains keyword", ap.parseTargetPumpAndGain)
 	ap.addPattern(Activated, `(?i)^Target\s+creature\s+you\s+control\s+gets\s+\+(\d+)/\+(\d+)`, PumpCreature, "Target controlled pump", ap.parseTargetControlledPump)
-	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)\s+until\s+end\s+of\s+turn`, KeywordAbility, "Target gains keyword EOT", ap.parseTargetGainsKeyword)
+	ap.addPattern(Activated, `(?i)^Target\s+creature\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)\s+until\s+end\s+of\s+turn`, KeywordAbility, "Target gains keyword EOT", ap.parseTargetGainsKeyword)
 	// Target creature loses/gains keyword until EOT (handled by broader pattern above; narrow "loses" removed — only 2 cards)
 	ap.addPattern(Activated, `(?i)^Return\s+target\s+.+\s+from\s+your\s+graveyard\s+to\s+your\s+hand`, ReturnToHand, "Return from graveyard", ap.parseReturnFromGraveyard)
 	ap.addPattern(Activated, `(?i)^Create\s+(?:two|three|four|five|six|seven|eight|nine|ten|\d+|X)\s+\d+/\d+\s+.+\s+creature\s+tokens?`, CreateToken, "Create multiple tokens", ap.parseCreateMultipleTokens)
@@ -318,33 +318,33 @@ func (ap *AbilityParser) initializePatterns() {
 	// Static patterns — narrowed replacements for former GenericEffect catch-alls
 	// "As long as" conditional static abilities
 	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "As long as pump", ap.parseStaticPump)
-	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "As long as keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "As long as keyword", ap.parseStaticKeyword)
 	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.+\s+can't\s+(?:attack|block)`, CantAttackBlock, "As long as restriction", ap.parseStaticRestriction)
 	// "Each creature you control" static abilities
 	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Each creature pump", ap.parseStaticPump)
-	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Each creature keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Each creature keyword", ap.parseStaticKeyword)
 	ap.addPattern(Static, `(?i)^Each\s+creature\s+you\s+control.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Each creature restriction", ap.parseStaticRestriction)
 	// "Each other creature" static abilities
 	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Each other pump", ap.parseStaticPump)
-	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Each other keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Each other keyword", ap.parseStaticKeyword)
 	ap.addPattern(Static, `(?i)^Each\s+other\s+creature.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Each other restriction", ap.parseStaticRestriction)
 	// "Creatures you control" static keyword/restriction abilities (pump already covered by existing pattern)
-	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Creatures keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Creatures keyword", ap.parseStaticKeyword)
 	ap.addPattern(Static, `(?i)^Creatures\s+you\s+control.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Creatures restriction", ap.parseStaticRestriction)
 	// "Other creatures you control" static abilities (pump already covered by existing pattern)
-	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Other creatures keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Other creatures keyword", ap.parseStaticKeyword)
 	ap.addPattern(Static, `(?i)^Other\s+creatures\s+you\s+control.*can't\s+(?:attack|block|be\s+blocked)`, CantAttackBlock, "Other creatures restriction", ap.parseStaticRestriction)
 	// "Other [type] you control" static keyword/restriction abilities
 	ap.addPattern(Static, `(?i)^Other\s+[A-Za-z]+\s+you\s+control.*get\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Other typed pump", ap.parseStaticPump)
-	ap.addPattern(Static, `(?i)^Other\s+[A-Za-z]+\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Other typed keyword", ap.parseStaticKeyword)
-	ap.addPattern(Static, `(?i)^Creatures\s+with\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender).*get\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Creatures with keyword pump", ap.parseStaticPump)
+	ap.addPattern(Static, `(?i)^Other\s+[A-Za-z]+\s+you\s+control.*have\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Other typed keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^Creatures\s+with\s+(?:flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender).*get\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Creatures with keyword pump", ap.parseStaticPump)
 	// "If" conditional static abilities (very narrow to avoid catching spell riders)
 	ap.addPattern(Static, `(?i)^If\s+.*gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "If pump", ap.parseIfPump)
-	ap.addPattern(Static, `(?i)^If\s+.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "If keyword", ap.parseIfKeyword)
+	ap.addPattern(Static, `(?i)^If\s+.*has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "If keyword", ap.parseIfKeyword)
 	ap.addPattern(Static, `(?i)^If\s+.*can't\s+(?:attack|block)`, CantAttackBlock, "If restriction", ap.parseStaticRestriction)
 	// "This creature" static abilities
 	ap.addPattern(Static, `(?i)^This\s+creature\s+gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "This creature pump", ap.parseThisCreaturePump)
-	ap.addPattern(Static, `(?i)^This\s+creature\s+has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "This creature keyword", ap.parseStaticKeyword)
+	ap.addPattern(Static, `(?i)^This\s+creature\s+has\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "This creature keyword", ap.parseStaticKeyword)
 	ap.addPattern(Static, `(?i)^This\s+creature\s+can't\s+(?:attack|block)`, CantAttackBlock, "This creature restriction", ap.parseStaticRestriction)
 	ap.addPattern(Static, `(?i)^This\s+creature\s+can\s+block\s+only\s+creatures\s+with\s+flying`, CantAttackBlock, "This creature block restriction", ap.parseStaticRestriction)
 	// "Until" sentences are spells/triggers, not static — removed broad catch-all
@@ -358,7 +358,7 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `(?i)^Reveal\s+cards\s+from\s+the\s+top\s+of\s+your\s+library`, ScryCards, "Reveal library spell", ap.activatedParserFactory(ScryCards, "Reveal Library"))
 	ap.addPattern(Activated, `(?i)^Put\s+target\s+(.*)\s+on\s+top\s+of\s+its\s+owner'?s\s+library`, ReturnToHand, "Put on top of library spell", ap.activatedParserFactory(ReturnToHand, "Put on Top of Library"))
 	ap.addPattern(Activated, `(?i)^Until\s+end\s+of\s+turn,\s+target\s+creature\s+gets\s+\+?(\d+)/\+?(\d+)`, PumpCreature, "Until EOT pump spell", ap.activatedParserFactory(PumpCreature, "Until EOT Pump"))
-	ap.addPattern(Activated, `(?i)^Until\s+end\s+of\s+turn,\s+target\s+creature\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Until EOT keyword spell", ap.activatedParserFactory(KeywordAbility, "Until EOT Keyword"))
+	ap.addPattern(Activated, `(?i)^Until\s+end\s+of\s+turn,\s+target\s+creature\s+gains\s+(flying|trample|lifelink|deathtouch|haste|vigilance|first strike|double strike|menace|reach|hexproof|indestructible|flash|defender)`, KeywordAbility, "Until EOT keyword spell", ap.activatedParserFactory(KeywordAbility, "Until EOT Keyword"))
 
 	// ETB mill / scry / counters / explore / proliferate / untap / amass / library
 	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+mill\s+(a|\d+)\s+cards?`, MillCards, "ETB mill", ap.triggeredParserFactory(MillCards, EntersTheBattlefield, "ETB Mill"))
@@ -576,17 +576,46 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Creature dies +1/+1 counter", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Counter"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+proliferate`, AddCounters, "Creature dies proliferate", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Proliferate"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+explore`, AddCounters, "Creature dies explore", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Explore"))
-	ap.addPattern(Activated, `\+(\d+):\s*.*`, DrawCards, "Planeswalker + loyalty", ap.heuristicActivatedParserFactory(DrawCards, "Planeswalker Plus Loyalty"))
-	ap.addPattern(Activated, `-(\d+):\s*.*`, DealDamage, "Planeswalker - loyalty", ap.heuristicActivatedParserFactory(DealDamage, "Planeswalker Minus Loyalty"))
-	ap.addPattern(Activated, `\{([WUBRG])\}:\s*.*`, AddMana, "Colored activated ability", ap.heuristicActivatedParserFactory(AddMana, "Colored Activated"))
-	ap.addPattern(Activated, `\{(\d+)\}:\s*.*`, DrawCards, "Generic activated ability", ap.heuristicActivatedParserFactory(DrawCards, "Generic Activated"))
-	ap.addPattern(Activated, `\{(\d+)\},\s*\{T\}:\s*.*`, DrawCards, "Generic tap activated ability", ap.heuristicActivatedParserFactory(DrawCards, "Generic Tap Activated"))
-	ap.addPattern(Activated, `\{T\},\s*[^:]+:\s*.*`, DrawCards, "Comma tap activated ability", ap.heuristicActivatedParserFactory(DrawCards, "Comma Tap Activated"))
-	ap.addPattern(Activated, `Tap\s+an\s+untapped\s+[^:]+:\s*.*`, DrawCards, "Tap untapped activated", ap.heuristicActivatedParserFactory(DrawCards, "Tap Untapped Activated"))
-	ap.addPattern(Activated, `Tap\s+(?:\d+|X)\s+[^:]*:\s*.*`, DrawCards, "Tap multiple activated", ap.heuristicActivatedParserFactory(DrawCards, "Tap Multiple Activated"))
+	// Smart catch-all patterns for activated abilities that failed specific matches
+	ap.addPattern(Activated, `\+(\d+):\s*(.*)`, DrawCards, "Smart planeswalker + loyalty", ap.parseSmartActivated)
+	ap.addPattern(Activated, `-(\d+):\s*(.*)`, DealDamage, "Smart planeswalker - loyalty", ap.parseSmartActivated)
+	ap.addPattern(Activated, `\{([WUBRG])\}:\s*(.*)`, AddMana, "Smart colored activated ability", ap.parseSmartActivated)
+	ap.addPattern(Activated, `\{(\d+)\}:\s*(.*)`, DrawCards, "Smart generic activated ability", ap.parseSmartActivated)
+	ap.addPattern(Activated, `\{(\d+)\},\s*\{T\}:\s*(.*)`, DrawCards, "Smart generic tap activated ability", ap.parseSmartActivated)
+	ap.addPattern(Activated, `\{T\},\s*[^:]+:\s*(.*)`, DrawCards, "Smart comma tap activated ability", ap.parseSmartActivated)
+	ap.addPattern(Activated, `Tap\s+an\s+untapped\s+[^:]+:\s*(.*)`, DrawCards, "Smart tap untapped activated", ap.parseSmartActivated)
+	ap.addPattern(Activated, `Tap\s+(?:\d+|X)\s+[^:]*:\s*(.*)`, DrawCards, "Smart tap multiple activated", ap.parseSmartActivated)
+
 	ap.addPattern(Activated, `(?i)^Tap\s+(?:\d+|X)\s+target\s+(.*)`, TapUntap, "Tap target spell", ap.activatedParserFactory(TapUntap, "Tap Target Spell"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+amass\s+(\d+)`, CreateToken, "Creature dies amass", ap.triggeredParserFactory(CreateToken, Dies, "Creature Dies Amass"))
 
+	// Broad smart catch-all patterns for sentences that still haven't matched.
+	// These are intentionally placed at the very end so specific patterns win.
+	// They infer the effect type from the sentence and only return a valid ability
+	// when a supported effect is detected; otherwise they return ErrParsingFailed
+	// so the sentence yields zero abilities rather than a false-positive.
+
+	// Triggered ability catch-alls
+	ap.addPattern(Triggered, `^When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+(.*)`, DrawCards, "Smart ETB trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^When\s+.*\s+dies,\s+(.*)`, DrawCards, "Smart death trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^When\s+.*,\s+(.*)`, DrawCards, "Smart when trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^Whenever\s+.*,\s+(.*)`, DealDamage, "Smart whenever trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^At\s+the\s+beginning\s+of\s+(?:your\s+upkeep|your\s+end\s+step|combat\s+on\s+your\s+turn),\s+(.*)`, DealDamage, "Smart step trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^At\s+the\s+beginning\s+of\s+.*,\s+(.*)`, DealDamage, "Smart beginning trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^At\s+end\s+of\s+.*,\s+(.*)`, DealDamage, "Smart end trigger", ap.parseSmartTrigger)
+
+	// Spell / activated catch-alls
+	ap.addPattern(Activated, `(?i)^Target\s+.*`, DealDamage, "Smart target spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^Each\s+.*`, DealDamage, "Smart each spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^All\s+.*`, DealDamage, "Smart all spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^You\s+(?:gain|lose|draw|mill|search|create|destroy|exile|discard|return|prevent|counter|put|tap|untap|sacrifice|copy|take|deal|choose).*`, DealDamage, "Smart you spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^(?:Destroy|Exile|Return|Counter|Create|Search|Prevent|Put|Mill|Draw|Deal|Gain|Lose|Tap|Untap|Sacrifice|Discard|Scry)\s+.*`, DealDamage, "Smart verb spell", ap.parseSmartSpell)
+
+	// Static ability catch-alls
+	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.*`, PumpCreature, "Smart as long as static", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^Enchant\s+.*`, PumpCreature, "Smart enchant static", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^Equipped\s+creature\s+.*`, PumpCreature, "Smart equipped static", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^This\s+creature\s+.*`, PumpCreature, "Smart this creature static", ap.parseSmartStatic)
 }
 
 // addPattern adds a new pattern to the parser.
@@ -2031,6 +2060,272 @@ func (ap *AbilityParser) inferEffectFromText(text string) (EffectType, int) {
 		return PreventDamage, 0
 	}
 	return DealDamage, 1 // Default fallback
+}
+
+// inferSupportedEffect examines text for known supported effect keywords and
+// returns the matched EffectType, a numeric value, and true.  If no supported
+// effect is detected it returns (0,0,false) so callers can reject the sentence
+// and avoid false-positive implementation coverage.
+func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, bool) {
+	lower := strings.ToLower(text)
+
+	// Order matters: more-specific compound keywords first.
+	if strings.Contains(lower, "create") && strings.Contains(lower, "token") {
+		return CreateToken, 1, true
+	}
+	if strings.Contains(lower, "counter") && strings.Contains(lower, "spell") {
+		return CounterSpell, 1, true
+	}
+	if strings.Contains(lower, "prevent") && strings.Contains(lower, "damage") {
+		return PreventDamage, 0, true
+	}
+	if strings.Contains(lower, "gain") && strings.Contains(lower, "life") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return GainLife, count, true
+	}
+	if strings.Contains(lower, "lose") && strings.Contains(lower, "life") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return LoseLife, count, true
+	}
+	if strings.Contains(lower, "draw") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return DrawCards, count, true
+	}
+	if strings.Contains(lower, "mill") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return MillCards, count, true
+	}
+	if strings.Contains(lower, "search") && strings.Contains(lower, "library") {
+		return SearchLibrary, 1, true
+	}
+	if strings.Contains(lower, "destroy") {
+		return DestroyPermanent, 1, true
+	}
+	if strings.Contains(lower, "exile") {
+		return Exile, 1, true
+	}
+	if strings.Contains(lower, "discard") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return DiscardCards, count, true
+	}
+	if strings.Contains(lower, "return") && strings.Contains(lower, "hand") {
+		return ReturnToHand, 1, true
+	}
+	if strings.Contains(lower, "scry") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return ScryCards, count, true
+	}
+	if strings.Contains(lower, "+1/+1") || strings.Contains(lower, "proliferate") || strings.Contains(lower, "explore") || (strings.Contains(lower, "put") && strings.Contains(lower, "counter")) {
+		return AddCounters, 1, true
+	}
+	if strings.Contains(lower, "add") && (strings.Contains(lower, "mana") || strings.Contains(lower, "{")) {
+		return AddMana, 0, true
+	}
+	if strings.Contains(lower, "untap") {
+		return UntapPermanent, 1, true
+	}
+	if strings.Contains(lower, "tap") && !strings.Contains(lower, "untap") {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "sacrifice") {
+		return SacrificePermanent, 1, true
+	}
+	if strings.Contains(lower, "win") && strings.Contains(lower, "game") {
+		return WinGame, 1, true
+	}
+	if strings.Contains(lower, "lose") && strings.Contains(lower, "game") {
+		return LoseGame, 1, true
+	}
+	if strings.Contains(lower, "take") && strings.Contains(lower, "extra turn") {
+		return TakeExtraTurn, 1, true
+	}
+	if strings.Contains(lower, "look at") && strings.Contains(lower, "top") && strings.Contains(lower, "library") {
+		return LookAtLibraryTop, ap.parseIntValue(text), true
+	}
+	if strings.Contains(lower, "reveal") {
+		return RevealInformation, 0, true
+	}
+	if strings.Contains(lower, "copy") && strings.Contains(lower, "target") {
+		return CopySpell, 1, true
+	}
+	if strings.Contains(lower, "damage") {
+		count := ap.parseIntValue(text)
+		if count == 0 {
+			count = 1
+		}
+		return DealDamage, count, true
+	}
+	if strings.Contains(lower, "gets") && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
+		return PumpCreature, 0, true
+	}
+	if strings.Contains(lower, "gains") || strings.Contains(lower, "have") || strings.Contains(lower, "has") {
+		kw := []string{"flying", "trample", "lifelink", "deathtouch", "haste", "vigilance", "first strike", "menace", "reach", "hexproof", "indestructible", "flash", "defender", "double strike", "protection", "shroud", "intimidate", "fear", "shadow", "infect", "wither", "poisonous", "prowess", "cascade", "convoke", "delve", "dredge", "persist", "undying", "unearth", "morph", "manifest", "embalm", "eternalize", "aftermath", "adventure", "mutate", "foretell", "strive", "rebound", "suspend", "madness", "buyback", "replicate", "splice", "transmute", "regenerate", "ward", "bloodthirst", "annihilator"}
+		for _, k := range kw {
+			if strings.Contains(lower, k) {
+				return KeywordAbility, 1, true
+			}
+		}
+	}
+	if strings.Contains(lower, "can't") && (strings.Contains(lower, "attack") || strings.Contains(lower, "block")) {
+		return CantAttackBlock, 1, true
+	}
+	if strings.Contains(lower, "play") && strings.Contains(lower, "additional land") {
+		return AdditionalLand, 1, true
+	}
+	if strings.Contains(lower, "control") && strings.Contains(lower, "target") {
+		return ChangeControl, 1, true
+	}
+	return 0, 0, false
+}
+
+func (ap *AbilityParser) parseSmartTrigger(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	effectText := matches[1]
+	effectType, value, ok := ap.inferSupportedEffect(effectText)
+	if !ok {
+		// Try inferring from the whole text if the capture group is empty
+		effectType, value, ok = ap.inferSupportedEffect(fullText)
+		if !ok {
+			return nil, ErrParsingFailed
+		}
+	}
+
+	lower := strings.ToLower(fullText)
+	var cond TriggerCondition
+	switch {
+	case strings.Contains(lower, "enters the battlefield") || strings.Contains(lower, "enters,"):
+		cond = EntersTheBattlefield
+	case strings.Contains(lower, "upkeep"):
+		cond = BeginningOfUpkeep
+	case strings.Contains(lower, "end step"):
+		cond = EndOfTurn
+	case strings.Contains(lower, "combat") && strings.Contains(lower, "damage"):
+		cond = DealsCombatDamage
+	case strings.Contains(lower, "attacks"):
+		cond = AttacksOrBlocks
+	case strings.Contains(lower, "dies"):
+		cond = Dies
+	case strings.Contains(lower, "beginning"):
+		cond = BeginningOfUpkeep
+	case strings.Contains(lower, "land") && (strings.Contains(lower, "play") || strings.Contains(lower, "enters")):
+		cond = LandPlayed
+	case strings.Contains(lower, "spell") && strings.Contains(lower, "cast"):
+		cond = SpellCast
+	case strings.Contains(lower, "creature") && strings.Contains(lower, "enters"):
+		cond = CreatureEnters
+	default:
+		cond = AnyTrigger
+	}
+
+	return makeTriggeredAbilityWithCondition("Smart Trigger", effectType, value, Instant, fullText, cond), nil
+}
+
+func (ap *AbilityParser) parseSmartActivated(matches []string, fullText string) (*Ability, error) {
+	if len(matches) < 2 {
+		return nil, ErrParsingFailed
+	}
+	effectText := matches[1]
+	effectType, value, ok := ap.inferSupportedEffect(effectText)
+	if !ok {
+		return nil, ErrParsingFailed
+	}
+	return makeActivatedAbility("Smart Activated", effectType, value, Instant, fullText), nil
+}
+
+// hasNonManaColon reports whether text contains a colon outside of mana-cost
+// braces.  This is used by smart spell patterns to avoid matching activated
+// abilities ("Cost: Effect") as spells.
+func hasNonManaColon(text string) bool {
+	inBraces := false
+	for _, ch := range text {
+		switch ch {
+		case '{':
+			inBraces = true
+		case '}':
+			inBraces = false
+		case ':':
+			if !inBraces {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (ap *AbilityParser) parseSmartSpell(matches []string, fullText string) (*Ability, error) {
+	// Reject text that looks like an activated-ability cost line (e.g.
+	// "Sacrifice a creature: Draw a card.").  We only want to catch spells
+	// and one-shot effects here.
+	if hasNonManaColon(fullText) {
+		return nil, ErrParsingFailed
+	}
+	effectType, value, ok := ap.inferSupportedEffect(fullText)
+	if !ok {
+		return nil, ErrParsingFailed
+	}
+	return makeActivatedAbility("Smart Spell", effectType, value, Instant, fullText), nil
+}
+
+func (ap *AbilityParser) parseSmartStatic(matches []string, fullText string) (*Ability, error) {
+	lower := strings.ToLower(fullText)
+	var effectType EffectType
+	var value int
+
+	if strings.Contains(lower, "gets") && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
+		// Try to parse P/T delta
+		parts := strings.Split(fullText, " ")
+		for i, p := range parts {
+			if strings.Contains(p, "/") {
+				if i > 0 && (strings.Contains(parts[i-1], "+") || strings.Contains(parts[i-1], "-")) {
+					// e.g. "+2/+2"
+					val := ap.parseIntValue(parts[i-1])
+					if val != 0 {
+						value = val
+					}
+				}
+			}
+		}
+		effectType = PumpCreature
+	} else if strings.Contains(lower, "have") || strings.Contains(lower, "gains") || strings.Contains(lower, "has") || strings.Contains(lower, "is") {
+		effectType = KeywordAbility
+	} else if strings.Contains(lower, "can't") {
+		effectType = CantAttackBlock
+	} else {
+		return nil, ErrParsingFailed
+	}
+
+	return &Ability{
+		Name: "Smart Static",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        effectType,
+				Value:       value,
+				Duration:    Permanent,
+				Description: fullText,
+			},
+		},
+	}, nil
 }
 
 func (ap *AbilityParser) parseTokenCreation(matches []string, fullText string) (*Ability, error) {
@@ -3497,21 +3792,5 @@ func (ap *AbilityParser) activatedParserFactory(effectType EffectType, name stri
 			}
 		}
 		return makeActivatedAbility(name, effectType, value, Instant, fullText), nil
-	}
-}
-
-func (ap *AbilityParser) heuristicActivatedParserFactory(effectType EffectType, name string) func([]string, string) (*Ability, error) {
-	return func(matches []string, fullText string) (*Ability, error) {
-		var value int
-		if len(matches) > 1 {
-			value, _ = strconv.Atoi(matches[1])
-			if value == 0 && matches[1] != "0" {
-				value = parseIntOrOne(matches[1])
-			}
-		}
-		ab := makeActivatedAbility(name, effectType, value, Instant, fullText)
-		ab.Approximate = true
-		ab.ApproximationReason = "heuristic parser pattern"
-		return ab, nil
 	}
 }

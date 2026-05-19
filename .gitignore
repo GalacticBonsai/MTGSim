@@ -7,7 +7,11 @@
 *.dll
 *.so
 *.dylib
-mtgsim-edh
+
+# Built binaries (root level only)
+/mtgsim
+/mtgsim-dashboard
+/mtgsim-edh
 
 # Test binary, built with `go test -c`
 *.test

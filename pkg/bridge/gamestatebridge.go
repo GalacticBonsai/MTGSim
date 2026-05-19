@@ -201,3 +201,9 @@ func (b *AbilityGameState) ScryLibrary(player abil.AbilityPlayer, count int) {
 		pa.P.Library = append(append(keep, bottom...), rest...)
 	}
 }
+
+func (b *AbilityGameState) TakeExtraTurn() {
+	if b.G != nil {
+		b.G.TakeExtraTurn()
+	}
+}

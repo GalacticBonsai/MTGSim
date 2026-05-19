@@ -5,6 +5,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="stylesheet" href="/style.css">
+	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 </head>
 <body>
 	<div class="container">
@@ -27,30 +28,67 @@
 			<div class="loading">Loading...</div>
 		</div>
 
-		<h3>Deck Performance</h3>
-		<table class="table" id="decks">
-			<thead>
-				<tr>
-					<th title="Deck file name">Deck Name</th>
-					<th title="Games won">Wins</th>
-					<th title="Games lost">Losses</th>
-					<th title="Win percentage (Wins / Total Games)">Win Rate</th>
-				</tr>
-			</thead>
-			<tbody id="decksBody">
-				<tr><td colspan="4" class="loading">Loading...</td></tr>
-			</tbody>
-		</table>
-
-			<div id="edhSummarySection" style="display:none">
-				<h3>EDH Tuning Highlights</h3>
-				<div class="grid" id="edhSummary">
-					<div class="loading">Loading EDH telemetry...</div>
-				</div>
+		<div id="gameControlsSection" style="margin-top:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #ff6b6b;">
+			<h3 style="margin-top:0;">Game Controls</h3>
+			<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+				<label for="gamesInput">Run additional games:</label>
+				<input type="number" id="gamesInput" value="100" min="1" max="10000" style="width:80px; padding:6px; border:1px solid #444; background:#1a1a1a; color:#fff; border-radius:4px;">
+				<button id="runGamesBtn" onclick="runMoreGames()" style="padding:8px 16px; background:#ff6b6b; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">▶ Run Games</button>
+				<span id="gameStatusIndicator" style="color:#888; font-size:0.9em;"></span>
 			</div>
+		</div>
+
+		<h3 style="margin-top:30px;">Win Rate Distribution</h3>
+		<div style="position:relative; height:300px; margin-bottom:30px;">
+			<canvas id="winRateChart"></canvas>
+		</div>
+
+		<h3>Top Decks</h3>
+		<div style="position:relative; height:300px; margin-bottom:30px;">
+			<canvas id="topDecksChart"></canvas>
+		</div>
+
+		<div id="edhSummarySection" style="display:none">
+			<h3>EDH Tuning Highlights</h3>
+			<div class="grid" id="edhSummary">
+				<div class="loading">Loading EDH telemetry...</div>
+			</div>
+		</div>
 		</div>
 		<div id="edh-decks" class="tab-content">
 		<h3>EDH / Commander Performance</h3>
+		
+		<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+			<input id="deckSearch" class="search-box" placeholder="Search decks..." oninput="filterEDHDecks()" style="flex:1; min-width:250px;">
+			<button id="clearDeckSelection" onclick="clearSelectedDeck()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">Clear Selection</button>
+		</div>
+
+		<div id="selectedDeckStats" style="display:none; margin-bottom:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #4ecdc4;">
+			<h3 style="margin-top:0;">Selected Deck: <span id="selectedDeckName" style="color:#4ecdc4;"></span></h3>
+			<div class="grid" id="selectedDeckGrid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+				<div class="card"><h2>Commander</h2><div class="value" id="selectedDeckCommander"></div></div>
+				<div class="card"><h2>Games</h2><div class="value" id="selectedDeckGames"></div></div>
+				<div class="card"><h2>Win Rate</h2><div class="value" id="selectedDeckWinRate" style="color:#4ecdc4;"></div></div>
+				<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgMana"></div></div>
+			</div>
+
+			<h3 style="margin-top:20px;">Card Win Rates (minimum 3 casts)</h3>
+			<table class="table" id="selectedDeckCards">
+				<thead>
+					<tr>
+						<th onclick="sortSelectedDeckCards('name')" style="cursor:pointer;">Card Name</th>
+						<th onclick="sortSelectedDeckCards('casts')" style="cursor:pointer;">Casts</th>
+						<th onclick="sortSelectedDeckCards('wins')" style="cursor:pointer;">Wins</th>
+						<th onclick="sortSelectedDeckCards('winRate')" style="cursor:pointer;">Win Rate</th>
+					</tr>
+				</thead>
+				<tbody id="selectedDeckCardsBody">
+					<tr><td colspan="4" class="loading">Select a deck</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<h3>All Decks</h3>
 			<table class="table" id="edhDecks">
 				<thead>
 					<tr>

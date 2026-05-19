@@ -17,7 +17,7 @@ func keyFor(target any) uintptr {
 		return 0
 	}
 	v := reflect.ValueOf(target)
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != 22 {
 		return 0
 	}
 	return v.Pointer()

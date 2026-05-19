@@ -177,7 +177,7 @@ func (c *Client) FindMyCombos(deckCards, commanders []string) (*FindMyCombosResu
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -213,10 +213,10 @@ func (c *Client) FindMyCombos(deckCards, commanders []string) (*FindMyCombosResu
 		}
 		var nextPage paginatedResponse
 		if err := json.NewDecoder(nextResp.Body).Decode(&nextPage); err != nil {
-			nextResp.Body.Close()
+			_ = nextResp.Body.Close()
 			break
 		}
-		nextResp.Body.Close()
+		_ = nextResp.Body.Close()
 		nextResults, err := nextPage.unmarshalResults()
 		if err != nil {
 			break

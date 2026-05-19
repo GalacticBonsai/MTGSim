@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -26,6 +27,104 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
+
+// EDHGameRunner manages running EDH games and updating results
+type EDHGameRunner struct {
+	seats       []simulation.EDHSeat
+	cardDB      *card.CardDB
+	edhResults  *simulation.EDHResults
+	legacyRes   *simulation.Results
+	cardLib     *stats.CardLibrary
+	mu          *sync.Mutex
+	rng         *rand.Rand
+	running     bool
+	podSize     int
+	maxTurns    int
+	mulligans   int
+	replayDir   string
+}
+
+// RunGames runs the specified number of EDH pods
+func (gr *EDHGameRunner) RunGames(count int) {
+	go func() {
+		gr.mu.Lock()
+		if gr.running {
+			gr.mu.Unlock()
+			logger.LogMeta("Games already running")
+			return
+		}
+		gr.running = true
+		gr.mu.Unlock()
+
+		logger.LogMeta("Starting %d EDH pods...", count)
+
+		numWorkers := (runtime.NumCPU() * 4) / 5
+		if numWorkers < 1 {
+			numWorkers = 1
+		}
+		gamesChan := make(chan int, numWorkers)
+		var wg sync.WaitGroup
+
+		for w := 0; w < numWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range gamesChan {
+					gr.mu.Lock()
+					pod := pickPod(gr.seats, gr.podSize, gr.rng, gr.mulligans)
+					gr.mu.Unlock()
+					rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
+						Seats: pod, MaxTurns: gr.maxTurns, RNG: rand.New(rand.NewSource(gr.rng.Int63())),
+						RecordEvents: gr.replayDir != "",
+					})
+					if err != nil {
+						logger.LogMeta("Pod skipped: %v", err)
+						continue
+					}
+					gr.mu.Lock()
+					gr.edhResults.RecordGame(rec)
+					recordLegacy(gr.legacyRes, rec)
+					for _, p := range rec.Players {
+						for cName, perf := range p.CardStats {
+							wins := 0
+							if p.DeckName == rec.Winner {
+								wins = perf.Casts
+							}
+							gr.cardLib.RecordCounts(cName, perf.Casts, wins)
+						}
+					}
+					gr.mu.Unlock()
+					if gr.replayDir != "" {
+						writeReplay(gr.replayDir, i+1, rec)
+					}
+					if (i+1)%10 == 0 {
+						logger.LogMeta("Completed %d/%d pods", i+1, count)
+					}
+				}
+			}()
+		}
+
+		for i := 0; i < count; i++ {
+			gamesChan <- i
+		}
+		close(gamesChan)
+
+		wg.Wait()
+
+		logger.LogMeta("Batch of %d pods completed!", count)
+
+		gr.mu.Lock()
+		gr.running = false
+		gr.mu.Unlock()
+	}()
+}
+
+// IsRunning returns whether games are currently running
+func (gr *EDHGameRunner) IsRunning() bool {
+	gr.mu.Lock()
+	defer gr.mu.Unlock()
+	return gr.running
+}
 
 func main() {
 	games := flag.Int("games", 50, "Number of pods to simulate")
@@ -163,7 +262,7 @@ func main() {
 	}
 
 	if *port > 0 {
-		startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport)
+		startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport, seats, cardDB, *podSize, *maxTurns, *mulligans, *replayDir, rng)
 	}
 	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
 	start := time.Now()
@@ -175,51 +274,92 @@ func main() {
 		}
 	}
 
-	for i := 0; i < *games; i++ {
-		pod := pickPod(seats, *podSize, rng, *mulligans)
-		rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
-			Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
-			RecordEvents: *replayDir != "",
-		})
-		if err != nil {
-			logger.LogMeta("Pod %d skipped: %v", i+1, err)
-			continue
-		}
-		mu.Lock()
-		edhResults.RecordGame(rec)
-		recordLegacy(legacyResults, rec)
-		for _, p := range rec.Players {
-			for cName, perf := range p.CardStats {
-				wins := 0
-				if p.DeckName == rec.Winner {
-					wins = perf.Casts
-				}
-				cardLib.RecordCounts(cName, perf.Casts, wins)
-			}
-		}
-		mu.Unlock()
-		if *replayDir != "" {
-			writeReplay(*replayDir, i+1, rec)
-		}
-		if (i+1)%10 == 0 {
-			logger.LogMeta("Completed %d/%d pods", i+1, *games)
-		}
+	// Cap CPU at ~80% by using 80% of available cores
+	numWorkers := (runtime.NumCPU() * 4) / 5
+	if numWorkers < 1 {
+		numWorkers = 1
 	}
+	gamesChan := make(chan int, numWorkers)
+	var wg sync.WaitGroup
+
+	// Start worker goroutines
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range gamesChan {
+				mu.Lock()
+				pod := pickPod(seats, *podSize, rng, *mulligans)
+				mu.Unlock()
+				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
+					Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
+					RecordEvents: *replayDir != "",
+				})
+				if err != nil {
+					logger.LogMeta("Pod %d skipped: %v", i+1, err)
+					continue
+				}
+				mu.Lock()
+				edhResults.RecordGame(rec)
+				recordLegacy(legacyResults, rec)
+				for _, p := range rec.Players {
+					for cName, perf := range p.CardStats {
+						wins := 0
+						if p.DeckName == rec.Winner {
+							wins = perf.Casts
+						}
+						cardLib.RecordCounts(cName, perf.Casts, wins)
+					}
+				}
+				mu.Unlock()
+				if *replayDir != "" {
+					writeReplay(*replayDir, i+1, rec)
+				}
+				if (i+1)%10 == 0 {
+					logger.LogMeta("Completed %d/%d pods", i+1, *games)
+				}
+			}
+		}()
+	}
+
+	// Send game indices to workers
+	for i := 0; i < *games; i++ {
+		gamesChan <- i
+	}
+	close(gamesChan)
+
+	// Wait for all workers to complete
+	wg.Wait()
 
 	// Backfill image URLs for any newly recorded cards.
 	for name := range cardLib.Cards {
 		if _, ok := imageCache[name]; ok {
 			continue
 		}
+		var imageURL string
 		if c, ok := cardDB.GetCardByName(name); ok && c.ImageURIs != nil && c.ImageURIs.Normal != "" {
-			cardLib.SetImageURL(name, c.ImageURIs.Normal)
-			imageCache[name] = c.ImageURIs.Normal
-			continue
+			imageURL = c.ImageURIs.Normal
+		} else {
+			cd, err := scryfallClient.GetCardByName(name)
+			if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
+				imageURL = cd.ImageURIs.Normal
+			}
 		}
-		cd, err := scryfallClient.GetCardByName(name)
-		if err == nil && cd.ImageURIs != nil && cd.ImageURIs.Normal != "" {
-			cardLib.SetImageURL(name, cd.ImageURIs.Normal)
-			imageCache[name] = cd.ImageURIs.Normal
+
+		// Download and cache the image if we have a URL
+		if imageURL != "" {
+			// Store URL first for web display
+			cardLib.SetImageURL(name, imageURL)
+			imageCache[name] = imageURL
+
+			// Download and cache the image file for offline use
+			// Do this asynchronously to not block the main process
+			go func(url string) {
+				if _, err := scryfallClient.DownloadAndCacheImage(url); err != nil {
+					// Image caching failed, but we still have the URL for fallback
+					logger.LogMeta("Failed to cache image for card: %v", err)
+				}
+			}(imageURL)
 		}
 	}
 
@@ -369,7 +509,7 @@ func writeReplay(dir string, podIndex int, rec simulation.EDHGameRecord) {
 	}
 }
 
-func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.Mutex, port int, implReport *card.ImplementationReport) {
+func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.Mutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand) {
 	server := dashboard.NewServer(func() []simulation.Result {
 		mu.Lock()
 		defer mu.Unlock()
@@ -396,6 +536,23 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 	server.SetImplementationReportProvider(func() *card.ImplementationReport {
 		return implReport
 	})
+
+	// Create and set game runner
+	gameRunner := &EDHGameRunner{
+		seats:      seats,
+		cardDB:     cardDB,
+		edhResults: edh,
+		legacyRes:  legacy,
+		cardLib:    cardLib,
+		mu:         mu,
+		rng:        rng,
+		podSize:    podSize,
+		maxTurns:   maxTurns,
+		mulligans:  mulligans,
+		replayDir:  replayDir,
+	}
+	server.SetGameRunner(gameRunner)
+
 	go func() {
 		if err := server.Start(); err != nil {
 			logger.LogMeta("Dashboard error: %v", err)

@@ -5,11 +5,20 @@
 		btn.classList.add('active');
 	}
 
-	// globals
 	let currentEDHData = null;
 	let edhSortState = { key: 'win_rate', dir: 'desc' };
 	let cardLibrarySortKey = 'winRate';
 	let cardLibrarySortAsc = false;
+	let selectedDeck = null;
+	let allEDHDecksList = [];
+	let selectedDeckCardsSortKey = 'winRate';
+	let selectedDeckCardsSortAsc = false;
+
+	// Helper function to extract filename from path
+	function getDeckDisplayName(fullPath) {
+		if (!fullPath) return '';
+		return fullPath.split('/').pop().split('\\').pop();
+	}
 
 	function sortEDH(key) {
 		if (!currentEDHData || !currentEDHData.decks) return;
@@ -33,7 +42,8 @@
 			const res = await fetch('/api/results');
 			const data = await res.json();
 			renderSummary(data);
-			renderDecks(data);
+			renderWinRateChart(data);
+			renderTopDecksChart(data);
 		} catch (err) {
 			console.error('Error loading results:', err);
 		}
@@ -101,7 +111,23 @@
 
 	function renderEDH(data) {
 		currentEDHData = data;
-		const decks = (data.decks || []).slice();
+		allEDHDecksList = data.decks || [];
+		filterEDHDecks();
+	}
+
+	function filterEDHDecks() {
+		let decks = (allEDHDecksList || []).slice();
+		const search = (document.getElementById('deckSearch') ? document.getElementById('deckSearch').value : '').toLowerCase();
+		
+		// Filter by search term
+		if (search) {
+			decks = decks.filter(d => 
+				(d.deck_name || '').toLowerCase().includes(search) ||
+				(d.commander_name || '').toLowerCase().includes(search)
+			);
+		}
+		
+		// Sort
 		const key = edhSortState.key;
 		const dir = edhSortState.dir;
 		const numericKeys = ['games','wins','losses','win_rate','avg_final_life','commander_damage_kos','life_loss_kos','mill_kos','avg_commander_casts','avg_mana_spent','avg_cards_played','avg_lands_played','avg_spells_cast','avg_creatures_cast','avg_combat_damage','max_storm_count','eliminations','avg_mulligans'];
@@ -115,17 +141,22 @@
 			if (av > bv) return dir === 'asc' ? 1 : -1;
 			return 0;
 		});
+		
 		document.querySelectorAll('#edhDecks .th-sort').forEach(th => {
 			th.classList.remove('asc', 'desc');
 			if (th.dataset.sortKey === key) {
 				th.classList.add(dir);
 			}
 		});
+		
 		let html = '';
 		for (let d of decks) {
+			let displayName = getDeckDisplayName(d.deck_name);
 			let tooltip = d.deck_name + ' (' + (d.commander_name || 'No Commander') + ') — ' + d.games + ' pods, ' + d.wins + 'W / ' + d.losses + 'L';
-			html += '<tr title="' + tooltip + '">'
-				+ '<td>' + d.deck_name + '</td>'
+			let selected = selectedDeck && selectedDeck.deck_name === d.deck_name ? ' style="background:#3a3a3a;"' : '';
+			let escapedDeckName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			html += '<tr title="' + tooltip + '" onclick="selectDeck(' + "'" + escapedDeckName + "'" + ')"' + selected + ' style="cursor:pointer;">'
+				+ '<td>' + displayName + '</td>'
 				+ '<td>' + (d.commander_name || '-') + '</td>'
 				+ '<td>' + d.games + '</td>'
 				+ '<td>' + d.wins + '</td>'
@@ -150,6 +181,88 @@
 		document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
 	}
 
+	function selectDeck(deckName) {
+		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
+		if (!deck) return;
+		
+		selectedDeck = deck;
+		document.getElementById('selectedDeckStats').style.display = '';
+		document.getElementById('clearDeckSelection').style.display = 'inline-block';
+		
+		// Update stats
+		document.getElementById('selectedDeckName').textContent = getDeckDisplayName(deck.deck_name);
+		document.getElementById('selectedDeckCommander').textContent = deck.commander_name || 'Unknown';
+		document.getElementById('selectedDeckGames').textContent = deck.games;
+		document.getElementById('selectedDeckWinRate').textContent = (deck.win_rate || 0).toFixed(1) + '%';
+		document.getElementById('selectedDeckAvgMana').textContent = (deck.avg_mana_spent || 0).toFixed(1);
+		
+		// Show card stats
+		renderSelectedDeckCards();
+		
+		// Re-render deck list to highlight selection
+		filterEDHDecks();
+	}
+
+	function clearSelectedDeck() {
+		selectedDeck = null;
+		document.getElementById('selectedDeckStats').style.display = 'none';
+		document.getElementById('clearDeckSelection').style.display = 'none';
+		filterEDHDecks();
+	}
+
+	function sortSelectedDeckCards(key) {
+		if (selectedDeckCardsSortKey === key) {
+			selectedDeckCardsSortAsc = !selectedDeckCardsSortAsc;
+		} else {
+			selectedDeckCardsSortKey = key;
+			selectedDeckCardsSortAsc = false;
+		}
+		renderSelectedDeckCards();
+	}
+
+	function renderSelectedDeckCards() {
+		if (!selectedDeck) return;
+		
+		const cardStats = selectedDeck.card_stats || {};
+		let cards = [];
+		
+		for (let [name, stats] of Object.entries(cardStats)) {
+			if (stats.casts >= 3) {  // minimum 3 casts
+				cards.push({
+					name: name,
+					casts: stats.casts,
+					wins: stats.wins || 0,
+					winRate: stats.casts > 0 ? ((stats.wins || 0) / stats.casts * 100) : 0
+				});
+			}
+		}
+		
+		// Sort
+		cards.sort((a, b) => {
+			let av = a[selectedDeckCardsSortKey];
+			let bv = b[selectedDeckCardsSortKey];
+			
+			if (typeof av === 'string') av = av.toLowerCase();
+			if (typeof bv === 'string') bv = bv.toLowerCase();
+			
+			if (av < bv) return selectedDeckCardsSortAsc ? -1 : 1;
+			if (av > bv) return selectedDeckCardsSortAsc ? 1 : -1;
+			return 0;
+		});
+		
+		let html = '';
+		for (let c of cards.slice(0, 100)) {
+			html += '<tr title="' + c.name + ': ' + c.casts + ' casts, ' + c.wins + ' wins">'
+				+ '<td>' + c.name + '</td>'
+				+ '<td>' + c.casts + '</td>'
+				+ '<td>' + c.wins + '</td>'
+				+ '<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>'
+				+ '</tr>';
+		}
+		
+		document.getElementById('selectedDeckCardsBody').innerHTML = html || '<tr><td colspan="4">No cards with 3+ casts</td></tr>';
+	}
+
 	function renderTopCardsForCommander() {
 		 const commander = document.getElementById("commanderSelect").value;
 
@@ -166,7 +279,7 @@
 			for (let [name, perf] of Object.entries(cs)) {
 			if (perf.casts >= 5) {
 				cards.push({
-				deck: d.deck_name,
+				deck: getDeckDisplayName(d.deck_name),
 				name,
 				casts: perf.casts,
 				wins: perf.wins,
@@ -497,7 +610,194 @@
 			applyImplFilterAndSort();
 		}
 
+	// Chart.js instances
+	let winRateChart = null;
+	let topDecksChart = null;
+
+	function renderWinRateChart(data) {
+		const decks = data.decks || [];
+		
+		// Group decks by win rate ranges
+		const ranges = {
+			'0-25%': 0,
+			'25-50%': 0,
+			'50-75%': 0,
+			'75-100%': 0
+		};
+		
+		for (let d of decks) {
+			const wr = d.win_rate || 0;
+			if (wr < 25) ranges['0-25%']++;
+			else if (wr < 50) ranges['25-50%']++;
+			else if (wr < 75) ranges['50-75%']++;
+			else ranges['75-100%']++;
+		}
+		
+		const ctx = document.getElementById('winRateChart');
+		if (!ctx) return;
+		
+		// Destroy existing chart if it exists
+		if (winRateChart) winRateChart.destroy();
+		
+		winRateChart = new Chart(ctx, {
+			type: 'doughnut',
+			data: {
+				labels: Object.keys(ranges),
+				datasets: [{
+					data: Object.values(ranges),
+					backgroundColor: [
+						'#e74c3c',
+						'#f39c12',
+						'#3498db',
+						'#2ecc71'
+					],
+					borderColor: '#1a1a1a',
+					borderWidth: 2
+				}]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				plugins: {
+					legend: {
+						position: 'right',
+						labels: {
+							color: '#ccc',
+							font: { size: 12 }
+						}
+					}
+				}
+			}
+		});
+	}
+
+	function renderTopDecksChart(data) {
+		const decks = (data.decks || []).slice();
+		
+		// Sort by win rate and take top 8
+		decks.sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
+		const topDecks = decks.slice(0, 8);
+		
+		const labels = topDecks.map(d => d.name.replace(/\.deck$/, '').substring(0, 15));
+		const winRates = topDecks.map(d => (d.win_rate || 0).toFixed(1));
+		
+		const ctx = document.getElementById('topDecksChart');
+		if (!ctx) return;
+		
+		// Destroy existing chart if it exists
+		if (topDecksChart) topDecksChart.destroy();
+		
+		topDecksChart = new Chart(ctx, {
+			type: 'bar',
+			data: {
+				labels: labels,
+				datasets: [{
+					label: 'Win Rate %',
+					data: winRates,
+					backgroundColor: topDecks.map((d, i) => {
+						const wr = d.win_rate || 0;
+						if (wr >= 60) return '#2ecc71';
+						if (wr >= 50) return '#3498db';
+						if (wr >= 40) return '#f39c12';
+						return '#e74c3c';
+					}),
+					borderColor: '#ddd',
+					borderWidth: 1
+				}]
+			},
+			options: {
+				indexAxis: 'y',
+				responsive: true,
+				maintainAspectRatio: false,
+				plugins: {
+					legend: {
+						labels: {
+							color: '#ccc'
+						}
+					}
+				},
+				scales: {
+					x: {
+						max: 100,
+						ticks: {
+							color: '#888'
+						},
+						grid: {
+							color: '#333'
+						}
+					},
+					y: {
+						ticks: {
+							color: '#888'
+						},
+						grid: {
+							display: false
+						}
+					}
+				}
+			}
+		});
+	}
+
+	// Game control functions
+	async function runMoreGames() {
+		const countInput = document.getElementById('gamesInput');
+		const count = Math.max(1, Math.min(10000, parseInt(countInput.value) || 100));
+		
+		const btn = document.getElementById('runGamesBtn');
+		btn.disabled = true;
+		btn.textContent = 'Starting...';
+		
+		try {
+			const res = await fetch('/api/run-games?count=' + count, {
+				method: 'POST'
+			});
+			
+			const data = await res.json();
+			
+			if (res.ok) {
+				// Update status immediately after starting
+				await updateGameStatus();
+			} else {
+				btn.textContent = '▶ Run Games';
+				btn.disabled = false;
+				const errorMsg = data.error || 'Unknown error';
+				alert('Error starting games: ' + errorMsg);
+				console.error('Server error:', data);
+			}
+		} catch (err) {
+			console.error('Error running games:', err);
+			btn.textContent = '▶ Run Games';
+			btn.disabled = false;
+			alert('Network error: ' + err.message);
+		}
+	}
+
+	async function updateGameStatus() {
+		try {
+			const res = await fetch('/api/game-status');
+			const data = await res.json();
+			const indicator = document.getElementById('gameStatusIndicator');
+			const btn = document.getElementById('runGamesBtn');
+			
+			if (data.running) {
+				indicator.textContent = '🔄 Games running...';
+				indicator.style.color = '#4ecdc4';
+				btn.disabled = true;
+				btn.textContent = '🔄 Running...';
+			} else {
+				indicator.textContent = '✓ Ready';
+				indicator.style.color = '#888';
+				btn.disabled = false;
+				btn.textContent = '▶ Run Games';
+			}
+		} catch (err) {
+			console.error('Error checking game status:', err);
+		}
+	}
+
 	setInterval(loadResults, 5000);
+	setInterval(updateGameStatus, 2000);
 		setInterval(loadEDHGames, 5000);
 	loadResults();
 		loadEDHGames();

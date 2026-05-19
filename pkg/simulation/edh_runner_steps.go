@@ -294,7 +294,46 @@ func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
 			demand.Add(mt, n)
 		}
 	}
+
+	// Add mana for holding up counterspells if the player has any in hand
+	counterspellHoldUpMana := calculateCounterspellHoldUpMana(ap)
+	for mt, n := range counterspellHoldUpMana {
+		demand.Add(mt, n)
+	}
+
 	return demand
+}
+
+// calculateCounterspellHoldUpMana determines mana to hold up for counterspells.
+// Players with counterspells in hand should hold up mana to be able to counter
+// opponent spells. The typical hold-up is the cost of the cheapest counterspell.
+func calculateCounterspellHoldUpMana(ap *game.Player) game.Mana {
+	holdUp := game.Mana{}
+	
+	// Find counterspells in hand
+	minCounterspellCost := 999
+	var cheapestCounterspell game.SimpleCard
+	hasCounterspell := false
+	
+	for _, c := range ap.Hand {
+		if c.IsCounterspell() {
+			hasCounterspell = true
+			cost := c.GetManaCost().Total()
+			if cost < minCounterspellCost {
+				minCounterspellCost = cost
+				cheapestCounterspell = c
+			}
+		}
+	}
+	
+	// If player has counterspells, hold up mana equal to the cheapest one
+	if hasCounterspell && minCounterspellCost < 999 {
+		for mt, n := range cheapestCounterspell.GetManaCost() {
+			holdUp.Add(mt, n)
+		}
+	}
+	
+	return holdUp
 }
 
 func chooseManaProduction(c game.SimpleCard, demand game.Mana) game.Mana {
