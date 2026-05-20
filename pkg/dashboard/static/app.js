@@ -796,6 +796,49 @@
 		}
 	}
 
+	async function uploadDeck() {
+		const fileInput = document.getElementById('deckFileInput');
+		const file = fileInput.files[0];
+		if (!file) {
+			alert('Please select a deck file');
+			return;
+		}
+
+		const formData = new FormData();
+		formData.append('deck', file);
+
+		const btn = document.getElementById('uploadDeckBtn');
+		const status = document.getElementById('suggestedDeckStatus');
+		btn.disabled = true;
+		status.textContent = 'Uploading...';
+
+		try {
+			const res = await fetch('/api/upload-deck', {
+				method: 'POST',
+				body: formData
+			});
+
+			const data = await res.json();
+
+			if (res.ok) {
+				status.textContent = '✓ ' + file.name + ' uploaded';
+				status.style.color = '#4ecdc4';
+				fileInput.value = '';
+			} else {
+				alert('Upload failed: ' + (data.error || 'Unknown error'));
+				status.textContent = '✗ Upload failed';
+				status.style.color = '#ff6b6b';
+			}
+		} catch (err) {
+			console.error('Error uploading deck:', err);
+			alert('Network error: ' + err.message);
+			status.textContent = '✗ Network error';
+			status.style.color = '#ff6b6b';
+		} finally {
+			btn.disabled = false;
+		}
+	}
+
 	setInterval(loadResults, 5000);
 	setInterval(updateGameStatus, 2000);
 		setInterval(loadEDHGames, 5000);

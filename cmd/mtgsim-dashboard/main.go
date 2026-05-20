@@ -21,12 +21,14 @@ import (
 
 // GameRunner manages running games and updating results
 type GameRunner struct {
-	deckFiles  []string
-	cardDB     *card.CardDB
-	results    *simulation.Results
-	mu         *sync.Mutex
-	rng        *rand.Rand
-	running    bool
+	deckFiles     []string
+	cardDB        *card.CardDB
+	results       *simulation.Results
+	mu            *sync.Mutex
+	suggestedDeck *simulation.EDHSeat
+	suggestedDeckMu *sync.Mutex
+	rng           *rand.Rand
+	running       bool
 }
 
 // RunGames runs the specified number of games
@@ -85,6 +87,13 @@ func (gr *GameRunner) IsRunning() bool {
 	return gr.running
 }
 
+// SetSuggestedDeck sets the suggested deck to be used for games
+func (gr *GameRunner) SetSuggestedDeck(seat *simulation.EDHSeat) {
+	gr.suggestedDeckMu.Lock()
+	defer gr.suggestedDeckMu.Unlock()
+	gr.suggestedDeck = seat
+}
+
 func main() {
 	games := flag.Int("games", 50, "Number of games to simulate")
 	decksDir := flag.String("decks", "decks/1v1", "Directory containing deck files")
@@ -122,15 +131,17 @@ func main() {
 	
 	// Create game runner that can be triggered via API
 	gameRunner := &GameRunner{
-		deckFiles:    deckFiles,
-		cardDB:       cardDB,
-		results:      results,
-		mu:           &mu,
-		rng:          rng,
+		deckFiles:       deckFiles,
+		cardDB:          cardDB,
+		results:         results,
+		mu:              &mu,
+		suggestedDeckMu: &sync.Mutex{},
+		rng:             rng,
 	}
 
 	server := dashboard.NewServer(provider, *port)
 	server.SetGameRunner(gameRunner)
+	server.SetCardDB(cardDB)
 	go func() {
 		if err := server.Start(); err != nil {
 			logger.LogMeta("Dashboard error: %v", err)

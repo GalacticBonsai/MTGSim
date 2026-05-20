@@ -5,12 +5,17 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/mtgsim/mtgsim/pkg/card"
+	"github.com/mtgsim/mtgsim/pkg/deck"
+	"github.com/mtgsim/mtgsim/pkg/game"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
@@ -43,19 +48,26 @@ type ImplementationReportProvider func() *card.ImplementationReport
 type GameRunner interface {
 	RunGames(count int)
 	IsRunning() bool
+	SetSuggestedDeck(seat *simulation.EDHSeat)
 }
+
+// SuggestedDeckProvider returns the currently suggested deck, or nil if none is set.
+type SuggestedDeckProvider func() *simulation.EDHSeat
 
 // Server serves the dashboard.
 type Server struct {
-	provider    ResultsProvider
-	edhProvider EDHResultsProvider
-	edhGames    EDHGamesProvider
-	edhSummary  EDHSummaryProvider
-	cardLibrary CardLibraryProvider
-	implReport  ImplementationReportProvider
-	gameRunner  GameRunner
-	port        int
-	mux         *http.ServeMux
+	provider           ResultsProvider
+	edhProvider        EDHResultsProvider
+	edhGames           EDHGamesProvider
+	edhSummary         EDHSummaryProvider
+	cardLibrary        CardLibraryProvider
+	implReport         ImplementationReportProvider
+	gameRunner         GameRunner
+	suggestedDeck      *simulation.EDHSeat
+	suggestedDeckMu    sync.Mutex
+	cardDB             *card.CardDB
+	port               int
+	mux                *http.ServeMux
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
@@ -87,6 +99,26 @@ func (s *Server) SetImplementationReportProvider(p ImplementationReportProvider)
 // SetGameRunner attaches a game runner for /api/run-games endpoint.
 func (s *Server) SetGameRunner(gr GameRunner) { s.gameRunner = gr }
 
+// SetCardDB attaches a card database for deck parsing.
+func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
+
+// SetSuggestedDeck sets the deck to use for suggested deck games.
+func (s *Server) SetSuggestedDeck(seat *simulation.EDHSeat) {
+	s.suggestedDeckMu.Lock()
+	defer s.suggestedDeckMu.Unlock()
+	s.suggestedDeck = seat
+	if s.gameRunner != nil {
+		s.gameRunner.SetSuggestedDeck(seat)
+	}
+}
+
+// GetSuggestedDeck returns the currently set suggested deck, or nil if none.
+func (s *Server) GetSuggestedDeck() *simulation.EDHSeat {
+	s.suggestedDeckMu.Lock()
+	defer s.suggestedDeckMu.Unlock()
+	return s.suggestedDeck
+}
+
 // Handler returns the underlying http.Handler (useful for tests).
 func (s *Server) Handler() http.Handler {
 	s.registerRoutes()
@@ -102,6 +134,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/api/run-games", s.handleRunGames)
 	s.mux.HandleFunc("/api/game-status", s.handleGameStatus)
+	s.mux.HandleFunc("/api/suggested-deck", s.handleSuggestedDeck)
+	s.mux.HandleFunc("/api/upload-deck", s.handleUploadDeck)
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -135,8 +169,6 @@ type resultsResponse struct {
 func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	const maxDecks = 10
-
 	snapshot := s.provider()
 
 	rows := make([]deckRow, 0, len(snapshot))
@@ -162,13 +194,7 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		TotalGames:  totalRecords / 2,
 		UniqueDecks: len(rows),
 		TotalDecks:  len(rows),
-	}
-
-	if len(rows) > maxDecks {
-		resp.Truncated = true
-		resp.Decks = rows[:maxDecks]
-	} else {
-		resp.Decks = rows
+		Decks:       rows,
 	}
 
 	_ = json.NewEncoder(w).Encode(resp)
@@ -192,20 +218,12 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	const maxDecks = 10
-
 	allDecks := s.edhProvider()
 
 	resp := edhResultsResponse{
 		Enabled:    true,
 		TotalDecks: len(allDecks),
-	}
-
-	if len(allDecks) > maxDecks {
-		resp.Truncated = true
-		resp.Decks = allDecks[:maxDecks]
-	} else {
-		resp.Decks = allDecks
+		Decks:      allDecks,
 	}
 
 	if s.edhSummary != nil {
@@ -307,6 +325,129 @@ func (s *Server) handleGameStatus(w http.ResponseWriter, r *http.Request) {
 	
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"running": running,
+	})
+}
+
+// handleSuggestedDeck returns the current suggested deck for testing
+func (s *Server) handleSuggestedDeck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	deck := s.GetSuggestedDeck()
+	if deck == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name": nil,
+		})
+		return
+	}
+	
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"name": deck.DeckPath,
+	})
+}
+
+// handleUploadDeck handles deck file uploads and sets as suggested deck
+func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "only POST allowed",
+		})
+		return
+	}
+	
+	if s.cardDB == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "card database not initialized",
+		})
+		return
+	}
+	
+	// Parse multipart form with max 10MB
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "failed to parse form: " + err.Error(),
+		})
+		return
+	}
+	
+	file, handler, err := r.FormFile("deck")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "no deck file provided",
+		})
+		return
+	}
+	defer file.Close()
+	
+	// Create a temporary file
+	tmpFile, err := os.CreateTemp("", "deck-*.txt")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "failed to create temp file: " + err.Error(),
+		})
+		return
+	}
+	defer os.Remove(tmpFile.Name())
+	
+	// Copy uploaded file to temp file
+	if _, err := io.Copy(tmpFile, file); err != nil {
+		tmpFile.Close()
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "failed to save file: " + err.Error(),
+		})
+		return
+	}
+	tmpFile.Close()
+	
+	// Parse the deck
+	commanders, main, side, err := deck.ImportCommanderDeckfileWithCommanders(tmpFile.Name(), s.cardDB)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "failed to parse deck: " + err.Error(),
+		})
+		return
+	}
+	
+	// Convert card.Card to game.SimpleCard
+	convertCards := func(cards []card.Card) []game.SimpleCard {
+		result := make([]game.SimpleCard, len(cards))
+		for i, c := range cards {
+			result[i] = game.SimpleCard{
+				Name:           c.Name,
+				TypeLine:       c.TypeLine,
+				Power:          c.Power,
+				Toughness:      c.Toughness,
+				OracleText:     c.OracleText,
+				Colors:         c.Colors,
+				ColorIdentity:  c.ColorIdentity,
+				ManaCost:       c.ManaCost,
+			}
+		}
+		return result
+	}
+	
+	// Create an EDHSeat from the parsed deck
+	seat := simulation.EDHSeat{
+		DeckPath:   handler.Filename,
+		Library:    convertCards(main.Cards),
+		Sideboard:  convertCards(side.Cards),
+		Commanders: convertCards(commanders),
+	}
+	
+	// Set as suggested deck
+	s.SetSuggestedDeck(&seat)
+	
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"message": "deck uploaded and set",
+		"name":    handler.Filename,
 	})
 }
 
