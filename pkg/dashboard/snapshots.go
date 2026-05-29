@@ -9,14 +9,15 @@ import (
 	"time"
 
 	"github.com/mtgsim/mtgsim/pkg/simulation"
+	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
 // MetaSnapshot captures the state of all decks at a point in time.
 type MetaSnapshot struct {
-	Timestamp  time.Time                    `json:"timestamp"`
-	Name       string                       `json:"name"`
-	Decks      []simulation.EDHDeckStats    `json:"decks"`
-	CardLibrary map[string]interface{}      `json:"card_library"`
+	Timestamp   time.Time                     `json:"timestamp"`
+	Name        string                        `json:"name"`
+	Decks       []simulation.EDHDeckStats     `json:"decks"`
+	CardLibrary map[string]stats.GlobalCardStats `json:"card_library"`
 }
 
 // SnapshotManager manages saving and loading deck performance snapshots.
@@ -35,7 +36,7 @@ func NewSnapshotManager(snapshotsDir string) *SnapshotManager {
 }
 
 // SaveSnapshot saves the current meta state.
-func (sm *SnapshotManager) SaveSnapshot(name string, decks []simulation.EDHDeckStats, cardLib map[string]interface{}) error {
+func (sm *SnapshotManager) SaveSnapshot(name string, decks []simulation.EDHDeckStats, cardLib map[string]stats.GlobalCardStats) error {
 	snapshot := MetaSnapshot{
 		Timestamp:   time.Now(),
 		Name:        name,
@@ -44,12 +45,12 @@ func (sm *SnapshotManager) SaveSnapshot(name string, decks []simulation.EDHDeckS
 	}
 
 	// Create filename from timestamp
-	filename := fmt.Sprintf("%s_%d.json", 
+	filename := fmt.Sprintf("%s_%d.json",
 		time.Now().Format("2006-01-02_150405"),
 		time.Now().UnixNano())
-	
+
 	filepath := filepath.Join(sm.snapshotsDir, filename)
-	
+
 	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return err
@@ -142,6 +143,31 @@ func CompareSnapshots(before, after MetaSnapshot) SnapshotComparison {
 	for name := range beforeDecks {
 		if _, exists := afterDecks[name]; !exists {
 			comp.RemovedDecks = append(comp.RemovedDecks, name)
+		}
+	}
+
+	// Compare card performance shifts between snapshots
+	for cardName, beforeStats := range before.CardLibrary {
+		if afterStats, exists := after.CardLibrary[cardName]; exists {
+			beforeWR := 0.0
+			if beforeStats.Casts > 0 {
+				beforeWR = float64(beforeStats.Wins) / float64(beforeStats.Casts) * 100
+			}
+			afterWR := 0.0
+			if afterStats.Casts > 0 {
+				afterWR = float64(afterStats.Wins) / float64(afterStats.Casts) * 100
+			}
+			change := afterWR - beforeWR
+			// Only include cards with meaningful sample size and notable change
+			if afterStats.Casts >= 5 && (change >= 5 || change <= -5) {
+				comp.CardPerformanceShift[cardName] = map[string]interface{}{
+					"change": change,
+					"casts":  afterStats.Casts,
+					"wins":   afterStats.Wins,
+					"before_wr": beforeWR,
+					"after_wr":  afterWR,
+				}
+			}
 		}
 	}
 

@@ -15,12 +15,12 @@
 		</header>
 
 		<div class="tabs">
-			<button class="tab-btn active" onclick="showTab('overview', this)" title="Game status, deck upload, and simulation charts">Overview</button>
-			<button class="tab-btn" onclick="showTab('test-results', this)" title="EDH deck performance and recent game logs">Test Results</button>
-			<button class="tab-btn" onclick="showTab('my-deck', this)" title="Build and modify your decks">My Deck</button>
-			<button class="tab-btn" onclick="showTab('recommendations', this)" title="AI-suggested deck improvements">Recommendations</button>
-			<button class="tab-btn" onclick="showTab('card-analysis', this)" title="Analyze top cards and global statistics">Card Analysis</button>
-			<button class="tab-btn" onclick="showTab('meta-trends', this)" title="Track meta evolution and matchups">Meta Trends</button>
+			<button class="tab-btn active" data-tab="overview" onclick="showTab('overview', this)" title="Game status, deck upload, and simulation charts">Overview</button>
+			<button class="tab-btn" data-tab="test-results" onclick="showTab('test-results', this)" title="EDH deck performance and recent game logs">Test Results</button>
+			<button class="tab-btn" data-tab="my-deck" onclick="showTab('my-deck', this)" title="Build and modify your decks">My Deck</button>
+			<button class="tab-btn" data-tab="recommendations" onclick="showTab('recommendations', this)" title="AI-suggested deck improvements">Recommendations</button>
+			<button class="tab-btn" data-tab="card-analysis" onclick="showTab('card-analysis', this)" title="Analyze top cards and global statistics">Card Analysis</button>
+			<button class="tab-btn" data-tab="meta-trends" onclick="showTab('meta-trends', this)" title="Track meta evolution and matchups">Meta Trends</button>
 		</div>
 		<div id="overview" class="tab-content active">
 
@@ -35,9 +35,9 @@
 				<h4 style="margin:0 0 10px 0;">Suggested Deck (Optional)</h4>
 				<p style="margin:0 0 10px 0; color:#888; font-size:0.9em;">Upload a decklist to test it against the collection. All games will pit this deck against random opponents.</p>
 				<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-					<input type="file" id="deckFileInput" accept=".dck,.txt,.dec" style="flex:1; min-width:200px;">
-					<button id="uploadDeckBtn" onclick="uploadDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Upload Deck</button>
-					<span id="suggestedDeckStatus" style="color:#888; font-size:0.9em;"></span>
+					<input type="file" id="overviewDeckFileInput" accept=".dck,.txt,.dec" style="flex:1; min-width:200px;">
+					<button id="overviewUploadDeckBtn" onclick="uploadOverviewDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Upload Deck</button>
+					<span id="overviewSuggestedDeckStatus" style="color:#888; font-size:0.9em;"></span>
 				</div>
 			</div>
 			
@@ -73,6 +73,10 @@
 			
 			<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
 				<input id="deckSearch" class="search-box" placeholder="Search decks..." oninput="filterEDHDecks()" style="flex:1; min-width:250px;">
+				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+					<input type="checkbox" id="showOnlyUploaded" onchange="filterEDHDecks()" checked>
+					Show only my uploaded decks
+				</label>
 				<button id="clearDeckSelection" onclick="clearSelectedDeck()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">Clear Selection</button>
 			</div>
 
@@ -83,6 +87,10 @@
 					<div class="card"><h2>Games</h2><div class="value" id="selectedDeckGames"></div></div>
 					<div class="card"><h2>Win Rate</h2><div class="value" id="selectedDeckWinRate" style="color:#4ecdc4;"></div></div>
 					<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgMana"></div></div>
+				</div>
+				<div style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
+					<button onclick="goToRecommendations()" style="padding:8px 16px; background:#5a6dd8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🔮 View Recommendations</button>
+					<button onclick="goToMyDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🛠️ Edit in My Deck</button>
 				</div>
 
 				<h3 style="margin-top:20px;">Card Win Rates (minimum 3 casts)</h3>
@@ -172,10 +180,11 @@
 					<h4>Deck Composition</h4>
 					<div style="margin-bottom:10px;">
 						<input type="text" id="deckName" placeholder="Deck name" style="width:100%; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px; margin-bottom:10px; box-sizing:border-box;">
-						<textarea id="deckList" placeholder="Paste deck list here (one card per line)" style="width:100%; height:200px; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px; font-family:monospace; font-size:0.9em; box-sizing:border-box;"></textarea>
+						<textarea id="deckList" oninput="updateDeckEditorStats()" placeholder="Paste deck list here (one card per line)" style="width:100%; height:200px; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px; font-family:monospace; font-size:0.9em; box-sizing:border-box;"></textarea>
 					</div>
-					<button onclick="addCardToDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; margin-right:8px; margin-bottom:8px;">Add Card</button>
+					<button onclick="addCardToDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; margin-right:8px; margin-bottom:8px;">Update Stats</button>
 					<button onclick="clearDeckEditor()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Clear</button>
+					<div id="deckEditorCardStats" style="margin-top:12px;"></div>
 				</div>
 
 				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #ff6b6b;">
@@ -191,7 +200,7 @@
 				</div>
 			</div>
 
-			<button onclick="testDeckComposition()" style="padding:10px 20px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:1.1em; margin-bottom:20px;">Test Deck Composition</button>
+			<button id="testDeckBtn" onclick="testDeckComposition()" style="padding:10px 20px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:1.1em; margin-bottom:20px;">Test Deck Composition</button>
 
 			<h3>Search & Add Cards</h3>
 			<p style="color:#888; margin-bottom:15px;">Find specific cards to test in your deck.</p>
@@ -213,14 +222,14 @@
 			<div id="cardSearchResults" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap:15px;">
 				<div class="loading">Start searching for cards...</div>
 			</div>
-		
+		</div>
 
 		<div id="recommendations" class="tab-content">
 			<h3>Deck Recommendations</h3>
 			<p style="color:#888; margin-bottom:15px;">AI-suggested improvements based on card performance data.</p>
 			
 			<div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-				<select id="recDeckSelect" onchange="loadRecommendations()" style="padding:8px 12px; background:#1a1a1a; color:#fff; border:1px solid #444; border-radius:4px; flex:1; min-width:250px;">
+				<select id="recDeckSelect" style="padding:8px 12px; background:#1a1a1a; color:#fff; border:1px solid #444; border-radius:4px; flex:1; min-width:250px;">
 					<option value="">Select a deck...</option>
 				</select>
 			</div>
@@ -264,10 +273,11 @@
 						<th title="Total times this card was cast">Casts</th>
 						<th title="Games won when this card was cast">Wins</th>
 						<th title="Win percentage when cast (Wins / Casts)">Win Rate</th>
+						<th>Actions</th>
 					</tr>
 				</thead>
 				<tbody id="topCardsBody">
-					<tr><td colspan="5" class="loading">Loading...</td></tr>
+					<tr><td colspan="6" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
 
@@ -280,10 +290,11 @@
 						<th class="th-sort" onclick="sortCardLibrary('casts')">Casts</th>
 						<th class="th-sort" onclick="sortCardLibrary('wins')">Wins</th>
 						<th class="th-sort" onclick="sortCardLibrary('winRate')">Win Rate</th>
+						<th>Actions</th>
 					</tr>
 				</thead>
 				<tbody id="cardLibraryBody">
-					<tr><td colspan="4" class="loading">Loading...</td></tr>
+					<tr><td colspan="5" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
 		</div>
@@ -313,7 +324,10 @@
 				<div class="loading">Loading snapshots...</div>
 			</div>
 
-			<h3>Deck Matchup Matrix</h3>
+			<div style="display:flex; gap:10px; align-items:center; margin-bottom:15px; flex-wrap:wrap;">
+				<h3 style="margin:0;">Deck Performance</h3>
+				<input id="matchupSearch" class="search-box" placeholder="Filter by deck or commander..." oninput="filterMatchupMatrix()" style="margin:0; max-width:300px;">
+			</div>
 			<table class="table" id="matchupMatrix" style="font-size:0.9em;">
 				<thead>
 					<tr>
@@ -323,10 +337,11 @@
 						<th>Games</th>
 						<th>Wins</th>
 						<th>Losses</th>
+						<th>Actions</th>
 					</tr>
 				</thead>
 				<tbody id="matchupBody">
-					<tr><td colspan="6" class="loading">Loading matchup data...</td></tr>
+					<tr><td colspan="7" class="loading">Loading matchup data...</td></tr>
 				</tbody>
 			</table>
 

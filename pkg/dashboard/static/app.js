@@ -2,7 +2,125 @@
 		document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
 		document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
 		document.getElementById(tabId).classList.add('active');
-		btn.classList.add('active');
+		if (btn) {
+			btn.classList.add('active');
+		} else {
+			const button = document.querySelector('.tab-btn[data-tab="' + tabId + '"]');
+			if (button) button.classList.add('active');
+		}
+	}
+
+	// Cross-tab shared state
+	let activeDeckName = localStorage.getItem('mtgsim_active_deck') || '';
+	let globalCardLibraryMap = {};
+	let unimplementedCards = new Set();
+	let ignoreRecSelectChange = false;
+
+	function setActiveDeck(deckName) {
+		activeDeckName = deckName;
+		if (deckName) {
+			localStorage.setItem('mtgsim_active_deck', deckName);
+		} else {
+			localStorage.removeItem('mtgsim_active_deck');
+		}
+		syncActiveDeckDropdowns();
+	}
+
+	function syncActiveDeckDropdowns() {
+		const recSelect = document.getElementById('recDeckSelect');
+		if (!recSelect || !activeDeckName) return;
+		if (recSelect.value === activeDeckName) return; // nothing to do
+
+		ignoreRecSelectChange = true;
+		recSelect.value = activeDeckName;
+		ignoreRecSelectChange = false;
+
+		// Only auto-load recommendations if the user is actually on that tab
+		const recTab = document.getElementById('recommendations');
+		if (recTab && recTab.classList.contains('active')) {
+			loadRecommendations();
+		}
+	}
+
+	function goToRecommendations() {
+		const deckName = activeDeckName || (selectedDeck && selectedDeck.deck_name);
+		if (!deckName) {
+			alert('Select a deck in Test Results first');
+			return;
+		}
+		showTab('recommendations');
+		const recSelect = document.getElementById('recDeckSelect');
+		if (recSelect) {
+			ignoreRecSelectChange = true;
+			recSelect.value = deckName;
+			ignoreRecSelectChange = false;
+			loadRecommendations();
+		}
+	}
+
+	// Wire up the recommendations dropdown change handler programmatically
+	// so we can suppress it during auto-refreshes.
+	function setupRecDeckSelectHandler() {
+		const recSelect = document.getElementById('recDeckSelect');
+		if (!recSelect) return;
+		recSelect.onchange = function() {
+			if (ignoreRecSelectChange) {
+				console.log('[RecSelect] Ignored programmatic change');
+				return;
+			}
+			console.log('[RecSelect] User changed to:', recSelect.value);
+			loadRecommendations();
+		};
+	}
+
+	function goToMyDeck() {
+		const deckName = activeDeckName || (selectedDeck && selectedDeck.deck_name);
+		if (!deckName) {
+			alert('Select a deck in Test Results first');
+			return;
+		}
+		showTab('my-deck');
+		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
+		if (deck) {
+			document.getElementById('deckName').value = getDeckDisplayName(deck.deck_name);
+		}
+
+		// Try to load saved deck contents from localStorage
+		const savedName = localStorage.getItem('mtgsim_deck_name');
+		const savedList = localStorage.getItem('mtgsim_deck_list');
+		if (savedName && savedList && normalizeUploadedName(savedName) === normalizeUploadedName(deckName)) {
+			document.getElementById('deckList').value = savedList;
+			addCardToDeck();
+			return;
+		}
+
+		// Fallback: reconstruct a partial deck list from card_stats if available
+		if (selectedDeck && selectedDeck.card_stats && Object.keys(selectedDeck.card_stats).length > 0) {
+			let lines = [];
+			for (let cardName of Object.keys(selectedDeck.card_stats)) {
+				lines.push('1 ' + cardName);
+			}
+			if (lines.length > 0) {
+				document.getElementById('deckList').value = lines.join('\n');
+				addCardToDeck();
+			}
+		}
+	}
+
+	function addCardToMyDeck(cardName) {
+		const deckList = document.getElementById('deckList');
+		const current = deckList.value.trim();
+		deckList.value = current ? current + '\n1 ' + cardName : '1 ' + cardName;
+		updateDeckEditorStats();
+		const myDeckBtn = document.querySelector('.tab-btn[data-tab="my-deck"]');
+		if (myDeckBtn) {
+			myDeckBtn.style.background = '#4ecdc4';
+			myDeckBtn.style.color = '#000';
+			setTimeout(() => {
+				myDeckBtn.style.background = '';
+				myDeckBtn.style.color = '';
+			}, 600);
+		}
 	}
 
 	let currentEDHData = null;
@@ -20,7 +138,8 @@
 	// Load uploaded deck names from localStorage on startup
 	function loadUploadedDecks() {
 		const stored = localStorage.getItem('mtgsim_uploaded_decks');
-		uploadedDeckNames = new Set(stored ? JSON.parse(stored) : []);
+		const names = stored ? JSON.parse(stored) : [];
+		uploadedDeckNames = new Set(names.map(normalizeUploadedName));
 	}
 	
 	// Save uploaded deck names to localStorage
@@ -32,6 +151,22 @@
 	function getDeckDisplayName(fullPath) {
 		if (!fullPath) return '';
 		return fullPath.split('/').pop().split('\\').pop();
+	}
+
+	function normalizeUploadedName(name) {
+		return name.replace(/\.(dck|txt|dec)$/i, '');
+	}
+
+	function isUploadedDeck(deck) {
+		if (!deck || !deck.deck_name) return false;
+		const deckName = normalizeUploadedName(deck.deck_name);
+		return Array.from(uploadedDeckNames).some(name => {
+			const norm = normalizeUploadedName(name);
+			return deckName.includes(norm) ||
+				deckName.endsWith(norm) ||
+				getDeckDisplayName(deckName) === norm ||
+				getDeckDisplayName(deck.deck_name) === norm;
+		});
 	}
 
 	function sortEDH(key) {
@@ -124,10 +259,16 @@
 	function filterEDHDecks() {
 		let decks = (allEDHDecksList || []).slice();
 		const search = (document.getElementById('deckSearch') ? document.getElementById('deckSearch').value : '').toLowerCase();
-		
+		const onlyUploaded = document.getElementById('showOnlyUploaded') ? document.getElementById('showOnlyUploaded').checked : false;
+
+		// Filter to uploaded decks only
+		if (onlyUploaded) {
+			decks = decks.filter(d => isUploadedDeck(d));
+		}
+
 		// Filter by search term
 		if (search) {
-			decks = decks.filter(d => 
+			decks = decks.filter(d =>
 				(d.deck_name || '').toLowerCase().includes(search) ||
 				(d.commander_name || '').toLowerCase().includes(search)
 			);
@@ -184,27 +325,28 @@
 				+ '<td>' + (d.avg_mulligans || 0).toFixed(2) + '</td>'
 				+ '</tr>';
 		}
-		document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20">No data</td></tr>';
+		document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20" style="color:#888;">No decks match the current filter. Upload a deck or uncheck "Show only my uploaded decks".</td></tr>';
 	}
 
 	function selectDeck(deckName) {
 		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
 		if (!deck) return;
-		
+
 		selectedDeck = deck;
+		setActiveDeck(deckName);
 		document.getElementById('selectedDeckStats').style.display = '';
 		document.getElementById('clearDeckSelection').style.display = 'inline-block';
-		
+
 		// Update stats
 		document.getElementById('selectedDeckName').textContent = getDeckDisplayName(deck.deck_name);
 		document.getElementById('selectedDeckCommander').textContent = deck.commander_name || 'Unknown';
 		document.getElementById('selectedDeckGames').textContent = deck.games;
 		document.getElementById('selectedDeckWinRate').textContent = (deck.win_rate || 0).toFixed(1) + '%';
 		document.getElementById('selectedDeckAvgMana').textContent = (deck.avg_mana_spent || 0).toFixed(1);
-		
+
 		// Show card stats
 		renderSelectedDeckCards();
-		
+
 		// Re-render deck list to highlight selection
 		filterEDHDecks();
 	}
@@ -304,6 +446,7 @@
 			let img = c.image_url
 				? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;">'
 				: '';
+			const escapedName = c.name.replace(/'/g, "\\'");
 
 			let tooltip =
 				c.name + ' in ' + c.deck +
@@ -316,11 +459,12 @@
 					'<td>' + c.casts + '</td>' +
 					'<td>' + c.wins + '</td>' +
 					'<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>' +
+					'<td><button onclick="addCardToMyDeck(\'' + escapedName + '\')" style="padding:4px 10px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">+ Add</button></td>' +
 				'</tr>';
 		}
 
 		document.getElementById('topCardsBody').innerHTML =
-			html || '<tr><td colspan="5">No cards for this commander</td></tr>';
+			html || '<tr><td colspan="6">No cards for this commander</td></tr>';
 	}
 		let allEDHDecks = [];
 
@@ -366,15 +510,18 @@
 
 		function renderCardLibrary(cards) {
 			currentCardLibraryRows = [];
+			globalCardLibraryMap = {};
 
 			for (let [name, perf] of Object.entries(cards)) {
+				const winRate = perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0;
 				currentCardLibraryRows.push({
 					name: name,
 					casts: perf.casts || 0,
 					wins: perf.wins || 0,
-					winRate: perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0,
+					winRate: winRate,
 					image_url: perf.image_url || ''
 				});
+				globalCardLibraryMap[name.toLowerCase()] = { casts: perf.casts || 0, wins: perf.wins || 0, winRate: winRate, image_url: perf.image_url || '' };
 			}
 
 			// IMPORTANT: ensure UI renders even if inputs are missing
@@ -434,6 +581,7 @@
 
 			for (let c of rows) {
 				let img = '';
+				const escapedName = c.name.replace(/'/g, "\\'");
 
 				if (c.image_url) {
 					img =
@@ -462,11 +610,12 @@
 						'<td>' + c.casts + '</td>' +
 						'<td>' + c.wins + '</td>' +
 						'<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>' +
+						'<td><button onclick="addCardToMyDeck(\'' + escapedName + '\')" style="padding:4px 10px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">+ Add</button></td>' +
 					'</tr>';
 			}
 
 			document.getElementById('cardLibraryBody').innerHTML =
-				html || '<tr><td colspan="4">No matching cards</td></tr>';
+				html || '<tr><td colspan="5">No matching cards</td></tr>';
 
 			document.getElementById('cardLibraryMeta').textContent =
 				'Showing ' + rows.length + ' of ' + total + ' matching cards';
@@ -688,6 +837,20 @@
 			return;
 		}
 
+		// Read file contents into the deck editor so it can be edited immediately
+		try {
+			const text = await file.text();
+			const baseName = file.name.replace(/\.(dck|txt|dec)$/i, '');
+			document.getElementById('deckName').value = baseName;
+			document.getElementById('deckList').value = text;
+			addCardToDeck();
+			saveDeckEditorState();
+		} catch (err) {
+			console.error('Error reading deck file:', err);
+			alert('Could not read deck file contents');
+			return;
+		}
+
 		const formData = new FormData();
 		formData.append('deck', file);
 
@@ -705,14 +868,14 @@
 			const data = await res.json();
 
 			if (res.ok) {
-				// Track this deck as user-uploaded
-				uploadedDeckNames.add(file.name);
+				// Track this deck as user-uploaded (normalized name without extension)
+				uploadedDeckNames.add(normalizeUploadedName(file.name));
 				saveUploadedDecks(); // Persist to localStorage
-				
+
 				status.textContent = '✓ ' + file.name + ' uploaded';
 				status.style.color = '#4ecdc4';
 				fileInput.value = '';
-				
+
 				// Refresh recommendations dropdown to include this deck
 				populateRecommendationsDeckSelect();
 			} else {
@@ -730,10 +893,68 @@
 		}
 	}
 
+	async function uploadOverviewDeck() {
+		const fileInput = document.getElementById('overviewDeckFileInput');
+		const file = fileInput.files[0];
+		if (!file) {
+			alert('Please select a deck file');
+			return;
+		}
+
+		// Also load into the My Deck editor
+		try {
+			const text = await file.text();
+			const baseName = file.name.replace(/\.(dck|txt|dec)$/i, '');
+			document.getElementById('deckName').value = baseName;
+			document.getElementById('deckList').value = text;
+			addCardToDeck();
+			saveDeckEditorState();
+		} catch (err) {
+			console.error('Error reading overview deck file:', err);
+		}
+
+		const formData = new FormData();
+		formData.append('deck', file);
+
+		const btn = document.getElementById('overviewUploadDeckBtn');
+		const status = document.getElementById('overviewSuggestedDeckStatus');
+		btn.disabled = true;
+		status.textContent = 'Uploading...';
+
+		try {
+			const res = await fetch('/api/upload-deck', {
+				method: 'POST',
+				body: formData
+			});
+
+			const data = await res.json();
+
+			if (res.ok) {
+				uploadedDeckNames.add(normalizeUploadedName(file.name));
+				saveUploadedDecks();
+				status.textContent = '✓ ' + file.name + ' uploaded';
+				status.style.color = '#4ecdc4';
+				fileInput.value = '';
+				populateRecommendationsDeckSelect();
+			} else {
+				alert('Upload failed: ' + (data.error || 'Unknown error'));
+				status.textContent = '✗ Upload failed';
+				status.style.color = '#ff6b6b';
+			}
+		} catch (err) {
+			console.error('Error uploading overview deck:', err);
+			alert('Network error: ' + err.message);
+			status.textContent = '✗ Network error';
+			status.style.color = '#ff6b6b';
+		} finally {
+			btn.disabled = false;
+		}
+	}
+
 	// ===== NEW FEATURES =====
 
 	// Recommendations Tab
-	async function loadRecommendations() {
+	const _originalLoadRecommendations = async function() {
 		const deckSelect = document.getElementById('recDeckSelect');
 		const deckName = deckSelect.value;
 		if (!deckName) return;
@@ -752,16 +973,28 @@
 			const recs = data.recommendations;
 			let html = '';
 
+			// Header with deck info and quick actions
+			const deck = allEDHDecksList.find(d => d.deck_name === deckName);
+			if (deck) {
+				html += '<div style="margin-bottom:20px; padding:15px; background:#1a1a1a; border-radius:6px; border-left:4px solid #5a6dd8;">';
+				html += '<h4 style="margin-top:0; color:#5a6dd8;">' + getDeckDisplayName(deck.deck_name) + '</h4>';
+				html += '<div style="color:#888; margin-bottom:10px;">Win Rate: <strong>' + (deck.win_rate || 0).toFixed(1) + '%</strong> • Games: ' + deck.games + ' • Commander: ' + (deck.commander_name || '-') + '</div>';
+				html += '<button onclick="goToMyDeck()" style="padding:6px 12px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.9em;">🛠️ Open in My Deck</button>';
+				html += '</div>';
+			}
+
 			if (recs.remove_candidates && recs.remove_candidates.length > 0) {
 				html += '<div style="margin-bottom:20px; padding:15px; background:#1a1a1a; border-radius:6px; border-left:4px solid #e74c3c;">';
 				html += '<h4 style="margin-top:0; color:#e74c3c;">🗑️ Cards to Remove</h4>';
 				html += '<p style="color:#888; margin:10px 0;">These cards have below-average performance in this deck:</p>';
 				html += '<div>';
 				for (let c of recs.remove_candidates) {
-					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px;">';
-					html += '<strong>' + c.card_name + '</strong> ';
+					const escaped = c.card_name.replace(/'/g, "\\'");
+					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
+					html += '<div><strong>' + c.card_name + '</strong> ';
 					html += '<span style="color:#ff6b6b;">Win Rate: ' + c.win_rate.toFixed(1) + '%</span> ';
-					html += '<span style="color:#888;">(' + c.casts + ' casts)</span>';
+					html += '<span style="color:#888;">(' + c.casts + ' casts)</span></div>';
+					html += '<button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:4px 10px; background:#ff6b6b; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold; margin-left:8px; opacity:0.7;" title="Add to My Deck anyway">+</button>';
 					html += '</div>';
 				}
 				html += '</div></div>';
@@ -773,10 +1006,12 @@
 				html += '<p style="color:#888; margin:10px 0;">These cards perform well globally and might improve this deck:</p>';
 				html += '<div>';
 				for (let c of recs.add_candidates.slice(0, 10)) {
-					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px;">';
-					html += '<strong>' + c.card_name + '</strong> ';
+					const escaped = c.card_name.replace(/'/g, "\\'");
+					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
+					html += '<div><strong>' + c.card_name + '</strong> ';
 					html += '<span style="color:#2ecc71;">Win Rate: ' + c.win_rate.toFixed(1) + '%</span> ';
-					html += '<span style="color:#888;">(' + c.casts + ' casts globally)</span>';
+					html += '<span style="color:#888;">(' + c.casts + ' casts globally)</span></div>';
+					html += '<button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:4px 10px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold; margin-left:8px;">+ Add</button>';
 					html += '</div>';
 				}
 				html += '</div></div>';
@@ -791,6 +1026,14 @@
 			console.error('Error loading recommendations:', err);
 			recContent.innerHTML = '<div class="error">Error loading recommendations</div>';
 		}
+	};
+
+	// Diagnostic wrapper — logs every call so we can trace unwanted refreshes
+	async function loadRecommendations() {
+		const deckSelect = document.getElementById('recDeckSelect');
+		console.log('[loadRecommendations] triggered for deck:', deckSelect ? deckSelect.value : 'N/A');
+		console.trace();
+		return _originalLoadRecommendations();
 	}
 
 	// Populate recommendations deck select - show all available EDH decks
@@ -798,34 +1041,51 @@
 		const select = document.getElementById('recDeckSelect');
 		if (!select) return;
 
+		// Suppress change events while we rebuild so removing/restoring options
+		// doesn't spuriously fire loadRecommendations() and flash the panel.
+		ignoreRecSelectChange = true;
+
+		// Remember what the user had selected before we clear anything
+		const previousValue = select.value;
+
 		// Clear existing options except first placeholder
 		while (select.options.length > 1) {
 			select.remove(1);
 		}
 
 		if (!allEDHDecksList || allEDHDecksList.length === 0) {
+			ignoreRecSelectChange = false;
 			return; // Wait for data to load
 		}
 
-		// Sort decks by name for easier browsing
-		let decks = allEDHDecksList.slice().sort((a, b) => 
-			(a.deck_name || '').localeCompare(b.deck_name || '')
+		// Filter to only uploaded decks
+		let uploadedDecks = allEDHDecksList.filter(d => isUploadedDeck(d)
+		).sort((a, b) =>
+			(getDeckDisplayName(a.deck_name) || '').localeCompare(getDeckDisplayName(b.deck_name) || '')
 		);
 
-		// Add all available decks to dropdown
-		for (let d of decks) {
+		// Add uploaded decks to dropdown (display by filename only)
+		for (let d of uploadedDecks) {
 			const opt = document.createElement('option');
 			opt.value = d.deck_name;
-			const isUploaded = Array.from(uploadedDeckNames).some(name => 
-				d.deck_name && (
-					d.deck_name.includes(name) || 
-					d.deck_name.endsWith(name) ||
-					getDeckDisplayName(d.deck_name) === name
-				)
-			);
-			const marker = isUploaded ? '📤 ' : '';
-			opt.textContent = marker + getDeckDisplayName(d.deck_name) + ' (' + d.commander_name + ')';
+			opt.textContent = getDeckDisplayName(d.deck_name);
 			select.appendChild(opt);
+		}
+
+		// Restore the user's selection if that option still exists,
+		// otherwise fall back to the active deck
+		if (previousValue && Array.from(select.options).some(o => o.value === previousValue)) {
+			select.value = previousValue;
+		} else if (activeDeckName) {
+			select.value = activeDeckName;
+		}
+
+		ignoreRecSelectChange = false;
+
+		// Only auto-load if the value actually changed and the Recommendations tab is visible
+		const recTab = document.getElementById('recommendations');
+		if (select.value !== previousValue && recTab && recTab.classList.contains('active')) {
+			loadRecommendations();
 		}
 	}
 
@@ -865,6 +1125,73 @@
 		document.getElementById('deckUniqueCount').textContent = uniqueCards.size;
 		document.getElementById('deckLandCount').textContent = landCount;
 		document.getElementById('deckAvgMana').textContent = '~' + (totalCards > 0 ? (totalCards / uniqueCards.size).toFixed(1) : '0');
+		updateDeckEditorStats();
+	}
+
+	async function loadImplementationStatus() {
+		try {
+			const res = await fetch('/api/implementation');
+			const data = await res.json();
+			if (data.enabled && data.report && data.report.unimplemented_cards) {
+				unimplementedCards = new Set(data.report.unimplemented_cards.map(c => c.name.toLowerCase()));
+				// Refresh deck editor if cards are already loaded
+				updateDeckEditorStats();
+			}
+		} catch (err) {
+			console.error('Error loading implementation status:', err);
+		}
+	}
+
+	function isCardImplemented(cardName) {
+		return !unimplementedCards.has(cardName.toLowerCase());
+	}
+
+	function updateDeckEditorStats() {
+		const container = document.getElementById('deckEditorCardStats');
+		if (!container || currentDeckList.length === 0) {
+			if (container) container.innerHTML = '';
+			return;
+		}
+		let html = '<div style="font-size:0.9em; color:#888; margin-bottom:6px;">Card performance from global library:</div>';
+		let found = 0;
+		for (let card of currentDeckList) {
+			const lib = globalCardLibraryMap[card.name.toLowerCase()];
+			const implWarning = isCardImplemented(card.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
+			if (lib) {
+				found++;
+				const wrColor = lib.winRate >= 55 ? '#2ecc71' : lib.winRate >= 45 ? '#f39c12' : '#e74c3c';
+				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
+				html += '<span>' + card.count + 'x ' + card.name + implWarning + '</span>';
+				html += '<span style="color:' + wrColor + ';">' + lib.winRate.toFixed(1) + '% WR (' + lib.casts + ' casts)</span>';
+				html += '</div>';
+			} else {
+				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
+				html += '<span>' + card.count + 'x ' + card.name + implWarning + '</span>';
+				html += '<span style="color:#666;">no data</span>';
+				html += '</div>';
+			}
+		}
+		if (found === 0 && currentDeckList.length > 0) {
+			html += '<div style="color:#666; font-size:0.9em;">No performance data for these cards yet. Run more games or search in Card Analysis.</div>';
+		}
+		container.innerHTML = html;
+	}
+
+	function saveDeckEditorState() {
+		const name = document.getElementById('deckName').value;
+		const list = document.getElementById('deckList').value;
+		localStorage.setItem('mtgsim_deck_name', name);
+		localStorage.setItem('mtgsim_deck_list', list);
+	}
+
+	function loadDeckEditorState() {
+		const name = localStorage.getItem('mtgsim_deck_name');
+		const list = localStorage.getItem('mtgsim_deck_list');
+		if (name !== null) document.getElementById('deckName').value = name;
+		if (list !== null) {
+			document.getElementById('deckList').value = list;
+			addCardToDeck();
+		}
 	}
 
 	function clearDeckEditor() {
@@ -872,15 +1199,41 @@
 		document.getElementById('deckList').value = '';
 		currentDeckList = [];
 		updateDeckStats();
+		localStorage.removeItem('mtgsim_deck_name');
+		localStorage.removeItem('mtgsim_deck_list');
 	}
 
-	function testDeckComposition() {
-		const deckName = document.getElementById('deckName').value || 'Test Deck';
-		if (currentDeckList.length === 0) {
+	async function testDeckComposition() {
+		const deckName = document.getElementById('deckName').value || 'test-deck';
+		const content = document.getElementById('deckList').value;
+		if (!content.trim()) {
 			alert('Please enter some cards');
 			return;
 		}
-		alert('Deck composition test started: ' + deckName + ' with ' + currentDeckList.length + ' unique cards. Check the results tab for updated statistics.');
+		const filename = deckName.endsWith('.txt') || deckName.endsWith('.dck') || deckName.endsWith('.dec') ? deckName : deckName + '.txt';
+		const blob = new Blob([content], { type: 'text/plain' });
+		const file = new File([blob], filename, { type: 'text/plain' });
+		const formData = new FormData();
+		formData.append('deck', file);
+		const btn = document.getElementById('testDeckBtn');
+		if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+		try {
+			const res = await fetch('/api/upload-deck', { method: 'POST', body: formData });
+			const data = await res.json();
+			if (res.ok) {
+				uploadedDeckNames.add(normalizeUploadedName(filename));
+				saveUploadedDecks();
+				saveDeckEditorState();
+				alert('✓ ' + filename + ' uploaded. Go to Overview to run games with it.');
+				populateRecommendationsDeckSelect();
+			} else {
+				alert('Upload failed: ' + (data.error || 'Unknown error'));
+			}
+		} catch (err) {
+			alert('Network error: ' + err.message);
+		} finally {
+			if (btn) { btn.disabled = false; btn.textContent = 'Test Deck Composition'; }
+		}
 	}
 
 	// Card Search
@@ -922,7 +1275,8 @@
 			for (let card of results.slice(0, 50)) {
 				const wr = card.win_rate || 0;
 				const wrColor = wr >= 55 ? '#2ecc71' : wr >= 45 ? '#f39c12' : '#e74c3c';
-				
+				const escapedName = card.name.replace(/'/g, "\\'");
+
 				html += '<div style="padding:12px; background:#1a1a1a; border-radius:6px; border-left:4px solid ' + wrColor + ';">';
 				if (card.image) {
 					html += '<img src="' + card.image + '" style="width:100%; border-radius:4px; margin-bottom:8px;" alt="' + card.name + '">';
@@ -934,6 +1288,7 @@
 				html += '<div style="color:' + wrColor + '; font-weight:bold; margin-top:4px;">';
 				html += 'Win Rate: ' + wr.toFixed(1) + '%';
 				html += '</div>';
+				html += '<button onclick="addCardToMyDeck(\'' + escapedName + '\')" style="margin-top:8px; padding:6px 12px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.85em; font-weight:bold;">+ Add to My Deck</button>';
 				html += '</div>';
 			}
 
@@ -949,41 +1304,64 @@
 	}
 
 	// Matchup Matrix
+	let matchupMatrixData = [];
+
 	async function loadMatchupMatrix() {
 		const bodyEl = document.getElementById('matchupBody');
 		if (!bodyEl) return;
 
-		bodyEl.innerHTML = '<tr><td colspan="6" class="loading">Loading...</td></tr>';
+		bodyEl.innerHTML = '<tr><td colspan="7" class="loading">Loading...</td></tr>';
 
 		try {
 			const res = await fetch('/api/matchup-matrix');
 			const data = await res.json();
 
 			if (!data.enabled) {
-				bodyEl.innerHTML = '<tr><td colspan="6" class="error">Matchup data not available</td></tr>';
+				bodyEl.innerHTML = '<tr><td colspan="7" class="error">Matchup data not available</td></tr>';
 				return;
 			}
 
-			const decks = data.decks || [];
-			let html = '';
-
-			for (let d of decks) {
-				const wrColor = d.win_rate >= 55 ? '#2ecc71' : d.win_rate >= 45 ? '#f39c12' : '#e74c3c';
-				html += '<tr>';
-				html += '<td>' + getDeckDisplayName(d.name) + '</td>';
-				html += '<td>' + d.commander + '</td>';
-				html += '<td style="color:' + wrColor + '; font-weight:bold;">' + (d.win_rate || 0).toFixed(1) + '%</td>';
-				html += '<td>' + d.games + '</td>';
-				html += '<td>' + Math.round(d.games * (d.win_rate || 0) / 100) + '</td>';
-				html += '<td>' + Math.round(d.games * (1 - (d.win_rate || 0) / 100)) + '</td>';
-				html += '</tr>';
-			}
-
-			bodyEl.innerHTML = html || '<tr><td colspan="6">No matchup data available</td></tr>';
+			matchupMatrixData = data.decks || [];
+			renderMatchupMatrix(matchupMatrixData);
 		} catch (err) {
 			console.error('Error loading matchups:', err);
-			bodyEl.innerHTML = '<tr><td colspan="6" class="error">Error loading matchup data</td></tr>';
+			bodyEl.innerHTML = '<tr><td colspan="7" class="error">Error loading matchup data</td></tr>';
 		}
+	}
+
+	function renderMatchupMatrix(decks) {
+		const bodyEl = document.getElementById('matchupBody');
+		if (!bodyEl) return;
+		let html = '';
+
+		for (let d of decks) {
+			const wrColor = d.win_rate >= 55 ? '#2ecc71' : d.win_rate >= 45 ? '#f39c12' : '#e74c3c';
+			const escapedName = d.name.replace(/'/g, "\\'");
+			html += '<tr>';
+			html += '<td>' + getDeckDisplayName(d.name) + '</td>';
+			html += '<td>' + d.commander + '</td>';
+			html += '<td style="color:' + wrColor + '; font-weight:bold;">' + (d.win_rate || 0).toFixed(1) + '%</td>';
+			html += '<td>' + d.games + '</td>';
+			html += '<td>' + Math.round(d.games * (d.win_rate || 0) / 100) + '</td>';
+			html += '<td>' + Math.round(d.games * (1 - (d.win_rate || 0) / 100)) + '</td>';
+			html += '<td><button onclick="selectDeck(\'' + escapedName + '\'); goToRecommendations();" style="padding:4px 10px; background:#5a6dd8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔮 Recs</button></td>';
+			html += '</tr>';
+		}
+
+		bodyEl.innerHTML = html || '<tr><td colspan="7">No matchup data available</td></tr>';
+	}
+
+	function filterMatchupMatrix() {
+		const q = (document.getElementById('matchupSearch')?.value || '').toLowerCase();
+		if (!q) {
+			renderMatchupMatrix(matchupMatrixData);
+			return;
+		}
+		const filtered = matchupMatrixData.filter(d =>
+			(d.name && d.name.toLowerCase().includes(q)) ||
+			(d.commander && d.commander.toLowerCase().includes(q))
+		);
+		renderMatchupMatrix(filtered);
 	}
 
 	// Meta Snapshots
@@ -1107,6 +1485,28 @@
 				html += '</div>';
 			}
 
+			// Card performance shifts
+			if (comp.card_performance_shift && Object.keys(comp.card_performance_shift).length > 0) {
+				html += '<div style="margin-bottom:20px;">';
+				html += '<h5>📈 Card Performance Shifts</h5>';
+				const shifts = Object.entries(comp.card_performance_shift)
+					.sort((a, b) => Math.abs(b[1].change || 0) - Math.abs(a[1].change || 0))
+					.slice(0, 10);
+				for (let [cardName, shift] of shifts) {
+					const change = shift.change || 0;
+					const color = change > 0 ? '#2ecc71' : change < 0 ? '#e74c3c' : '#888';
+					const arrow = change > 0 ? '📈' : change < 0 ? '📉' : '→';
+					html += '<div style="padding:8px; background:#0a0e27; border-radius:4px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">';
+					html += '<div>' + arrow + ' <strong>' + cardName + '</strong>: ';
+					html += '<span style="color:' + color + '; font-weight:bold;">' + (change > 0 ? '+' : '') + change.toFixed(1) + '%</span>';
+					html += ' <span style="color:#888; font-size:0.85em;">(' + (shift.casts || 0) + ' casts)</span></div>';
+					const escaped = cardName.replace(/'/g, "\\'");
+					html += '<button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:4px 10px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">+ Add</button>';
+					html += '</div>';
+				}
+				html += '</div>';
+			}
+
 			if (html === '<h4>Meta Changes</h4>') {
 				html = '<div class="error">No significant changes between snapshots</div>';
 			}
@@ -1169,6 +1569,9 @@
 
 	// Initialize - load persistent state first
 	loadUploadedDecks();
+	loadDeckEditorState();
+	loadImplementationStatus();
+	setupRecDeckSelectHandler();
 
 	// Load snapshots on page load
 	setInterval(loadSnapshotsList, 10000);
@@ -1181,3 +1584,46 @@
 	loadResults();
 	loadEDHGames();
 	loadMatchupMatrix();
+
+	// After initial load, try to restore active deck selection across tabs
+	setTimeout(() => {
+		if (activeDeckName) syncActiveDeckDropdowns();
+	}, 1000);
+
+	// Self-test: simulate auto-refresh cycles and assert the Recommendations
+	// dropdown doesn't flip to a different deck.
+	window.testRecSelectStability = async function(iterations = 3, delayMs = 100) {
+		const select = document.getElementById('recDeckSelect');
+		if (!select) {
+			console.error('[Test] recDeckSelect not found');
+			return false;
+		}
+
+		// Pick a non-empty value to test with (skip placeholder)
+		if (select.options.length <= 1) {
+			console.error('[Test] No decks in dropdown yet. Run a simulation first.');
+			return false;
+		}
+
+		// Remember whatever is currently selected (or pick the last option)
+		let testValue = select.value || select.options[select.options.length - 1].value;
+		select.value = testValue;
+		console.log('[Test] Starting stability test. Target value:', testValue);
+
+		let passed = true;
+		for (let i = 0; i < iterations; i++) {
+			await new Promise(r => setTimeout(r, delayMs));
+			await populateRecommendationsDeckSelect();
+			await new Promise(r => setTimeout(r, delayMs));
+
+			const after = select.value;
+			if (after !== testValue) {
+				console.error('[Test] FAIL on iteration', i + 1, ': expected', testValue, 'got', after);
+				passed = false;
+			} else {
+				console.log('[Test] OK iteration', i + 1, ': value stayed', after);
+			}
+		}
+		console.log('[Test] Result:', passed ? 'PASSED' : 'FAILED');
+		return passed;
+	};

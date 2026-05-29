@@ -1,8 +1,11 @@
 package dashboard
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
@@ -48,50 +51,113 @@ type MatchupResult struct {
 	Games      int     `json:"games"`
 }
 
+// getDeckColorIdentity returns the combined color identity of a deck's commander(s).
+// It parses the CommanderName field (which may contain multiple partners separated by " / ")
+// and looks each up in the card database. Returns nil when the DB is unavailable or no
+// commander is found, which signals the caller to skip color-based filtering.
+func getDeckColorIdentity(deckStats *simulation.EDHDeckStats, cardDB *card.CardDB) []string {
+	if cardDB == nil || deckStats.CommanderName == "" {
+		return nil
+	}
+	identitySet := make(map[string]bool)
+	for _, name := range strings.Split(deckStats.CommanderName, " / ") {
+		name = strings.TrimSpace(name)
+		if c, ok := cardDB.GetCardByName(name); ok {
+			for _, col := range c.ColorIdentity {
+				identitySet[col] = true
+			}
+		}
+	}
+	if len(identitySet) == 0 {
+		return nil
+	}
+	identity := make([]string, 0, len(identitySet))
+	for col := range identitySet {
+		identity = append(identity, col)
+	}
+	return identity
+}
+
+// isColorIdentitySubset reports whether a card's colors are legal inside the
+// given commander color identity. An empty card identity (colorless) is always
+// legal; an empty commander identity (e.g. unknown commander) causes the
+// function to return true so we don't over-filter.
+func isColorIdentitySubset(cardColors, commanderColors []string) bool {
+	if len(commanderColors) == 0 {
+		return true // don't know the commander, allow everything
+	}
+	if len(cardColors) == 0 {
+		return true // colorless cards fit everywhere
+	}
+	cmdrSet := make(map[string]bool, len(commanderColors))
+	for _, c := range commanderColors {
+		cmdrSet[c] = true
+	}
+	for _, c := range cardColors {
+		if !cmdrSet[c] {
+			return false
+		}
+	}
+	return true
+}
+
 // GenerateDeckRecommendations analyzes a deck and provides improvement suggestions.
-func GenerateDeckRecommendations(deckStats *simulation.EDHDeckStats, cardLib map[string]stats.GlobalCardStats) DeckRecommendations {
+func GenerateDeckRecommendations(deckStats *simulation.EDHDeckStats, cardLib map[string]stats.GlobalCardStats, cardDB *card.CardDB) DeckRecommendations {
 	recs := DeckRecommendations{
-		DeckName:      deckStats.DeckName,
-		CommanderName: deckStats.CommanderName,
-		Cards:         []CardRecommendation{},
+		DeckName:         deckStats.DeckName,
+		CommanderName:    deckStats.CommanderName,
+		Cards:            []CardRecommendation{},
 		RemoveCandidates: []CardRecommendation{},
-		AddCandidates: []CardRecommendation{},
+		AddCandidates:    []CardRecommendation{},
 	}
 
 	if deckStats.CardStats == nil {
 		return recs
 	}
 
-	// Analyze each card in the deck
+	cmdrIdentity := getDeckColorIdentity(deckStats, cardDB)
+	deckWinRate := deckStats.WinRate
+
+	// Analyze each card in the deck — compare performance to the deck's own average
 	for cardName, perf := range deckStats.CardStats {
 		winRate := 0.0
 		if perf.Casts > 0 {
 			winRate = (float64(perf.Wins) / float64(perf.Casts)) * 100
 		}
 
-		// Low-performance cards (below 40% win rate with 5+ casts)
-		if perf.Casts >= 5 && winRate < 40 {
+		// Remove candidates: cards that drag the deck down (significantly below deck average)
+		if perf.Casts >= 5 && winRate < deckWinRate-10 {
+			delta := deckWinRate - winRate
+			priority := 2
+			if delta > 20 {
+				priority = 1
+			}
 			recs.RemoveCandidates = append(recs.RemoveCandidates, CardRecommendation{
 				Action:   "remove",
 				CardName: cardName,
-				Reason:   "Low win rate in this deck",
-				Impact:   "Removing could improve deck consistency",
+				Reason:   fmt.Sprintf("%.1f%% win rate is %.1f%% below deck average (%.1f%%)", winRate, delta, deckWinRate),
+				Impact:   "Removing could bring the deck closer to its average performance",
 				WinRate:  winRate,
 				Casts:    perf.Casts,
-				Priority: 1,
+				Priority: priority,
 			})
 		}
 
-		// Good performers to keep (60%+ win rate)
-		if perf.Casts >= 3 && winRate >= 60 {
+		// Keep candidates: cards that lift the deck up (significantly above deck average)
+		if perf.Casts >= 3 && winRate > deckWinRate+5 {
+			delta := winRate - deckWinRate
+			priority := 2
+			if delta > 15 {
+				priority = 1
+			}
 			recs.Cards = append(recs.Cards, CardRecommendation{
 				Action:   "keep",
 				CardName: cardName,
-				Reason:   "High win rate performer",
-				Impact:   "Core deck card",
+				Reason:   fmt.Sprintf("%.1f%% win rate is %.1f%% above deck average (%.1f%%)", winRate, delta, deckWinRate),
+				Impact:   "Core card that lifts the deck above its baseline",
 				WinRate:  winRate,
 				Casts:    perf.Casts,
-				Priority: 1,
+				Priority: priority,
 			})
 		}
 	}
@@ -104,12 +170,21 @@ func GenerateDeckRecommendations(deckStats *simulation.EDHDeckStats, cardLib map
 				globalWinRate = (float64(globalStats.Wins) / float64(globalStats.Casts)) * 100
 			}
 
-			// Suggest high performers that aren't in deck
-			if globalStats.Casts >= 10 && globalWinRate >= 55 {
+			// Suggest cards that outperform this deck's average (with a floor so we don't suggest garbage)
+			if globalStats.Casts >= 10 && globalWinRate > deckWinRate+5 && globalWinRate >= 35 {
+				// Filter out cards that violate the commander's color identity
+				if cardDB != nil {
+					if c, ok := cardDB.GetCardByName(cardName); ok {
+						if !isColorIdentitySubset(c.ColorIdentity, cmdrIdentity) {
+							continue
+						}
+					}
+				}
+				delta := globalWinRate - deckWinRate
 				recs.AddCandidates = append(recs.AddCandidates, CardRecommendation{
 					Action:   "test",
 					CardName: cardName,
-					Reason:   "Consistently performs well globally",
+					Reason:   fmt.Sprintf("Global win rate %.1f%% is %.1f%% above this deck's %.1f%%", globalWinRate, delta, deckWinRate),
 					Impact:   "Testing could improve deck power level",
 					WinRate:  globalWinRate,
 					Casts:    globalStats.Casts,
@@ -138,12 +213,14 @@ func GenerateDeckRecommendations(deckStats *simulation.EDHDeckStats, cardLib map
 }
 
 // GenerateSideboardSuggestions analyzes matchup performance and suggests sideboard swaps.
-func GenerateSideboardSuggestions(deckStats *simulation.EDHDeckStats, allDecks []simulation.EDHDeckStats, cardLib map[string]stats.GlobalCardStats) []SideboardSuggestion {
+func GenerateSideboardSuggestions(deckStats *simulation.EDHDeckStats, allDecks []simulation.EDHDeckStats, cardLib map[string]stats.GlobalCardStats, cardDB *card.CardDB) []SideboardSuggestion {
 	suggs := []SideboardSuggestion{}
 
 	if deckStats.CardStats == nil || deckStats.Wins == 0 {
 		return suggs
 	}
+
+	cmdrIdentity := getDeckColorIdentity(deckStats, cardDB)
 
 	// Calculate win rate against specific archetypes/decks
 	// For now, we'll suggest swaps based on global card performance variations
@@ -163,6 +240,14 @@ func GenerateSideboardSuggestions(deckStats *simulation.EDHDeckStats, allDecks [
 			if replStats.Casts >= 15 {
 				replWR := (float64(replStats.Wins) / float64(replStats.Casts)) * 100
 				if replWR > 50 {
+					// Filter out replacements that violate the commander's color identity
+					if cardDB != nil {
+						if c, ok := cardDB.GetCardByName(replName); ok {
+							if !isColorIdentitySubset(c.ColorIdentity, cmdrIdentity) {
+								continue
+							}
+						}
+					}
 					suggs = append(suggs, SideboardSuggestion{
 						Remove:   cardName,
 						Add:      replName,

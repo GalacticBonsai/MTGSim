@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -447,9 +448,20 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 		return result
 	}
 	
+	// Determine deck name: prefer explicit name from file, fallback to uploaded filename
+	deckName := main.Name
+	if deckName == "" || strings.Contains(deckName, "/tmp/deck-") {
+		deckName = handler.Filename
+	}
+	// Strip extension for cleaner display
+	if ext := filepath.Ext(deckName); ext != "" {
+		deckName = strings.TrimSuffix(deckName, ext)
+	}
+
 	// Create an EDHSeat from the parsed deck
 	seat := simulation.EDHSeat{
 		DeckPath:   handler.Filename,
+		DeckName:   deckName,
 		Library:    convertCards(main.Cards),
 		Sideboard:  convertCards(side.Cards),
 		Commanders: convertCards(commanders),
@@ -500,7 +512,7 @@ func (s *Server) handleCardRecommendations(w http.ResponseWriter, r *http.Reques
 		cardLib = s.cardLibrary()
 	}
 
-	recs := GenerateDeckRecommendations(deckStats, cardLib)
+	recs := GenerateDeckRecommendations(deckStats, cardLib, s.cardDB)
 	json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"recommendations": recs,
@@ -543,7 +555,7 @@ func (s *Server) handleSideboardSuggestions(w http.ResponseWriter, r *http.Reque
 		cardLib = s.cardLibrary()
 	}
 
-	suggs := GenerateSideboardSuggestions(deckStats, edhStats, cardLib)
+	suggs := GenerateSideboardSuggestions(deckStats, edhStats, cardLib, s.cardDB)
 	json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"suggestions": suggs,
@@ -651,7 +663,7 @@ func (s *Server) handleSaveSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	edhStats := s.edhProvider()
-	cardLib := map[string]interface{}{}
+	cardLib := map[string]stats.GlobalCardStats{}
 	if s.cardLibrary != nil {
 		cl := s.cardLibrary()
 		for k, v := range cl {
