@@ -15,12 +15,12 @@
 		</header>
 
 		<div class="tabs">
-			<button class="tab-btn active" onclick="showTab('overview', this)" title="Aggregate 1v1 simulation results and deck win rates">Overview</button>
-			<button class="tab-btn" onclick="showTab('edh-decks', this)" title="Commander deck performance across all pods">EDH Decks</button>
-			<button class="tab-btn" onclick="showTab('top-cards', this)" title="Highest win-rate cards when cast (minimum 5 casts)">Top Cards</button>
-			<button class="tab-btn" onclick="showTab('recent-pods', this)" title="Last 10 EDH pods with per-player breakdowns">Recent Pods</button>
-			<button class="tab-btn" onclick="showTab('card-library', this)" title="Global card statistics across all simulation runs">Card Library</button>
-			<button class="tab-btn" onclick="showTab('implementation', this)" title="Card implementation status by parser and engine support">Implementation</button>
+			<button class="tab-btn active" onclick="showTab('overview', this)" title="Game status, deck upload, and simulation charts">Overview</button>
+			<button class="tab-btn" onclick="showTab('test-results', this)" title="EDH deck performance and recent game logs">Test Results</button>
+			<button class="tab-btn" onclick="showTab('my-deck', this)" title="Build and modify your decks">My Deck</button>
+			<button class="tab-btn" onclick="showTab('recommendations', this)" title="AI-suggested deck improvements">Recommendations</button>
+			<button class="tab-btn" onclick="showTab('card-analysis', this)" title="Analyze top cards and global statistics">Card Analysis</button>
+			<button class="tab-btn" onclick="showTab('meta-trends', this)" title="Track meta evolution and matchups">Meta Trends</button>
 		</div>
 		<div id="overview" class="tab-content active">
 
@@ -66,40 +66,42 @@
 			</div>
 		</div>
 		</div>
-		<div id="edh-decks" class="tab-content">
-		<h3>EDH / Commander Performance</h3>
-		
-		<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-			<input id="deckSearch" class="search-box" placeholder="Search decks..." oninput="filterEDHDecks()" style="flex:1; min-width:250px;">
-			<button id="clearDeckSelection" onclick="clearSelectedDeck()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">Clear Selection</button>
-		</div>
 
-		<div id="selectedDeckStats" style="display:none; margin-bottom:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #4ecdc4;">
-			<h3 style="margin-top:0;">Selected Deck: <span id="selectedDeckName" style="color:#4ecdc4;"></span></h3>
-			<div class="grid" id="selectedDeckGrid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-				<div class="card"><h2>Commander</h2><div class="value" id="selectedDeckCommander"></div></div>
-				<div class="card"><h2>Games</h2><div class="value" id="selectedDeckGames"></div></div>
-				<div class="card"><h2>Win Rate</h2><div class="value" id="selectedDeckWinRate" style="color:#4ecdc4;"></div></div>
-				<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgMana"></div></div>
+		<div id="test-results" class="tab-content">
+			<h3>EDH Test Results & Recent Games</h3>
+			<p style="color:#888; margin-bottom:15px;">View how your decks are performing and recent pod outcomes.</p>
+			
+			<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+				<input id="deckSearch" class="search-box" placeholder="Search decks..." oninput="filterEDHDecks()" style="flex:1; min-width:250px;">
+				<button id="clearDeckSelection" onclick="clearSelectedDeck()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">Clear Selection</button>
 			</div>
 
-			<h3 style="margin-top:20px;">Card Win Rates (minimum 3 casts)</h3>
-			<table class="table" id="selectedDeckCards">
-				<thead>
-					<tr>
-						<th onclick="sortSelectedDeckCards('name')" style="cursor:pointer;">Card Name</th>
-						<th onclick="sortSelectedDeckCards('casts')" style="cursor:pointer;">Casts</th>
-						<th onclick="sortSelectedDeckCards('wins')" style="cursor:pointer;">Wins</th>
-						<th onclick="sortSelectedDeckCards('winRate')" style="cursor:pointer;">Win Rate</th>
-					</tr>
-				</thead>
-				<tbody id="selectedDeckCardsBody">
-					<tr><td colspan="4" class="loading">Select a deck</td></tr>
-				</tbody>
-			</table>
-		</div>
+			<div id="selectedDeckStats" style="display:none; margin-bottom:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #4ecdc4;">
+				<h3 style="margin-top:0;">Selected Deck: <span id="selectedDeckName" style="color:#4ecdc4;"></span></h3>
+				<div class="grid" id="selectedDeckGrid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+					<div class="card"><h2>Commander</h2><div class="value" id="selectedDeckCommander"></div></div>
+					<div class="card"><h2>Games</h2><div class="value" id="selectedDeckGames"></div></div>
+					<div class="card"><h2>Win Rate</h2><div class="value" id="selectedDeckWinRate" style="color:#4ecdc4;"></div></div>
+					<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgMana"></div></div>
+				</div>
 
-		<h3>All Decks</h3>
+				<h3 style="margin-top:20px;">Card Win Rates (minimum 3 casts)</h3>
+				<table class="table" id="selectedDeckCards">
+					<thead>
+						<tr>
+							<th onclick="sortSelectedDeckCards('name')" style="cursor:pointer;">Card Name</th>
+							<th onclick="sortSelectedDeckCards('casts')" style="cursor:pointer;">Casts</th>
+							<th onclick="sortSelectedDeckCards('wins')" style="cursor:pointer;">Wins</th>
+							<th onclick="sortSelectedDeckCards('winRate')" style="cursor:pointer;">Win Rate</th>
+						</tr>
+					</thead>
+					<tbody id="selectedDeckCardsBody">
+						<tr><td colspan="4" class="loading">Select a deck</td></tr>
+					</tbody>
+				</table>
+			</div>
+
+			<h3>All Decks Performance</h3>
 			<table class="table" id="edhDecks">
 				<thead>
 					<tr>
@@ -114,31 +116,146 @@
 							<th class="th-sort" data-sort-key="life_loss_kos" onclick="sortEDH('life_loss_kos')" title="Eliminations via life loss (non-commander)">Life KOs</th>
 							<th class="th-sort" data-sort-key="mill_kos" onclick="sortEDH('mill_kos')" title="Eliminations via decking or mill">Mill KOs</th>
 							<th class="th-sort" data-sort-key="avg_commander_casts" onclick="sortEDH('avg_commander_casts')" title="Average commander casts per pod">Avg Cmdr Casts</th>
-					<th class="th-sort" data-sort-key="avg_mana_spent" onclick="sortEDH('avg_mana_spent')" title="Average mana spent per pod">Avg Mana</th>
-					<th class="th-sort" data-sort-key="avg_cards_played" onclick="sortEDH('avg_cards_played')" title="Average cards played per pod">Avg Cards</th>
-					<th class="th-sort" data-sort-key="avg_lands_played" onclick="sortEDH('avg_lands_played')" title="Average lands played per pod">Avg Lands</th>
-					<th class="th-sort" data-sort-key="avg_spells_cast" onclick="sortEDH('avg_spells_cast')" title="Average non-creature spells cast per pod">Avg Spells</th>
-					<th class="th-sort" data-sort-key="avg_creatures_cast" onclick="sortEDH('avg_creatures_cast')" title="Average creatures cast per pod">Avg Creatures</th>
-							<th class="th-sort" data-sort-key="avg_combat_damage" onclick="sortEDH('avg_combat_damage')" title="Average combat damage dealt per pod">Avg Combat</th>
-							<th class="th-sort" data-sort-key="max_storm_count" onclick="sortEDH('max_storm_count')" title="Highest storm count reached">Max Storm</th>
-							<th class="th-sort" data-sort-key="eliminations" onclick="sortEDH('eliminations')" title="Total eliminations caused">KOs</th>
-						<th class="th-sort" data-sort-key="avg_mulligans" onclick="sortEDH('avg_mulligans')" title="Average mulligans per pod">Avg Mulls</th>
+						<th class="th-sort" data-sort-key="avg_mana_spent" onclick="sortEDH('avg_mana_spent')" title="Average mana spent per pod">Avg Mana</th>
+						<th class="th-sort" data-sort-key="avg_cards_played" onclick="sortEDH('avg_cards_played')" title="Average cards played per pod">Avg Cards</th>
+						<th class="th-sort" data-sort-key="avg_lands_played" onclick="sortEDH('avg_lands_played')" title="Average lands played per pod">Avg Lands</th>
+						<th class="th-sort" data-sort-key="avg_spells_cast" onclick="sortEDH('avg_spells_cast')" title="Average non-creature spells cast per pod">Avg Spells</th>
+						<th class="th-sort" data-sort-key="avg_creatures_cast" onclick="sortEDH('avg_creatures_cast')" title="Average creatures cast per pod">Avg Creatures</th>
+								<th class="th-sort" data-sort-key="avg_combat_damage" onclick="sortEDH('avg_combat_damage')" title="Average combat damage dealt per pod">Avg Combat</th>
+								<th class="th-sort" data-sort-key="max_storm_count" onclick="sortEDH('max_storm_count')" title="Highest storm count reached">Max Storm</th>
+								<th class="th-sort" data-sort-key="eliminations" onclick="sortEDH('eliminations')" title="Total eliminations caused">KOs</th>
+							<th class="th-sort" data-sort-key="avg_mulligans" onclick="sortEDH('avg_mulligans')" title="Average mulligans per pod">Avg Mulls</th>
+						</tr>
+					</thead>
+					<tbody id="edhDecksBody">
+						<tr><td colspan="20" class="loading">Loading...</td></tr>
+					</tbody>
+				</table>
+
+			<h3 style="margin-top:30px;">Recent EDH Pods</h3>
+			<table class="table" id="edhGames">
+				<thead>
+					<tr>
+						<th title="Deck that won the pod (or Draw)">Winner</th>
+						<th title="Number of turns the pod lasted">Turns</th>
+						<th title="Highest storm count reached">Max Storm</th>
+						<th title="Total mana spent by all players">Mana</th>
+						<th title="Total cards played by all players">Cards</th>
+						<th title="Total combat damage dealt">Combat</th>
+						<th title="Per-player pod summary">Players</th>
+						<th title="Number of game events logged">Events</th>
+						<th title="Type of the final game event">Last Event</th>
 					</tr>
 				</thead>
-				<tbody id="edhDecksBody">
-					<tr><td colspan="20" class="loading">Loading...</td></tr>
+				<tbody id="edhGamesBody">
+					<tr><td colspan="9" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
 		</div>
 
-		<div id="top-cards" class="tab-content">
-			<h3>Top Cards by Win Rate When Cast</h3>
-			<p style="color:#888; margin-bottom:10px;">Cards with at least 5 casts. Sorted by win rate, then by cast volume.</p>
-			<input id="commanderSearch" class="search-box" placeholder="Search commanders..." oninput="filterCommanders()" />
+		<div id="my-deck" class="tab-content">
+			<h3>Build & Modify Your Deck</h3>
+			<p style="color:#888; margin-bottom:15px;">Upload, edit, and test your decklist here.</p>
 
-			<select id="commanderSelect" onchange="renderTopCardsForCommander()">
-				<option value="">All Commanders</option>
-			</select>
+			<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #ff6b6b; margin-bottom:20px;">
+				<h4>Deck Upload</h4>
+				<p style="margin:0 0 10px 0; color:#888; font-size:0.9em;">Upload a decklist to test it against the collection.</p>
+				<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+					<input type="file" id="deckFileInput" accept=".dck,.txt,.dec" style="flex:1; min-width:200px;">
+					<button id="uploadDeckBtn" onclick="uploadDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Upload Deck</button>
+					<span id="suggestedDeckStatus" style="color:#888; font-size:0.9em;"></span>
+				</div>
+			</div>
+
+			<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #4ecdc4;">
+					<h4>Deck Composition</h4>
+					<div style="margin-bottom:10px;">
+						<input type="text" id="deckName" placeholder="Deck name" style="width:100%; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px; margin-bottom:10px; box-sizing:border-box;">
+						<textarea id="deckList" placeholder="Paste deck list here (one card per line)" style="width:100%; height:200px; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px; font-family:monospace; font-size:0.9em; box-sizing:border-box;"></textarea>
+					</div>
+					<button onclick="addCardToDeck()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; margin-right:8px; margin-bottom:8px;">Add Card</button>
+					<button onclick="clearDeckEditor()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Clear</button>
+				</div>
+
+				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #ff6b6b;">
+					<h4>Deck Stats</h4>
+					<div id="deckStatsDisplay" style="font-size:0.95em; line-height:1.8;">
+						<div><strong>Total Cards:</strong> <span id="deckCardCount">0</span></div>
+						<div><strong>Avg Mana Cost:</strong> <span id="deckAvgMana">0</span></div>
+						<div><strong>Land Count:</strong> <span id="deckLandCount">0</span></div>
+						<div><strong>Unique Cards:</strong> <span id="deckUniqueCount">0</span></div>
+						<div><strong>Mana Distribution:</strong></div>
+						<div id="manaCurve" style="margin-top:8px; font-size:0.9em; background:#0a0e27; padding:8px; border-radius:4px;"></div>
+					</div>
+				</div>
+			</div>
+
+			<button onclick="testDeckComposition()" style="padding:10px 20px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:1.1em; margin-bottom:20px;">Test Deck Composition</button>
+
+			<h3>Search & Add Cards</h3>
+			<p style="color:#888; margin-bottom:15px;">Find specific cards to test in your deck.</p>
+			
+			<div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+				<input type="text" id="cardSearchInput" class="search-box" placeholder="Search cards..." oninput="performCardSearch()" style="flex:1; min-width:250px;">
+				
+				<label style="color:#888; font-size:0.9em;">
+					Sort by:
+					<select id="cardSortSelect" onchange="performCardSearch()" style="margin-left:6px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; padding:6px; border-radius:4px;">
+						<option value="win_rate">Win Rate</option>
+						<option value="casts">Casts</option>
+						<option value="wins">Wins</option>
+						<option value="name">Name</option>
+					</select>
+				</label>
+			</div>
+
+			<div id="cardSearchResults" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap:15px;">
+				<div class="loading">Start searching for cards...</div>
+			</div>
+		
+
+		<div id="recommendations" class="tab-content">
+			<h3>Deck Recommendations</h3>
+			<p style="color:#888; margin-bottom:15px;">AI-suggested improvements based on card performance data.</p>
+			
+			<div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+				<select id="recDeckSelect" onchange="loadRecommendations()" style="padding:8px 12px; background:#1a1a1a; color:#fff; border:1px solid #444; border-radius:4px; flex:1; min-width:250px;">
+					<option value="">Select a deck...</option>
+				</select>
+			</div>
+
+			<div id="recContent">
+				<div class="loading">Select a deck to view recommendations</div>
+			</div>
+		</div>
+
+		<div id="card-analysis" class="tab-content">
+			<h3>Top Cards & Card Analysis</h3>
+			<p style="color:#888; margin-bottom:15px;">Understand which cards perform best in your testing.</p>
+
+			<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #4ecdc4;">
+					<h4>Top Cards by Win Rate</h4>
+					<p style="color:#888; font-size:0.9em; margin-bottom:10px;">Cards with at least 5 casts, sorted by win rate.</p>
+					<input id="commanderSearch" class="search-box" placeholder="Search commanders..." oninput="filterCommanders()" style="margin-bottom:10px;">
+					<select id="commanderSelect" onchange="renderTopCardsForCommander()" style="width:100%; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px;">
+						<option value="">All Commanders</option>
+					</select>
+				</div>
+
+				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #f39c12;">
+					<h4>Global Card Library</h4>
+					<p style="color:#888; font-size:0.9em; margin-bottom:10px;">All cards tested across your simulations.</p>
+					<input type="text" id="cardLibrarySearch" class="search-box" placeholder="Search cards..." oninput="filterCardLibrary()" style="margin-bottom:10px;">
+					<label style="color:#888; font-size:0.9em; display:block;">
+						Min Casts:
+						<input type="number" id="cardLibraryMinCasts" value="5" min="1" oninput="filterCardLibrary()" style="width:80px; margin-left:6px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; padding:6px; border-radius:4px;">
+					</label>
+				</div>
+			</div>
+
+			<h3>Top Cards (Min 5 Casts)</h3>
 			<table class="table" id="topCards">
 				<thead>
 					<tr>
@@ -153,70 +270,9 @@
 					<tr><td colspan="5" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
-		</div>
 
-		<div id="recent-pods" class="tab-content">
-				<h3>Recent EDH Pods</h3>
-				<table class="table" id="edhGames">
-					<thead>
-						<tr>
-							<th title="Deck that won the pod (or Draw)">Winner</th>
-							<th title="Number of turns the pod lasted">Turns</th>
-							<th title="Highest storm count reached">Max Storm</th>
-							<th title="Total mana spent by all players">Mana</th>
-							<th title="Total cards played by all players">Cards</th>
-							<th title="Total combat damage dealt">Combat</th>
-							<th title="Per-player pod summary">Players</th>
-							<th title="Number of game events logged">Events</th>
-							<th title="Type of the final game event">Last Event</th>
-						</tr>
-					</thead>
-					<tbody id="edhGamesBody">
-						<tr><td colspan="9" class="loading">Loading...</td></tr>
-					</tbody>
-				</table>
-		</div>
-
-		<div id="card-library" class="tab-content">
-			<h3>Global Card Library</h3>
-			<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-	<input
-		type="text"
-		id="cardLibrarySearch"
-		class="search-box"
-		placeholder="Search cards..."
-		oninput="filterCardLibrary()"
-		style="max-width:300px;"
-	>
-
-	<label style="color:#888;font-size:0.9em;">
-		Min Casts:
-		<input
-			type="number"
-			id="cardLibraryMinCasts"
-			value="5"
-			min="1"
-			oninput="filterCardLibrary()"
-			style="width:80px;margin-left:6px;background:#0a0e27;color:#fff;border:1px solid #1a1f3a;padding:6px;border-radius:4px;"
-		>
-	</label>
-
-	<label style="color:#888;font-size:0.9em;">
-		Limit:
-		<select
-			id="cardLibraryLimit"
-			onchange="filterCardLibrary()"
-			style="margin-left:6px;background:#0a0e27;color:#fff;border:1px solid #1a1f3a;padding:6px;border-radius:4px;"
-		>
-			<option value="50">50</option>
-			<option value="100" selected>100</option>
-			<option value="250">250</option>
-			<option value="500">500</option>
-		</select>
-	</label>
-</div>
-
-<div id="cardLibraryMeta" class="search-meta"></div>
+			<h3 style="margin-top:30px;">Global Card Library</h3>
+			<div id="cardLibraryMeta" class="search-meta"></div>
 			<table class="table" id="cardLibrary">
 				<thead>
 					<tr>
@@ -232,42 +288,53 @@
 			</table>
 		</div>
 
-		<div id="implementation" class="tab-content">
-			<h3>Implementation</h3>
-			<p style="color:#888; margin-bottom:10px;">Cards evaluated against the ability parser and execution engine.</p>
-			<div class="grid" id="implSummary">
-				<div class="loading">Loading...</div>
+		<div id="meta-trends" class="tab-content">
+			<h3>Meta Trends & Matchups</h3>
+			<p style="color:#888; margin-bottom:15px;">Track how the meta evolves and view deck matchups.</p>
+			
+			<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #4ecdc4;">
+					<h4>Save Snapshot</h4>
+					<p style="color:#888; font-size:0.9em; margin-bottom:10px;">Capture current deck performance state.</p>
+					<input type="text" id="snapshotName" placeholder="Snapshot name (optional)" style="width:100%; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px; margin-bottom:10px; box-sizing:border-box;">
+					<button onclick="saveSnapshot()" style="padding:8px 16px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">💾 Save Snapshot</button>
+				</div>
+
+				<div style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #f39c12;">
+					<h4>Analyze Meta</h4>
+					<p style="color:#888; font-size:0.9em; margin-bottom:10px;">View evolution and trends.</p>
+					<button onclick="loadSnapshotComparison()" style="padding:8px 16px; background:#f39c12; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold; margin-right:8px; margin-bottom:8px;">📊 Latest Comparison</button>
+					<button onclick="loadMetaTrends()" style="padding:8px 16px; background:#3498db; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📈 View Trends</button>
+				</div>
 			</div>
-			<h3>By Color</h3>
-			<div class="chart-container" id="implByColor" style="max-width:600px;margin:0 auto;">
-				<div class="loading">Loading...</div>
+
+			<h3>Snapshots</h3>
+			<div id="snapshotsList" style="margin-bottom:20px;">
+				<div class="loading">Loading snapshots...</div>
 			</div>
-			<h3>By Set</h3>
-			<div class="chart-container" id="implBySet" style="max-width:600px;margin:0 auto;">
-				<div class="loading">Loading...</div>
-			</div>
-			<h3>By Type</h3>
-			<div class="chart-container" id="implByType" style="max-width:600px;margin:0 auto;">
-				<div class="loading">Loading...</div>
-			</div>
-			<h3>Unimplemented Cards</h3>
-			<input type="text" id="implSearch" class="search-box" placeholder="Search unimplemented cards by name..." oninput="filterImplCards()">
-			<div class="search-meta" id="implSearchMeta"></div>
-			<table class="table" id="implCards">
+
+			<h3>Deck Matchup Matrix</h3>
+			<table class="table" id="matchupMatrix" style="font-size:0.9em;">
 				<thead>
 					<tr>
-						<th onclick="sortImplTable('name')" title="Click to sort by card name">Card ▲▼</th>
-						<th onclick="sortImplTable('type')" title="Click to sort by card type">Type ▲▼</th>
-						<th onclick="sortImplTable('set')" title="Click to sort by set code">Set ▲▼</th>
-						<th onclick="sortImplTable('colors')" title="Click to sort by color identity">Color ▲▼</th>
-						<th title="Why the card is not yet fully implemented">Reason</th>
+						<th>Deck</th>
+						<th>Commander</th>
+						<th>Win Rate</th>
+						<th>Games</th>
+						<th>Wins</th>
+						<th>Losses</th>
 					</tr>
 				</thead>
-				<tbody id="implCardsBody">
-					<tr><td colspan="5" class="loading">Loading...</td></tr>
+				<tbody id="matchupBody">
+					<tr><td colspan="6" class="loading">Loading matchup data...</td></tr>
 				</tbody>
 			</table>
-		</div>
+
+			<h3 style="margin-top:30px;">Meta Analysis</h3>
+			<div id="snapshotAnalysis" style="background:#1a1a1a; padding:15px; border-radius:6px; border-left:4px solid #4ecdc4;">
+				<div class="loading">Select a comparison above</div>
+			</div>
+		
 	</div>
 
 	<script src="/app.js"></script>

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ type Server struct {
 	suggestedDeck      *simulation.EDHSeat
 	suggestedDeckMu    sync.Mutex
 	cardDB             *card.CardDB
+	snapshotManager    *SnapshotManager
 	port               int
 	mux                *http.ServeMux
 }
@@ -102,6 +104,9 @@ func (s *Server) SetGameRunner(gr GameRunner) { s.gameRunner = gr }
 // SetCardDB attaches a card database for deck parsing.
 func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
 
+// SetSnapshotManager attaches a snapshot manager for meta tracking.
+func (s *Server) SetSnapshotManager(sm *SnapshotManager) { s.snapshotManager = sm }
+
 // SetSuggestedDeck sets the deck to use for suggested deck games.
 func (s *Server) SetSuggestedDeck(seat *simulation.EDHSeat) {
 	s.suggestedDeckMu.Lock()
@@ -136,6 +141,14 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/game-status", s.handleGameStatus)
 	s.mux.HandleFunc("/api/suggested-deck", s.handleSuggestedDeck)
 	s.mux.HandleFunc("/api/upload-deck", s.handleUploadDeck)
+	s.mux.HandleFunc("/api/card-recommendations", s.handleCardRecommendations)
+	s.mux.HandleFunc("/api/sideboard-suggestions", s.handleSideboardSuggestions)
+	s.mux.HandleFunc("/api/matchup-matrix", s.handleMatchupMatrix)
+	s.mux.HandleFunc("/api/card-search", s.handleCardSearch)
+	s.mux.HandleFunc("/api/save-snapshot", s.handleSaveSnapshot)
+	s.mux.HandleFunc("/api/snapshots", s.handleListSnapshots)
+	s.mux.HandleFunc("/api/snapshot-comparison", s.handleSnapshotComparison)
+	s.mux.HandleFunc("/api/meta-trends", s.handleMetaTrends)
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -451,7 +464,310 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleCardRecommendations returns deck improvement suggestions.
+func (s *Server) handleCardRecommendations(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.edhProvider == nil {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		return
+	}
+
+	deckName := r.URL.Query().Get("deck")
+	if deckName == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"error": "deck query parameter required"})
+		return
+	}
+
+	edhStats := s.edhProvider()
+	var deckStats *simulation.EDHDeckStats
+	for i := range edhStats {
+		if edhStats[i].DeckName == deckName {
+			deckStats = &edhStats[i]
+			break
+		}
+	}
+
+	if deckStats == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{"error": "deck not found"})
+		return
+	}
+
+	cardLib := map[string]stats.GlobalCardStats{}
+	if s.cardLibrary != nil {
+		cardLib = s.cardLibrary()
+	}
+
+	recs := GenerateDeckRecommendations(deckStats, cardLib)
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"recommendations": recs,
+	})
+}
+
+// handleSideboardSuggestions returns sideboard swap suggestions.
+func (s *Server) handleSideboardSuggestions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.edhProvider == nil {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		return
+	}
+
+	deckName := r.URL.Query().Get("deck")
+	if deckName == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"error": "deck query parameter required"})
+		return
+	}
+
+	edhStats := s.edhProvider()
+	var deckStats *simulation.EDHDeckStats
+	for i := range edhStats {
+		if edhStats[i].DeckName == deckName {
+			deckStats = &edhStats[i]
+			break
+		}
+	}
+
+	if deckStats == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{"error": "deck not found"})
+		return
+	}
+
+	cardLib := map[string]stats.GlobalCardStats{}
+	if s.cardLibrary != nil {
+		cardLib = s.cardLibrary()
+	}
+
+	suggs := GenerateSideboardSuggestions(deckStats, edhStats, cardLib)
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"suggestions": suggs,
+	})
+}
+
+// handleMatchupMatrix returns a matrix of deck matchups.
+func (s *Server) handleMatchupMatrix(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.edhProvider == nil {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		return
+	}
+
+	edhStats := s.edhProvider()
+	
+	// For now, return basic deck statistics in a matrix-friendly format
+	// This would be enhanced with actual matchup tracking in a production system
+	type DeckStats struct {
+		Name      string  `json:"name"`
+		Commander string  `json:"commander"`
+		WinRate   float64 `json:"win_rate"`
+		Games     int     `json:"games"`
+	}
+
+	decks := make([]DeckStats, len(edhStats))
+	for i, d := range edhStats {
+		decks[i] = DeckStats{
+			Name:      d.DeckName,
+			Commander: d.CommanderName,
+			WinRate:   d.WinRate,
+			Games:     d.Games,
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"decks": decks,
+	})
+}
+
+// handleCardSearch searches for cards by name or attributes.
+func (s *Server) handleCardSearch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"error": "query parameter required"})
+		return
+	}
+
+	if s.cardLibrary == nil {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "cards": []any{}})
+		return
+	}
+
+	cardLib := s.cardLibrary()
+	
+	// Simple card search - can be enhanced with Scryfall API integration
+	results := []map[string]any{}
+	queryLower := strings.ToLower(query)
+	
+	count := 0
+	for name, stats := range cardLib {
+		if strings.Contains(strings.ToLower(name), queryLower) {
+			wr := 0.0
+			if stats.Casts > 0 {
+				wr = (float64(stats.Wins) / float64(stats.Casts)) * 100
+			}
+			results = append(results, map[string]any{
+				"name":     name,
+				"wins":     stats.Wins,
+				"casts":    stats.Casts,
+				"win_rate": wr,
+				"image":    stats.ImageURL,
+			})
+			count++
+			if count >= 50 {
+				break
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"results": results,
+	})
+}
+
+// handleSaveSnapshot saves the current meta state.
+func (s *Server) handleSaveSnapshot(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.snapshotManager == nil || s.edhProvider == nil {
+		json.NewEncoder(w).Encode(map[string]any{"error": "snapshot manager not initialized"})
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		name = time.Now().Format("2006-01-02 15:04:05")
+	}
+
+	edhStats := s.edhProvider()
+	cardLib := map[string]interface{}{}
+	if s.cardLibrary != nil {
+		cl := s.cardLibrary()
+		for k, v := range cl {
+			cardLib[k] = v
+		}
+	}
+
+	if err := s.snapshotManager.SaveSnapshot(name, edhStats, cardLib); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"name":    name,
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+// handleListSnapshots returns all available snapshots.
+func (s *Server) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.snapshotManager == nil {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "snapshots": []any{}})
+		return
+	}
+
+	snapshots, err := s.snapshotManager.LoadSnapshots()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		return
+	}
+
+	// Return summary of snapshots
+	type SnapshotSummary struct {
+		Name       string    `json:"name"`
+		Timestamp  time.Time `json:"timestamp"`
+		DeckCount  int       `json:"deck_count"`
+		AverageWR  float64   `json:"average_wr"`
+	}
+
+	summaries := []SnapshotSummary{}
+	for _, snap := range snapshots {
+		avgWR := 0.0
+		if len(snap.Decks) > 0 {
+			totalWR := 0.0
+			for _, d := range snap.Decks {
+				totalWR += d.WinRate
+			}
+			avgWR = totalWR / float64(len(snap.Decks))
+		}
+
+		summaries = append(summaries, SnapshotSummary{
+			Name:      snap.Name,
+			Timestamp: snap.Timestamp,
+			DeckCount: len(snap.Decks),
+			AverageWR: avgWR,
+		})
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled":   true,
+		"snapshots": summaries,
+	})
+}
+
+// handleSnapshotComparison compares two snapshots.
+func (s *Server) handleSnapshotComparison(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.snapshotManager == nil {
+		json.NewEncoder(w).Encode(map[string]any{"error": "snapshot manager not initialized"})
+		return
+	}
+
+	// For now, compare latest two snapshots
+	snapshots, err := s.snapshotManager.LoadSnapshots()
+	if err != nil || len(snapshots) < 2 {
+		json.NewEncoder(w).Encode(map[string]any{"error": "need at least 2 snapshots for comparison"})
+		return
+	}
+
+	comp := CompareSnapshots(snapshots[1], snapshots[0])
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled":      true,
+		"comparison":   comp,
+	})
+}
+
+// handleMetaTrends analyzes meta trends across snapshots.
+func (s *Server) handleMetaTrends(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.snapshotManager == nil {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "trends": []any{}})
+		return
+	}
+
+	snapshots, err := s.snapshotManager.LoadSnapshots()
+	if err != nil || len(snapshots) == 0 {
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "trends": []any{}})
+		return
+	}
+
+	trends := AnalyzeTrends(snapshots)
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"trends":  trends,
+	})
+}
+
 // handleIndex returns the HTML dashboard.
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	data, _ := staticFS.ReadFile("static/index.html")
