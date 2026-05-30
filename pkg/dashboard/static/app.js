@@ -995,6 +995,24 @@
 			const recs = data.recommendations;
 			let html = '';
 
+			// Build a set of cards already known to be in this deck so we don't suggest them again
+			const excludedCards = new Set();
+			if (selectedDeck && selectedDeck.card_stats) {
+				for (let name of Object.keys(selectedDeck.card_stats)) {
+					excludedCards.add(name.toLowerCase());
+				}
+			}
+			if (recs.remove_candidates) {
+				for (let c of recs.remove_candidates) {
+					excludedCards.add(c.card_name.toLowerCase());
+				}
+			}
+			for (let card of currentDeckList) {
+				if (card && card.name) {
+					excludedCards.add(card.name.toLowerCase());
+				}
+			}
+
 			// Header with deck info and quick actions
 			const deck = allEDHDecksList.find(d => d.deck_name === deckName);
 			if (deck) {
@@ -1027,7 +1045,11 @@
 				html += '<h4 style="margin-top:0; color:#2ecc71;">➕ Cards to Test</h4>';
 				html += '<p style="color:#888; margin:10px 0;">These cards perform well globally and might improve this deck:</p>';
 				html += '<div>';
-				for (let c of recs.add_candidates.slice(0, 10)) {
+				let shown = 0;
+				for (let c of recs.add_candidates) {
+					if (excludedCards.has(c.card_name.toLowerCase())) continue;
+					if (shown >= 10) break;
+					shown++;
 					const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
 					html += '<div><strong>' + c.card_name + '</strong> ';
@@ -1386,27 +1408,53 @@
 
 	// Matchup Matrix
 	let matchupMatrixData = [];
+	let lastMatchupHash = '';
 
 	async function loadMatchupMatrix() {
 		const bodyEl = document.getElementById('matchupBody');
 		if (!bodyEl) return;
 
-		bodyEl.innerHTML = '<tr><td colspan="7" class="loading">Loading...</td></tr>';
+		// Only show loading spinner on first load; subsequent refreshes keep existing DOM
+		const hadData = matchupMatrixData.length > 0;
+		if (!hadData) {
+			bodyEl.innerHTML = '<tr><td colspan="7" class="loading">Loading...</td></tr>';
+		}
 
 		try {
 			const res = await fetch('/api/matchup-matrix');
 			const data = await res.json();
 
 			if (!data.enabled) {
-				bodyEl.innerHTML = '<tr><td colspan="7" class="error">Matchup data not available</td></tr>';
+				if (!hadData) {
+					bodyEl.innerHTML = '<tr><td colspan="7" class="error">Matchup data not available</td></tr>';
+				}
 				return;
 			}
 
-			matchupMatrixData = data.decks || [];
+			const newDecks = data.decks || [];
+			const newHash = newDecks.map(d =>
+				(d.name || '') + ':' + (d.games || 0) + ':' + ((d.win_rate || 0).toFixed(2))
+			).join('|');
+			if (newHash === lastMatchupHash && newDecks.length > 0) {
+				return; // Data unchanged, preserve DOM and scroll state
+			}
+			lastMatchupHash = newHash;
+			matchupMatrixData = newDecks;
+
+			// Preserve scroll position across re-render
+			const scrollParent = bodyEl.closest('.table') || bodyEl.parentElement;
+			const scrollTop = scrollParent ? scrollParent.scrollTop : 0;
+
 			renderMatchupMatrix(matchupMatrixData);
+			// Re-apply any active user filter so it isn't lost on refresh
+			filterMatchupMatrix();
+
+			if (scrollParent) scrollParent.scrollTop = scrollTop;
 		} catch (err) {
 			console.error('Error loading matchups:', err);
-			bodyEl.innerHTML = '<tr><td colspan="7" class="error">Error loading matchup data</td></tr>';
+			if (!hadData) {
+				bodyEl.innerHTML = '<tr><td colspan="7" class="error">Error loading matchup data</td></tr>';
+			}
 		}
 	}
 

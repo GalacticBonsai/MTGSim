@@ -330,8 +330,8 @@ func main() {
 		}
 	}
 
-	// Cap CPU at ~80% by using 80% of available cores
-	numWorkers := (runtime.NumCPU() * 4) / 5
+	// Cap CPU at ~20% by using 20% of available cores
+	numWorkers := (runtime.NumCPU()) / 5
 	if numWorkers < 1 {
 		numWorkers = 1
 	}
