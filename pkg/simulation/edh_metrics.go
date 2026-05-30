@@ -67,6 +67,15 @@ func (m *edhMetrics) recordSpell(player int, manaSpent int, creature bool, cardN
 	return m.turnSpells[player]
 }
 
+func (m *edhMetrics) recordManaProduced(player int, amount int) {
+	if !m.valid(player) || amount <= 0 {
+		return
+	}
+	if amount > m.players[player].ManaProduced {
+		m.players[player].ManaProduced = amount
+	}
+}
+
 func (m *edhMetrics) recordCombatDamage(player int, damage int) {
 	if !m.valid(player) || damage <= 0 {
 		return
@@ -112,6 +121,10 @@ func (m *edhMetrics) applyToGameRecord(rec *EDHGameRecord) {
 	}
 	rec.MaxStormCount = m.game.MaxStormCount
 	rec.TotalManaSpent = m.game.TotalManaSpent
+	rec.TotalManaProduced = 0
+	for _, p := range m.players {
+		rec.TotalManaProduced += p.ManaProduced
+	}
 	rec.TotalCardsPlayed = m.game.TotalCardsPlayed
 	rec.TotalCombatDamage = m.game.TotalCombatDamage
 	rec.TotalEliminations = m.game.TotalEliminations

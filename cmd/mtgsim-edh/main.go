@@ -120,6 +120,8 @@ func (gr *EDHGameRunner) RunGames(count int) {
 					if (i+1)%10 == 0 {
 						logger.LogMeta("Completed %d/%d pods", i+1, count)
 					}
+					// Yield so the dashboard server goroutines don't starve
+					time.Sleep(1 * time.Millisecond)
 				}
 			}()
 		}
@@ -377,6 +379,8 @@ func main() {
 				if (i+1)%10 == 0 {
 					logger.LogMeta("Completed %d/%d pods", i+1, *games)
 				}
+				// Brief yield so the dashboard (and other goroutines) get scheduling time
+				time.Sleep(1 * time.Millisecond)
 			}
 		}()
 	}
@@ -430,6 +434,11 @@ func main() {
 		*games, elapsed.Seconds(), edhResults.AverageTurns())
 
 	printSummary(edhResults, cardLib)
+
+	// Cooldown before exit so Docker's restart doesn't immediately respawn us
+	// and starve the dashboard of CPU time.
+	logger.LogMeta("Cooling down for 10s before next batch...")
+	time.Sleep(10 * time.Second)
 
 	if *port > 0 && *keepAlive {
 		fmt.Printf("\nDashboard still running on http://localhost:%d (press Ctrl+C to exit)\n", *port)
@@ -578,6 +587,7 @@ func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
 		WinnerCondition:   string(rec.WinnerCondition),
 		MaxStormCount:     rec.MaxStormCount,
 		TotalManaSpent:    rec.TotalManaSpent,
+		TotalManaProduced: rec.TotalManaProduced,
 		TotalCardsPlayed:  rec.TotalCardsPlayed,
 		TotalCombatDamage: rec.TotalCombatDamage,
 		TotalEliminations: rec.TotalEliminations,
@@ -596,6 +606,7 @@ func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
 			SpellsCast:     p.SpellsCast,
 			CreaturesCast:  p.CreaturesCast,
 			ManaSpent:      p.ManaSpent,
+			ManaProduced:   p.ManaProduced,
 			CombatDamage:   p.CombatDamage,
 			Eliminations:   p.Eliminations,
 			MaxStormCount:  p.MaxStormCount,

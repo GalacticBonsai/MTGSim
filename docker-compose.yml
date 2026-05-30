@@ -14,8 +14,14 @@ services:
       - mtgsim-data:/data
       - ./decks:/app/decks:ro
       - ./.cache:/app/.cache
-    environment:
-      - GOMAXPROCS=4
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     restart: unless-stopped
 
   dashboard:

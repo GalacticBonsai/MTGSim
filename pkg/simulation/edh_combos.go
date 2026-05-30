@@ -10,7 +10,8 @@ func attemptCEDHComboFinish(g *game.Game, ap *game.Player, log *EDHEventLog, met
 	if g == nil || ap == nil || ap.HasLost() {
 		return false
 	}
-	tapManaSourcesForMainPhaseMana(g, ap)
+	idx := indexOfPlayer(g, ap)
+	tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 	resolveCEDHVelocitySpells(g, ap, log, metrics)
 	if tryOracleConsult(g, ap, log, metrics) {
 		return true
@@ -168,10 +169,11 @@ func tryAetherflux(g *game.Game, p *game.Player, log *EDHEventLog, metrics *edhM
 }
 
 func resolveCEDHVelocitySpells(g *game.Game, p *game.Player, log *EDHEventLog, metrics *edhMetrics) {
+	idx := indexOfPlayer(g, p)
 	progress := true
 	for progress && !p.HasLost() {
 		progress = false
-		tapManaSourcesForMainPhaseMana(g, p)
+		tapManaSourcesForMainPhaseMana(g, p, idx, metrics)
 		if castDrawEngine(g, p, "Ad Nauseam", 20, 10, log, metrics) {
 			progress = true
 			continue

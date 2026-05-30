@@ -4,6 +4,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS edh_pods (
     winner_condition TEXT,
     max_storm_count INTEGER DEFAULT 0,
     total_mana_spent INTEGER DEFAULT 0,
+    total_mana_produced INTEGER DEFAULT 0,
     total_cards_played INTEGER DEFAULT 0,
     total_combat_damage INTEGER DEFAULT 0,
     total_eliminations INTEGER DEFAULT 0,
@@ -81,6 +83,7 @@ CREATE TABLE IF NOT EXISTS edh_pod_players (
     spells_cast INTEGER DEFAULT 0,
     creatures_cast INTEGER DEFAULT 0,
     mana_spent INTEGER DEFAULT 0,
+    mana_produced INTEGER DEFAULT 0,
     combat_damage INTEGER DEFAULT 0,
     eliminations INTEGER DEFAULT 0,
     max_storm_count INTEGER DEFAULT 0,
@@ -112,8 +115,23 @@ CREATE INDEX IF NOT EXISTS idx_edh_pod_players_deck ON edh_pod_players(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_card_stats_deck ON deck_card_stats(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_card_stats_name ON deck_card_stats(card_name);
 `
-	_, err := db.sqlDB.Exec(schema)
-	return err
+	if _, err := db.sqlDB.Exec(schema); err != nil {
+		return err
+	}
+
+	// Migrate columns that may not exist in older DBs
+	alterStatements := []string{
+		"ALTER TABLE edh_pods ADD COLUMN total_mana_produced INTEGER DEFAULT 0",
+		"ALTER TABLE edh_pod_players ADD COLUMN mana_produced INTEGER DEFAULT 0",
+	}
+	for _, stmt := range alterStatements {
+		if _, err := db.sqlDB.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // txHelper runs f inside a transaction and commits or rolls back.

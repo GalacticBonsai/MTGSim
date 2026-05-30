@@ -67,14 +67,15 @@ func (db *DB) getOrCreateDeckTx(tx *sql.Tx, name, path string) (int64, error) {
 
 // EDHPodRecord mirrors simulation.EDHGameRecord for DB insertion.
 type EDHPodRecord struct {
-	TotalTurns        int
-	Winner            string
-	WinnerCondition   string
-	MaxStormCount     int
-	TotalManaSpent    int
-	TotalCardsPlayed  int
-	TotalCombatDamage int
-	TotalEliminations int
+	TotalTurns         int
+	Winner             string
+	WinnerCondition    string
+	MaxStormCount      int
+	TotalManaSpent     int
+	TotalManaProduced  int
+	TotalCardsPlayed   int
+	TotalCombatDamage  int
+	TotalEliminations  int
 }
 
 // EDHPlayerRecord mirrors simulation.EDHPlayerRecord for DB insertion.
@@ -89,6 +90,7 @@ type EDHPlayerRecord struct {
 	SpellsCast      int
 	CreaturesCast   int
 	ManaSpent       int
+	ManaProduced    int
 	CombatDamage    int
 	Eliminations    int
 	MaxStormCount   int
@@ -101,10 +103,10 @@ func (db *DB) RecordEDHPod(pod EDHPodRecord, players []EDHPlayerRecord, cardStat
 	return db.txHelper(func(tx *sql.Tx) error {
 		res, err := tx.Exec(
 			`INSERT INTO edh_pods(total_turns, winner, winner_condition, max_storm_count,
-			total_mana_spent, total_cards_played, total_combat_damage, total_eliminations, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			total_mana_spent, total_mana_produced, total_cards_played, total_combat_damage, total_eliminations, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			pod.TotalTurns, pod.Winner, pod.WinnerCondition, pod.MaxStormCount,
-			pod.TotalManaSpent, pod.TotalCardsPlayed, pod.TotalCombatDamage, pod.TotalEliminations, now())
+			pod.TotalManaSpent, pod.TotalManaProduced, pod.TotalCardsPlayed, pod.TotalCombatDamage, pod.TotalEliminations, now())
 		if err != nil {
 			return fmt.Errorf("insert pod: %w", err)
 		}
@@ -124,11 +126,11 @@ func (db *DB) RecordEDHPod(pod EDHPodRecord, players []EDHPlayerRecord, cardStat
 			_, err = tx.Exec(
 				`INSERT INTO edh_pod_players(pod_id, deck_id, seat, final_life, eliminated, kill_source,
 				commander_name, commander_casts, cards_played, lands_played, spells_cast, creatures_cast,
-				mana_spent, combat_damage, eliminations, max_storm_count, mulligans)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				mana_spent, mana_produced, combat_damage, eliminations, max_storm_count, mulligans)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				podID, deckID, i, p.FinalLife, eliminated, p.KillSource,
 				p.CommanderName, p.CommanderCasts, p.CardsPlayed, p.LandsPlayed, p.SpellsCast, p.CreaturesCast,
-				p.ManaSpent, p.CombatDamage, p.Eliminations, p.MaxStormCount, p.Mulligans)
+				p.ManaSpent, p.ManaProduced, p.CombatDamage, p.Eliminations, p.MaxStormCount, p.Mulligans)
 			if err != nil {
 				return fmt.Errorf("insert player: %w", err)
 			}
@@ -229,6 +231,7 @@ type EDHDeckStats struct {
 	DeckoutWins        int
 	AvgCommanderCasts  float64
 	AvgManaSpent       float64
+	AvgManaProduced    float64
 	AvgCardsPlayed     float64
 	AvgLandsPlayed     float64
 	AvgSpellsCast      float64
@@ -236,6 +239,7 @@ type EDHDeckStats struct {
 	AvgCombatDamage    float64
 	MaxStormCount      int
 	TotalManaSpent     int
+	TotalManaProduced  int
 	TotalCardsPlayed   int
 	TotalCombatDamage  int
 	Eliminations       int
@@ -262,6 +266,7 @@ func (db *DB) GetEDHDeckStats() ([]EDHDeckStats, error) {
 			SUM(CASE WHEN p.winner = d.name AND p.winner_condition = 'deckout' THEN 1 ELSE 0 END) AS deckout_wins,
 			AVG(ep.commander_casts) AS avg_cmdr_casts,
 			AVG(ep.mana_spent) AS avg_mana,
+			AVG(CASE WHEN ep.mana_produced > 0 THEN ep.mana_produced END) AS avg_mana_produced,
 			AVG(ep.cards_played) AS avg_cards,
 			AVG(ep.lands_played) AS avg_lands,
 			AVG(ep.spells_cast) AS avg_spells,
@@ -269,6 +274,7 @@ func (db *DB) GetEDHDeckStats() ([]EDHDeckStats, error) {
 			AVG(ep.combat_damage) AS avg_combat,
 			MAX(ep.max_storm_count) AS max_storm,
 			SUM(ep.mana_spent) AS total_mana,
+			SUM(ep.mana_produced) AS total_mana_produced,
 			SUM(ep.cards_played) AS total_cards,
 			SUM(ep.combat_damage) AS total_combat,
 			SUM(ep.eliminations) AS eliminations
@@ -285,13 +291,13 @@ func (db *DB) GetEDHDeckStats() ([]EDHDeckStats, error) {
 	var out []EDHDeckStats
 	for rows.Next() {
 		var s EDHDeckStats
-		var avgLife, avgMulls, avgCmdr, avgMana, avgCards, avgLands, avgSpells, avgCreatures, avgCombat sql.NullFloat64
+		var avgLife, avgMulls, avgCmdr, avgMana, avgManaProduced, avgCards, avgLands, avgSpells, avgCreatures, avgCombat sql.NullFloat64
 		if err := rows.Scan(
 			&s.DeckName, &s.CommanderName, &s.Games, &s.Wins, &s.Losses,
 			&avgLife, &avgMulls, &s.CommanderDamageKOs, &s.LifeLossKOs, &s.MillKOs, &s.DeckoutKOs, &s.EffectKOs,
 			&s.CombatWins, &s.EffectWins, &s.DeckoutWins,
-			&avgCmdr, &avgMana, &avgCards, &avgLands, &avgSpells, &avgCreatures, &avgCombat,
-			&s.MaxStormCount, &s.TotalManaSpent, &s.TotalCardsPlayed, &s.TotalCombatDamage, &s.Eliminations,
+			&avgCmdr, &avgMana, &avgManaProduced, &avgCards, &avgLands, &avgSpells, &avgCreatures, &avgCombat,
+			&s.MaxStormCount, &s.TotalManaSpent, &s.TotalManaProduced, &s.TotalCardsPlayed, &s.TotalCombatDamage, &s.Eliminations,
 		); err != nil {
 			return nil, err
 		}
@@ -299,6 +305,7 @@ func (db *DB) GetEDHDeckStats() ([]EDHDeckStats, error) {
 		s.AvgMulligans = avgMulls.Float64
 		s.AvgCommanderCasts = avgCmdr.Float64
 		s.AvgManaSpent = avgMana.Float64
+		s.AvgManaProduced = avgManaProduced.Float64
 		s.AvgCardsPlayed = avgCards.Float64
 		s.AvgLandsPlayed = avgLands.Float64
 		s.AvgSpellsCast = avgSpells.Float64
@@ -349,35 +356,44 @@ func (db *DB) getDeckCardStatsByName(deckName string) (map[string]struct{ Casts,
 
 // EDHSummary holds global EDH aggregates.
 type EDHSummary struct {
-	TotalGames          int
-	AverageTurns        float64
-	TotalManaSpent      int
-	AverageManaSpent    float64
-	TotalCardsPlayed    int
-	AverageCardsPlayed  float64
-	HighestStormCount   int
-	TotalCombatDamage   int
-	TotalEliminations   int
-	AverageEliminations float64
-	AverageCombatDamage float64
+	TotalGames           int
+	AverageTurns         float64
+	TotalManaSpent       int
+	AverageManaSpent     float64
+	TotalManaProduced    int
+	AverageManaProduced  float64
+	TotalCardsPlayed     int
+	AverageCardsPlayed   float64
+	HighestStormCount    int
+	TotalCombatDamage    int
+	TotalEliminations    int
+	AverageEliminations  float64
+	AverageCombatDamage  float64
 }
 
 // GetEDHSummary returns global EDH aggregates.
 func (db *DB) GetEDHSummary() (EDHSummary, error) {
 	var s EDHSummary
 	var avgTurns sql.NullFloat64
+	var manaProducedGames int64
 	err := db.sqlDB.QueryRow(`
-		SELECT COUNT(*), AVG(total_turns), SUM(total_mana_spent), SUM(total_cards_played),
-			MAX(max_storm_count), SUM(total_combat_damage), SUM(total_eliminations)
+		SELECT COUNT(*), AVG(total_turns), SUM(total_mana_spent), SUM(total_mana_produced), SUM(total_cards_played),
+			MAX(max_storm_count), SUM(total_combat_damage), SUM(total_eliminations),
+			COUNT(CASE WHEN total_mana_produced > 0 THEN 1 END)
 		FROM edh_pods`).Scan(
-		&s.TotalGames, &avgTurns, &s.TotalManaSpent, &s.TotalCardsPlayed,
-		&s.HighestStormCount, &s.TotalCombatDamage, &s.TotalEliminations)
+		&s.TotalGames, &avgTurns, &s.TotalManaSpent, &s.TotalManaProduced, &s.TotalCardsPlayed,
+		&s.HighestStormCount, &s.TotalCombatDamage, &s.TotalEliminations, &manaProducedGames)
 	if err != nil {
 		return s, err
 	}
 	s.AverageTurns = avgTurns.Float64
 	if s.TotalGames > 0 {
 		s.AverageManaSpent = float64(s.TotalManaSpent) / float64(s.TotalGames)
+	}
+	if manaProducedGames > 0 {
+		s.AverageManaProduced = float64(s.TotalManaProduced) / float64(manaProducedGames)
+	}
+	if s.TotalGames > 0 {
 		s.AverageCardsPlayed = float64(s.TotalCardsPlayed) / float64(s.TotalGames)
 		s.AverageEliminations = float64(s.TotalEliminations) / float64(s.TotalGames)
 		s.AverageCombatDamage = float64(s.TotalCombatDamage) / float64(s.TotalGames)
@@ -393,6 +409,7 @@ type EDHRecentPod struct {
 	WinnerCondition   string
 	MaxStormCount     int
 	TotalManaSpent    int
+	TotalManaProduced int
 	TotalCardsPlayed  int
 	TotalCombatDamage int
 	TotalEliminations int
@@ -408,6 +425,7 @@ type EDHRecentPlayer struct {
 	Eliminated     bool
 	KillSource     string
 	ManaSpent      int
+	ManaProduced   int
 	CardsPlayed    int
 	CombatDamage   int
 	Eliminations   int
@@ -420,7 +438,7 @@ func (db *DB) GetRecentEDHPods(limit int) ([]EDHRecentPod, error) {
 	}
 	rows, err := db.sqlDB.Query(`
 		SELECT id, total_turns, winner, winner_condition, max_storm_count,
-			total_mana_spent, total_cards_played, total_combat_damage, total_eliminations, created_at
+			total_mana_spent, total_mana_produced, total_cards_played, total_combat_damage, total_eliminations, created_at
 		FROM edh_pods
 		ORDER BY created_at DESC
 		LIMIT ?`, limit)
@@ -434,7 +452,7 @@ func (db *DB) GetRecentEDHPods(limit int) ([]EDHRecentPod, error) {
 		var p EDHRecentPod
 		var created sql.NullString
 		if err := rows.Scan(&p.ID, &p.TotalTurns, &p.Winner, &p.WinnerCondition, &p.MaxStormCount,
-			&p.TotalManaSpent, &p.TotalCardsPlayed, &p.TotalCombatDamage, &p.TotalEliminations, &created); err != nil {
+			&p.TotalManaSpent, &p.TotalManaProduced, &p.TotalCardsPlayed, &p.TotalCombatDamage, &p.TotalEliminations, &created); err != nil {
 			return nil, err
 		}
 		if created.Valid {
@@ -449,7 +467,7 @@ func (db *DB) GetRecentEDHPods(limit int) ([]EDHRecentPod, error) {
 	for i := range pods {
 		pRows, err := db.sqlDB.Query(`
 			SELECT d.name, ep.commander_name, ep.final_life, ep.eliminated, ep.kill_source,
-				ep.mana_spent, ep.cards_played, ep.combat_damage, ep.eliminations
+				ep.mana_spent, ep.mana_produced, ep.cards_played, ep.combat_damage, ep.eliminations
 			FROM edh_pod_players ep
 			JOIN decks d ON d.id = ep.deck_id
 			WHERE ep.pod_id = ?
@@ -461,7 +479,7 @@ func (db *DB) GetRecentEDHPods(limit int) ([]EDHRecentPod, error) {
 			var pl EDHRecentPlayer
 			var elim int
 			if err := pRows.Scan(&pl.DeckName, &pl.CommanderName, &pl.FinalLife, &elim, &pl.KillSource,
-				&pl.ManaSpent, &pl.CardsPlayed, &pl.CombatDamage, &pl.Eliminations); err != nil {
+				&pl.ManaSpent, &pl.ManaProduced, &pl.CardsPlayed, &pl.CombatDamage, &pl.Eliminations); err != nil {
 				pRows.Close()
 				return nil, err
 			}

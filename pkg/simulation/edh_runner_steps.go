@@ -158,7 +158,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			break
 		}
 	}
-	tapManaSourcesForMainPhaseMana(g, ap)
+	tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 
 	if idx >= 0 && len(ap.CommandZone) > 0 {
 		name := ap.CommandZone[0].Name
@@ -195,7 +195,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 	again := true
 	for again {
 		again = false
-		tapManaSourcesForMainPhaseMana(g, ap)
+		tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 		for _, c := range ap.Hand {
 			if !isCastablePermanent(c) || !ap.CanPayForCard(c) {
 				continue
@@ -258,8 +258,9 @@ func intString(v int) string {
 	return string(buf[i:])
 }
 
-func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player) {
+func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player, idx int, metrics *edhMetrics) {
 	demand := aggregateMainPhaseManaDemand(ap)
+	totalProduced := 0
 	for _, perm := range ap.Battlefield {
 		if perm.IsTapped() {
 			continue
@@ -274,7 +275,11 @@ func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player) {
 		perm.Tap()
 		for mt, n := range produced {
 			ap.AddManaToPool(mt, n)
+			totalProduced += n
 		}
+	}
+	if metrics != nil && idx >= 0 {
+		metrics.recordManaProduced(idx, totalProduced)
 	}
 }
 

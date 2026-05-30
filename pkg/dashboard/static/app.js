@@ -342,7 +342,9 @@
 		document.getElementById('selectedDeckCommander').textContent = deck.commander_name || 'Unknown';
 		document.getElementById('selectedDeckGames').textContent = deck.games;
 		document.getElementById('selectedDeckWinRate').textContent = (deck.win_rate || 0).toFixed(1) + '%';
-		document.getElementById('selectedDeckAvgMana').textContent = (deck.avg_mana_spent || 0).toFixed(1);
+		document.getElementById('selectedDeckAvgLands').textContent = (deck.avg_lands_played || 0).toFixed(1);
+		document.getElementById('selectedDeckAvgCards').textContent = (deck.avg_cards_played || 0).toFixed(1);
+		document.getElementById('selectedDeckAvgManaProduced').textContent = (deck.avg_mana_produced || 0).toFixed(1);
 
 		// Show card stats
 		renderSelectedDeckCards();
