@@ -163,3 +163,14 @@
 	.win-rate-medium { color: #f39c12; }
 	.win-rate-low { color: #e74c3c; }
 
+	.deck-name-truncate {
+		max-width: 250px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		direction: rtl;
+		text-align: left;
+		display: inline-block;
+		vertical-align: bottom;
+	}
+

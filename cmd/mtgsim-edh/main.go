@@ -21,6 +21,7 @@ import (
 	abil "github.com/mtgsim/mtgsim/pkg/ability"
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/dashboard"
+	"github.com/mtgsim/mtgsim/pkg/database"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
 	"github.com/mtgsim/mtgsim/pkg/scryfall"
@@ -182,6 +183,7 @@ func main() {
 	sideboardVariants := flag.Int("sideboard-variants", 0, "Generated sideboard variants per imported deck (0 = disabled)")
 	sideboardSwaps := flag.Int("sideboard-swaps", 3, "Cards swapped per generated sideboard variant")
 	cardStatsFlag := flag.String("card-stats", "card_library.json", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
+	dbPath := flag.String("db", "", "Path to SQLite database for persistent results (empty = disabled)")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
@@ -272,6 +274,18 @@ func main() {
 	legacyResults := simulation.NewResults()
 	var mu sync.Mutex
 
+	var db *database.DB
+	if *dbPath != "" {
+		var err error
+		db, err = database.Open(*dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
+			os.Exit(1)
+		}
+		defer db.Close()
+		logger.LogMeta("Database opened: %s", *dbPath)
+	}
+
 	cardLib, err := stats.LoadCardLibrary(*cardStatsFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading card stats library: %v\n", err)
@@ -353,6 +367,9 @@ func main() {
 						cardLib.RecordCounts(cName, perf.Casts, wins)
 					}
 				}
+				if db != nil {
+					persistEDHPod(db, rec)
+				}
 				mu.Unlock()
 				if *replayDir != "" {
 					writeReplay(*replayDir, i+1, rec)
@@ -393,6 +410,9 @@ func main() {
 			// Store URL first for web display
 			cardLib.SetImageURL(name, imageURL)
 			imageCache[name] = imageURL
+			if db != nil {
+				_ = db.UpdateCardImageURL(name, imageURL)
+			}
 
 			// Download and cache the image file for offline use
 			// Do this asynchronously to not block the main process
@@ -548,6 +568,52 @@ func writeReplay(dir string, podIndex int, rec simulation.EDHGameRecord) {
 	}
 	if err := os.WriteFile(path, bs, 0o644); err != nil {
 		logger.LogMeta("replay write pod %d: %v", podIndex, err)
+	}
+}
+
+func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
+	pod := database.EDHPodRecord{
+		TotalTurns:        rec.Turns,
+		Winner:            rec.Winner,
+		WinnerCondition:   string(rec.WinnerCondition),
+		MaxStormCount:     rec.MaxStormCount,
+		TotalManaSpent:    rec.TotalManaSpent,
+		TotalCardsPlayed:  rec.TotalCardsPlayed,
+		TotalCombatDamage: rec.TotalCombatDamage,
+		TotalEliminations: rec.TotalEliminations,
+	}
+	players := make([]database.EDHPlayerRecord, len(rec.Players))
+	cardStats := make(map[string]map[string]struct{ Casts, Wins int })
+	for i, p := range rec.Players {
+		players[i] = database.EDHPlayerRecord{
+			DeckName:       p.DeckName,
+			CommanderName:  p.CommanderName,
+			Mulligans:      p.Mulligans,
+			FinalLife:      p.FinalLife,
+			CommanderCasts: p.CommanderCasts,
+			CardsPlayed:    p.CardsPlayed,
+			LandsPlayed:    p.LandsPlayed,
+			SpellsCast:     p.SpellsCast,
+			CreaturesCast:  p.CreaturesCast,
+			ManaSpent:      p.ManaSpent,
+			CombatDamage:   p.CombatDamage,
+			Eliminations:   p.Eliminations,
+			MaxStormCount:  p.MaxStormCount,
+			Eliminated:     p.Eliminated,
+			KillSource:     string(p.KillSource),
+		}
+		cs := make(map[string]struct{ Casts, Wins int })
+		for cName, perf := range p.CardStats {
+			wins := 0
+			if p.DeckName == rec.Winner {
+				wins = perf.Casts
+			}
+			cs[cName] = struct{ Casts, Wins int }{Casts: perf.Casts, Wins: wins}
+		}
+		cardStats[p.DeckName] = cs
+	}
+	if err := db.RecordEDHPod(pod, players, cardStats); err != nil {
+		logger.LogMeta("Database persist error: %v", err)
 	}
 }
 

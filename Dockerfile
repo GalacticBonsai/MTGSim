@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+FROM golang:latest AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o bin/mtgsim-edh ./cmd/mtgsim-edh
+RUN CGO_ENABLED=0 go build -o bin/mtgsim-dashboard ./cmd/mtgsim-dashboard
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+
+COPY --from=builder /app/bin/mtgsim-edh /usr/local/bin/mtgsim-edh
+COPY --from=builder /app/bin/mtgsim-dashboard /usr/local/bin/mtgsim-dashboard
+
+# Default data directories
+RUN mkdir -p /data /app/decks /app/.cache
+
+VOLUME ["/data", "/app/decks", "/app/.cache"]
+EXPOSE 8080
+
+# No default CMD — override per service in docker-compose

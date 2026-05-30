@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -145,7 +146,7 @@ func importDeckfileWithCommanders(filename string, cardDB CardDatabase, inferCom
 	}()
 
 	var entries []parsedDeckEntry
-	var deckName = filename
+	var deckName = filepath.Base(filename)
 	section := sectionMain
 	group := 0
 

@@ -1,0 +1,39 @@
+services:
+  edh-runner:
+    build: .
+    command:
+      - mtgsim-edh
+      - -db=/data/mtgsim.db
+      - -decks=/app/decks
+      - -games=1000
+      - -pod=4
+      - -max-turns=50
+      - -port=0
+      - -card-stats=/data/card_library.json
+    volumes:
+      - mtgsim-data:/data
+      - ./decks:/app/decks:ro
+      - ./.cache:/app/.cache
+    environment:
+      - GOMAXPROCS=4
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    command:
+      - mtgsim-dashboard
+      - -db=/data/mtgsim.db
+      - -decks=/app/decks
+      - -port=8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - mtgsim-data:/data
+      - ./decks:/app/decks:ro
+      - ./.cache:/app/.cache
+    restart: unless-stopped
+    depends_on:
+      - edh-runner
+
+volumes:
+  mtgsim-data:

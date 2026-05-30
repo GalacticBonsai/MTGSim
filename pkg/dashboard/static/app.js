@@ -243,7 +243,7 @@
 		}
 
 		for (let d of decks) {
-			html += '<tr title="' + d.name + ': ' + d.wins + 'W / ' + d.losses + 'L (' + (d.win_rate || 0).toFixed(1) + '% win rate)"><td>' + d.name + '</td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
+			html += '<tr title="' + d.name + ': ' + d.wins + 'W / ' + d.losses + 'L (' + (d.win_rate || 0).toFixed(1) + '% win rate)"><td><span class="deck-name-truncate">' + escapeHtml(d.name) + '</span></td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
 		}
 
 		document.getElementById('decksBody').innerHTML =
@@ -303,7 +303,7 @@
 			let selected = selectedDeck && selectedDeck.deck_name === d.deck_name ? ' style="background:#3a3a3a;"' : '';
 			let escapedDeckName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 			html += '<tr title="' + tooltip + '" onclick="selectDeck(' + "'" + escapedDeckName + "'" + ')"' + selected + ' style="cursor:pointer;">'
-				+ '<td>' + displayName + '</td>'
+				+ '<td><span class="deck-name-truncate">' + escapeHtml(displayName) + '</span></td>'
 				+ '<td>' + (d.commander_name || '-') + '</td>'
 				+ '<td>' + d.games + '</td>'
 				+ '<td>' + d.wins + '</td>'
@@ -398,16 +398,22 @@
 			return 0;
 		});
 		
+		const deckWinRate = selectedDeck ? (selectedDeck.win_rate || 0) : 0;
 		let html = '';
 		for (let c of cards.slice(0, 100)) {
+			const winRateDiff = c.winRate - deckWinRate;
+			let wrColor;
+			if (winRateDiff > 5) wrColor = '#2ecc71';
+			else if (winRateDiff < -10) wrColor = '#e74c3c';
+			else wrColor = '#f39c12';
 			html += '<tr title="' + c.name + ': ' + c.casts + ' casts, ' + c.wins + ' wins">'
 				+ '<td>' + c.name + '</td>'
 				+ '<td>' + c.casts + '</td>'
 				+ '<td>' + c.wins + '</td>'
-				+ '<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>'
+				+ '<td style="color:' + wrColor + ';"><strong>' + c.winRate.toFixed(1) + '%</strong></td>'
 				+ '</tr>';
 		}
-		
+
 		document.getElementById('selectedDeckCardsBody').innerHTML = html || '<tr><td colspan="4">No cards with 3+ casts</td></tr>';
 	}
 
@@ -454,7 +460,7 @@
 
 			html +=
 				'<tr title="' + tooltip + '">' +
-					'<td>' + c.deck + '</td>' +
+					'<td><span class="deck-name-truncate">' + escapeHtml(c.deck) + '</span></td>' +
 					'<td>' + img + c.name + '</td>' +
 					'<td>' + c.casts + '</td>' +
 					'<td>' + c.wins + '</td>' +
@@ -477,6 +483,9 @@
 		}
 		function populateCommanderDropdown(decks) {
 			const select = document.getElementById("commanderSelect");
+			if (!select) return;
+
+			const previousValue = select.value;
 
 			const commanders = [...new Set(
 				decks.map(d => d.commander_name).filter(Boolean)
@@ -484,6 +493,11 @@
 
 			select.innerHTML = '<option value="">All Commanders</option>' +
 				commanders.map(c => '<option value="' + c + '">' + c + '</option>').join("");
+
+			// Restore previous selection if that commander still exists
+			if (previousValue && commanders.includes(previousValue)) {
+				select.value = previousValue;
+			}
 		}
 		function filterCommanders() {
 			const q = document.getElementById("commanderSearch").value.toLowerCase();
@@ -508,7 +522,15 @@
 			document.getElementById('edhSummary').innerHTML = html;
 		}
 
+		let lastCardLibraryHash = '';
+
 		function renderCardLibrary(cards) {
+			const newHash = Object.keys(cards).sort().join('|') + '|' +
+				Object.values(cards).map(p => (p.casts || 0) + ':' + (p.wins || 0)).join('|');
+			if (newHash === lastCardLibraryHash && currentCardLibraryRows.length > 0) {
+				return;
+			}
+			lastCardLibraryHash = newHash;
 			currentCardLibraryRows = [];
 			globalCardLibraryMap = {};
 
@@ -1036,7 +1058,8 @@
 		return _originalLoadRecommendations();
 	}
 
-	// Populate recommendations deck select - show all available EDH decks
+	// Populate recommendations deck select - show all available EDH decks,
+	// deduplicated by display name. Uploaded decks are highlighted with a star.
 	async function populateRecommendationsDeckSelect() {
 		const select = document.getElementById('recDeckSelect');
 		if (!select) return;
@@ -1058,17 +1081,33 @@
 			return; // Wait for data to load
 		}
 
-		// Filter to only uploaded decks
-		let uploadedDecks = allEDHDecksList.filter(d => isUploadedDeck(d)
-		).sort((a, b) =>
+		// Deduplicate by display name, preferring uploaded decks when a name collides.
+		const seen = new Map();
+		for (let d of allEDHDecksList) {
+			const displayName = getDeckDisplayName(d.deck_name);
+			if (seen.has(displayName)) {
+				if (isUploadedDeck(d)) {
+					seen.set(displayName, d);
+				}
+				continue;
+			}
+			seen.set(displayName, d);
+		}
+
+		let allDecks = Array.from(seen.values()).sort((a, b) =>
 			(getDeckDisplayName(a.deck_name) || '').localeCompare(getDeckDisplayName(b.deck_name) || '')
 		);
 
-		// Add uploaded decks to dropdown (display by filename only)
-		for (let d of uploadedDecks) {
+		// Add all decks to dropdown (display by filename only)
+		for (let d of allDecks) {
 			const opt = document.createElement('option');
 			opt.value = d.deck_name;
-			opt.textContent = getDeckDisplayName(d.deck_name);
+			const isUploaded = isUploadedDeck(d);
+			opt.textContent = (isUploaded ? '★ ' : '') + getDeckDisplayName(d.deck_name);
+			if (isUploaded) {
+				opt.style.color = '#4ecdc4';
+				opt.style.fontWeight = 'bold';
+			}
 			select.appendChild(opt);
 		}
 
@@ -1076,7 +1115,7 @@
 		// otherwise fall back to the active deck
 		if (previousValue && Array.from(select.options).some(o => o.value === previousValue)) {
 			select.value = previousValue;
-		} else if (activeDeckName) {
+		} else if (activeDeckName && Array.from(select.options).some(o => o.value === activeDeckName)) {
 			select.value = activeDeckName;
 		}
 
@@ -1125,6 +1164,24 @@
 		document.getElementById('deckUniqueCount').textContent = uniqueCards.size;
 		document.getElementById('deckLandCount').textContent = landCount;
 		document.getElementById('deckAvgMana').textContent = '~' + (totalCards > 0 ? (totalCards / uniqueCards.size).toFixed(1) : '0');
+
+		// Show win rate if this deck is known in simulation data
+		let winRateStr = '-';
+		const deckNameInput = document.getElementById('deckName').value.trim();
+		const lookupName = activeDeckName || deckNameInput;
+		if (lookupName) {
+			const deck = allEDHDecksList.find(d =>
+				d.deck_name === lookupName ||
+				getDeckDisplayName(d.deck_name) === lookupName ||
+				getDeckDisplayName(d.deck_name) === deckNameInput
+			);
+			if (deck && deck.win_rate !== undefined) {
+				winRateStr = (deck.win_rate || 0).toFixed(1) + '%';
+			}
+		}
+		const wrEl = document.getElementById('myDeckWinRate');
+		if (wrEl) wrEl.textContent = winRateStr;
+
 		updateDeckEditorStats();
 	}
 
@@ -1169,7 +1226,12 @@
 			const implWarning = isCardImplemented(card.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
 			if (lib) {
 				found++;
-				const wrColor = lib.winRate >= 55 ? '#2ecc71' : lib.winRate >= 45 ? '#f39c12' : '#e74c3c';
+				let deckWinRate = 50;
+				if (activeDeckName) {
+					const deck = allEDHDecksList.find(d => d.deck_name === activeDeckName);
+					if (deck) deckWinRate = deck.win_rate || 50;
+				}
+				const wrColor = lib.winRate >= deckWinRate + 5 ? '#2ecc71' : lib.winRate >= deckWinRate - 10 ? '#f39c12' : '#e74c3c';
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
 				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
 				html += '<span style="color:' + wrColor + ';">' + lib.winRate.toFixed(1) + '% WR (' + lib.casts + ' casts)</span>';
@@ -1357,7 +1419,7 @@
 			const wrColor = d.win_rate >= 55 ? '#2ecc71' : d.win_rate >= 45 ? '#f39c12' : '#e74c3c';
 			const deckNameAttr = JSON.stringify(String(d.name || '')).slice(1, -1).replace(/"/g, '&quot;');
 			html += '<tr>';
-			html += '<td>' + getDeckDisplayName(d.name) + '</td>';
+			html += '<td><span class="deck-name-truncate">' + escapeHtml(getDeckDisplayName(d.name)) + '</span></td>';
 			html += '<td>' + d.commander + '</td>';
 			html += '<td style="color:' + wrColor + '; font-weight:bold;">' + (d.win_rate || 0).toFixed(1) + '%</td>';
 			html += '<td>' + d.games + '</td>';
@@ -1368,12 +1430,13 @@
 		}
 
 		bodyEl.innerHTML = html || '<tr><td colspan="7">No matchup data available</td></tr>';
-		bodyEl.querySelectorAll('.matchup-recs-btn').forEach(btn => {
-			btn.addEventListener('click', () => {
-				selectDeck(btn.dataset.deck || '');
-				goToRecommendations();
-			});
-		});
+		// Use event delegation via onclick to avoid accumulating duplicate listeners
+		bodyEl.onclick = function(e) {
+			const btn = e.target.closest('.matchup-recs-btn');
+			if (!btn) return;
+			selectDeck(btn.dataset.deck || '');
+			goToRecommendations();
+		};
 	}
 
 	function filterMatchupMatrix() {
@@ -1413,9 +1476,16 @@
 		}
 	}
 
+	let lastSnapshotsHash = '';
+	let selectedSnapshotName = '';
+
 	async function loadSnapshotsList() {
 		const listEl = document.getElementById('snapshotsList');
 		if (!listEl) return;
+
+		// Preserve current selection before potential rebuild
+		const prevSelected = listEl.querySelector('tr.selected');
+		if (prevSelected) selectedSnapshotName = prevSelected.dataset.name || '';
 
 		try {
 			const res = await fetch('/api/snapshots');
@@ -1427,6 +1497,11 @@
 			}
 
 			const snapshots = data.snapshots || [];
+			const newHash = snapshots.map(s => s.name + ':' + s.timestamp).join('|');
+			if (newHash === lastSnapshotsHash) {
+				return; // Data unchanged, preserve DOM and selection
+			}
+			lastSnapshotsHash = newHash;
 			let html = '';
 
 			if (snapshots.length === 0) {
@@ -1435,8 +1510,9 @@
 				html = '<table class="table" style="font-size:0.95em;"><thead><tr><th>Name</th><th>Date</th><th>Decks</th><th>Avg WR</th></tr></thead><tbody>';
 				for (let snap of snapshots) {
 					const date = new Date(snap.timestamp).toLocaleString();
-					html += '<tr>';
-					html += '<td>' + snap.name + '</td>';
+					const selClass = (snap.name === selectedSnapshotName) ? ' class="selected"' : '';
+					html += '<tr data-name="' + escapeHtml(snap.name) + '"' + selClass + '>';
+					html += '<td>' + escapeHtml(snap.name) + '</td>';
 					html += '<td style="color:#888;">' + date + '</td>';
 					html += '<td>' + snap.deck_count + '</td>';
 					html += '<td><strong>' + (snap.average_wr || 0).toFixed(1) + '%</strong></td>';
