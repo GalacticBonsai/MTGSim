@@ -28,7 +28,7 @@ type SnapshotManager struct {
 
 // NewSnapshotManager creates a new snapshot manager.
 func NewSnapshotManager(snapshotsDir string) *SnapshotManager {
-	os.MkdirAll(snapshotsDir, 0o755)
+	_ = os.MkdirAll(snapshotsDir, 0o755)
 	return &SnapshotManager{
 		snapshotsDir: snapshotsDir,
 		snapshots:    []MetaSnapshot{},

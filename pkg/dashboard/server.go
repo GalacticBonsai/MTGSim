@@ -481,14 +481,14 @@ func (s *Server) handleCardRecommendations(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.edhProvider == nil {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false})
 		return
 	}
 
 	deckName := r.URL.Query().Get("deck")
 	if deckName == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{"error": "deck query parameter required"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "deck query parameter required"})
 		return
 	}
 
@@ -503,7 +503,7 @@ func (s *Server) handleCardRecommendations(w http.ResponseWriter, r *http.Reques
 
 	if deckStats == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]any{"error": "deck not found"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "deck not found"})
 		return
 	}
 
@@ -513,7 +513,7 @@ func (s *Server) handleCardRecommendations(w http.ResponseWriter, r *http.Reques
 	}
 
 	recs := GenerateDeckRecommendations(deckStats, cardLib, s.cardDB)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"recommendations": recs,
 	})
@@ -524,14 +524,14 @@ func (s *Server) handleSideboardSuggestions(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.edhProvider == nil {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false})
 		return
 	}
 
 	deckName := r.URL.Query().Get("deck")
 	if deckName == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{"error": "deck query parameter required"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "deck query parameter required"})
 		return
 	}
 
@@ -546,7 +546,7 @@ func (s *Server) handleSideboardSuggestions(w http.ResponseWriter, r *http.Reque
 
 	if deckStats == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]any{"error": "deck not found"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "deck not found"})
 		return
 	}
 
@@ -556,7 +556,7 @@ func (s *Server) handleSideboardSuggestions(w http.ResponseWriter, r *http.Reque
 	}
 
 	suggs := GenerateSideboardSuggestions(deckStats, edhStats, cardLib, s.cardDB)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"suggestions": suggs,
 	})
@@ -567,12 +567,12 @@ func (s *Server) handleMatchupMatrix(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.edhProvider == nil {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false})
 		return
 	}
 
 	edhStats := s.edhProvider()
-	
+
 	// For now, return basic deck statistics in a matrix-friendly format
 	// This would be enhanced with actual matchup tracking in a production system
 	type DeckStats struct {
@@ -592,7 +592,7 @@ func (s *Server) handleMatchupMatrix(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"decks": decks,
 	})
@@ -605,12 +605,12 @@ func (s *Server) handleCardSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{"error": "query parameter required"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "query parameter required"})
 		return
 	}
 
 	if s.cardLibrary == nil {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "cards": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false, "cards": []any{}})
 		return
 	}
 
@@ -641,7 +641,7 @@ func (s *Server) handleCardSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"results": results,
 	})
@@ -652,7 +652,7 @@ func (s *Server) handleSaveSnapshot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.snapshotManager == nil || s.edhProvider == nil {
-		json.NewEncoder(w).Encode(map[string]any{"error": "snapshot manager not initialized"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "snapshot manager not initialized"})
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -673,11 +673,11 @@ func (s *Server) handleSaveSnapshot(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.snapshotManager.SaveSnapshot(name, edhStats, cardLib); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"name":    name,
 		"timestamp": time.Now().Unix(),
@@ -689,14 +689,14 @@ func (s *Server) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.snapshotManager == nil {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "snapshots": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false, "snapshots": []any{}})
 		return
 	}
 
 	snapshots, err := s.snapshotManager.LoadSnapshots()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -727,7 +727,7 @@ func (s *Server) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled":   true,
 		"snapshots": summaries,
 	})
@@ -738,19 +738,19 @@ func (s *Server) handleSnapshotComparison(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.snapshotManager == nil {
-		json.NewEncoder(w).Encode(map[string]any{"error": "snapshot manager not initialized"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "snapshot manager not initialized"})
 		return
 	}
 
 	// For now, compare latest two snapshots
 	snapshots, err := s.snapshotManager.LoadSnapshots()
 	if err != nil || len(snapshots) < 2 {
-		json.NewEncoder(w).Encode(map[string]any{"error": "need at least 2 snapshots for comparison"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "need at least 2 snapshots for comparison"})
 		return
 	}
 
 	comp := CompareSnapshots(snapshots[1], snapshots[0])
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled":      true,
 		"comparison":   comp,
 	})
@@ -761,18 +761,18 @@ func (s *Server) handleMetaTrends(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.snapshotManager == nil {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "trends": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false, "trends": []any{}})
 		return
 	}
 
 	snapshots, err := s.snapshotManager.LoadSnapshots()
 	if err != nil || len(snapshots) == 0 {
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "trends": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false, "trends": []any{}})
 		return
 	}
 
 	trends := AnalyzeTrends(snapshots)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"trends":  trends,
 	})
