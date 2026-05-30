@@ -62,6 +62,8 @@ type Permanent struct {
 
 	// Commander status (CR 903.3)
 	isCommander bool
+
+	cantBlock  bool
 }
 
 func NewPermanent(c SimpleCard, owner *Player, controller *Player) *Permanent {
@@ -168,6 +170,9 @@ func (p *Permanent) HasDoubleStrike() bool  { return p.doubleStrike }
 // Commander status (CR 903.3)
 func (p *Permanent) SetIsCommander(v bool) { p.isCommander = v }
 func (p *Permanent) IsCommander() bool     { return p.isCommander }
+
+func (p *Permanent) SetCantBlock(v bool) { p.cantBlock = v }
+func (p *Permanent) CantBlock() bool     { return p.cantBlock }
 
 // Attachment helpers
 func (p *Permanent) AttachTo(target *Permanent) { p.attachedTo = target }

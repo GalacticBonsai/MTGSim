@@ -32,6 +32,8 @@ import (
 // EDHGameRunner manages running EDH games and updating results
 type EDHGameRunner struct {
 	seats          []simulation.EDHSeat
+	uploadedSeats  []simulation.EDHSeat
+	uploadedMu     sync.Mutex
 	cardDB         *card.CardDB
 	db             *database.DB
 	edhResults     *simulation.EDHResults

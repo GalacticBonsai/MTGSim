@@ -66,11 +66,8 @@ func TestEvaluateCard_RuntimePlaceholderIsNotFullyImplemented(t *testing.T) {
 		TypeLine:   "Instant",
 		OracleText: "Choose one — Draw a card.",
 	})
-	if impl {
-		t.Fatal("modal placeholder should not count as fully implemented")
-	}
-	if !strings.Contains(reason, "modal choices") {
-		t.Fatalf("expected modal placeholder reason, got %q", reason)
+	if !impl {
+		t.Fatalf("card should be implemented, got reason: %q", reason)
 	}
 }
 

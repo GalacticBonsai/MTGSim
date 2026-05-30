@@ -29,6 +29,8 @@ type Player struct {
 	commanderNames          map[string]bool
 	commanderCastCount      map[string]int
 	commanderDamageReceived map[string]int
+
+	additionalLands int
 }
 
 func NewPlayer(name string, startingLife int) *Player {
@@ -349,3 +351,19 @@ func (p *Player) AddManaToPool(mt ManaType, n int) {
 }
 
 func (p *Player) ClearManaPool() { p.manaPool.Clear() }
+
+func (p *Player) AddLandPlay(n int) { p.additionalLands += n }
+
+func (p *Player) LandPlaysAvailable() int {
+	return 1 + p.additionalLands
+}
+
+func (p *Player) UseLandPlay() {
+	if p.additionalLands > 0 {
+		p.additionalLands--
+	} else {
+		p.additionalLands = -1
+	}
+}
+
+func (p *Player) ResetLandPlays() { p.additionalLands = 0 }

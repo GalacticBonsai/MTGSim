@@ -3,6 +3,7 @@ package simulation
 import (
 	"strings"
 
+	abil "github.com/mtgsim/mtgsim/pkg/ability"
 	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/game"
@@ -144,8 +145,12 @@ func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player, metrics
 // records every public action so a replay can be reproduced.
 func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics) {
 	idx := indexOfPlayer(g, ap)
+	landsPlayed := 0
 	for _, c := range ap.Hand {
 		if c.IsLand() {
+			if landsPlayed >= ap.LandPlaysAvailable() {
+				break
+			}
 			if _, err := g.PlayLand(ap, c.Name); err != nil {
 				continue
 			}
@@ -155,9 +160,10 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			if metrics != nil {
 				metrics.recordLand(idx, c.Name)
 			}
-			break
+			landsPlayed++
 		}
 	}
+	ap.ResetLandPlays()
 	tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 
 	if idx >= 0 && len(ap.CommandZone) > 0 {
@@ -197,13 +203,28 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 		again = false
 		tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 		for _, c := range ap.Hand {
-			if !isCastablePermanent(c) || !ap.CanPayForCard(c) {
+			if !isCastableSpell(c) || !ap.CanPayForCard(c) {
 				continue
 			}
 			if !ap.PayForCard(c) {
 				continue
 			}
 			manaSpent := manaSpentForCard(c)
+			if c.IsInstant() || c.IsSorcery() {
+				resolved := castNonPermanentSpell(g, ap, c, log, metrics)
+				storm := 0
+				if metrics != nil && resolved {
+					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
+				}
+				if log != nil && resolved {
+					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventPermanentCast, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+				}
+				if resolved {
+					again = true
+					break
+				}
+				continue
+			}
 			perm, err := castPermanentCard(g, ap, c)
 			if err != nil || perm == nil {
 				continue
@@ -229,8 +250,8 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 	attemptCEDHComboFinish(g, ap, log, metrics)
 }
 
-func isCastablePermanent(c game.SimpleCard) bool {
-	return !c.IsLand() && (c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker())
+func isCastableSpell(c game.SimpleCard) bool {
+	return !c.IsLand() && (c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker() || c.IsInstant() || c.IsSorcery())
 }
 
 func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.Permanent, error) {
@@ -238,6 +259,51 @@ func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.
 		return g.SummonCreature(ap, c.Name)
 	}
 	return g.CastPermanent(ap, c.Name)
+}
+
+func castNonPermanentSpell(g *game.Game, ap *game.Player, c game.SimpleCard, log *EDHEventLog, metrics *edhMetrics) bool {
+	if c.OracleText == "" {
+		return false
+	}
+	idx := -1
+	for i, cc := range ap.Hand {
+		if cc.Name == c.Name {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false
+	}
+	ap.Hand = append(ap.Hand[:idx], ap.Hand[idx+1:]...)
+	gs := bridge.NewAbilityGameState(g)
+	engine := abil.NewExecutionEngine(gs)
+	abilities, err := engine.ParseAndRegisterAbilities(c.OracleText, c)
+	if err != nil || len(abilities) == 0 {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return true
+	}
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return true
+	}
+	for _, ab := range abilities {
+		var targets []any
+		for _, eff := range ab.Effects {
+			for _, tgt := range eff.Targets {
+				if tgt.Required {
+					potentials := engine.GetPotentialTargets(tgt.Type, nil)
+					if len(potentials) > 0 {
+						targets = append(targets, potentials[0])
+					}
+				}
+			}
+		}
+		engine.ExecuteAbility(ab, playerAdapter, targets)
+	}
+	ap.Graveyard = append(ap.Graveyard, c)
+	return true
 }
 
 func eventDetail(name string, manaSpent, storm int) string {
@@ -292,7 +358,7 @@ func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
 		demand.Add(game.Any, ap.CommanderTax(c.Name))
 	}
 	for _, c := range ap.Hand {
-		if !isCastablePermanent(c) {
+		if !isCastableSpell(c) {
 			continue
 		}
 		for mt, n := range c.GetManaCost() {

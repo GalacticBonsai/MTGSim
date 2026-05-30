@@ -576,8 +576,18 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+put\s+(?:a|\d+)\s+\+1/\+1\s+counter`, AddCounters, "Creature dies +1/+1 counter", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Counter"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+proliferate`, AddCounters, "Creature dies proliferate", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Proliferate"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+explore`, AddCounters, "Creature dies explore", ap.triggeredParserFactory(AddCounters, Dies, "Creature Dies Explore"))
+	// Return from graveyard to battlefield
+	ap.addPattern(Activated, `(?i)^Return\s+target\s+(?:creature|artifact|enchantment|permanent).*from\s+(?:your\s+)?graveyard\s+to\s+the\s+battlefield`, ReanimateCreature, "Return from graveyard", ap.activatedParserFactory(ReanimateCreature, "Return to Battlefield"))
+
+	// Enchant/Equip ability lines
+	ap.addPattern(Static, `(?i)^Enchanted\s+creature\s+gets\s+([\+\-]\d+)/([\+\-]\d+)`, PumpCreature, "Enchanted creature pump", ap.parseEnchantedPump)
+	ap.addPattern(Activated, `(?i)^Equip\s+\{(\d+)\}`, PumpCreature, "Equip ability", ap.parseEquip)
+
+	// Cumulative upkeep
+	ap.addPattern(Triggered, `(?i)^Cumulative\s+upkeep\s*[—–-]?\s*(.*)`, SacrificePermanent, "Cumulative upkeep", ap.triggeredParserFactory(SacrificePermanent, BeginningOfUpkeep, "Cumulative Upkeep"))
+
 	// Smart catch-all patterns for activated abilities that failed specific matches
-	ap.addPattern(Activated, `\+(\d+):\s*(.*)`, DrawCards, "Smart planeswalker + loyalty", ap.parseSmartActivated)
+	ap.addPattern(Activated, `\+(\d+):\s*([^.]*)`, DrawCards, "Smart planeswalker + loyalty", ap.parseSmartActivated)
 	ap.addPattern(Activated, `-(\d+):\s*(.*)`, DealDamage, "Smart planeswalker - loyalty", ap.parseSmartActivated)
 	ap.addPattern(Activated, `\{([WUBRG])\}:\s*(.*)`, AddMana, "Smart colored activated ability", ap.parseSmartActivated)
 	ap.addPattern(Activated, `\{(\d+)\}:\s*(.*)`, DrawCards, "Smart generic activated ability", ap.parseSmartActivated)
@@ -585,6 +595,10 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `\{T\},\s*[^:]+:\s*(.*)`, DrawCards, "Smart comma tap activated ability", ap.parseSmartActivated)
 	ap.addPattern(Activated, `Tap\s+an\s+untapped\s+[^:]+:\s*(.*)`, DrawCards, "Smart tap untapped activated", ap.parseSmartActivated)
 	ap.addPattern(Activated, `Tap\s+(?:\d+|X)\s+[^:]*:\s*(.*)`, DrawCards, "Smart tap multiple activated", ap.parseSmartActivated)
+
+	ap.addPattern(Activated, `(?i)^Sacrifice\s+(?:(?:a|an|another|other)\s+)?[^:]+:\s*(.*)`, PumpCreature, "Smart sacrifice activated", ap.parseSmartActivated)
+	ap.addPattern(Activated, `(?i)^Discard\s+(?:(?:a|an)\s+)?[^:]+:\s*(.*)`, DrawCards, "Smart discard activated", ap.parseSmartActivated)
+	ap.addPattern(Activated, `(?i)^Exile\s+[^:]+:\s*(.*)`, Exile, "Smart exile activated", ap.parseSmartActivated)
 
 	ap.addPattern(Activated, `(?i)^Tap\s+(?:\d+|X)\s+target\s+(.*)`, TapUntap, "Tap target spell", ap.activatedParserFactory(TapUntap, "Tap Target Spell"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+amass\s+(\d+)`, CreateToken, "Creature dies amass", ap.triggeredParserFactory(CreateToken, Dies, "Creature Dies Amass"))
@@ -598,6 +612,7 @@ func (ap *AbilityParser) initializePatterns() {
 	// Triggered ability catch-alls
 	ap.addPattern(Triggered, `^When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+(.*)`, DrawCards, "Smart ETB trigger", ap.parseSmartTrigger)
 	ap.addPattern(Triggered, `^When\s+.*\s+dies,\s+(.*)`, DrawCards, "Smart death trigger", ap.parseSmartTrigger)
+	ap.addPattern(Triggered, `^When\s+.*\s+(?:is\s+)?turned\s+face\s+(?:up|down),\s+(.*)`, DrawCards, "Smart morph trigger", ap.parseSmartTrigger)
 	ap.addPattern(Triggered, `^When\s+.*,\s+(.*)`, DrawCards, "Smart when trigger", ap.parseSmartTrigger)
 	ap.addPattern(Triggered, `^Whenever\s+.*,\s+(.*)`, DealDamage, "Smart whenever trigger", ap.parseSmartTrigger)
 	ap.addPattern(Triggered, `^At\s+the\s+beginning\s+of\s+(?:your\s+upkeep|your\s+end\s+step|combat\s+on\s+your\s+turn),\s+(.*)`, DealDamage, "Smart step trigger", ap.parseSmartTrigger)
@@ -608,14 +623,27 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `(?i)^Target\s+.*`, DealDamage, "Smart target spell", ap.parseSmartSpell)
 	ap.addPattern(Activated, `(?i)^Each\s+.*`, DealDamage, "Smart each spell", ap.parseSmartSpell)
 	ap.addPattern(Activated, `(?i)^All\s+.*`, DealDamage, "Smart all spell", ap.parseSmartSpell)
-	ap.addPattern(Activated, `(?i)^You\s+(?:gain|lose|draw|mill|search|create|destroy|exile|discard|return|prevent|counter|put|tap|untap|sacrifice|copy|take|deal|choose).*`, DealDamage, "Smart you spell", ap.parseSmartSpell)
-	ap.addPattern(Activated, `(?i)^(?:Destroy|Exile|Return|Counter|Create|Search|Prevent|Put|Mill|Draw|Deal|Gain|Lose|Tap|Untap|Sacrifice|Discard|Scry)\s+.*`, DealDamage, "Smart verb spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^You\s+(?:gain|lose|draw|mill|search|create|destroy|exile|discard|return|prevent|counter|put|tap|untap|sacrifice|copy|take|deal|choose|look|may).*`, DealDamage, "Smart you spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^(?:Destroy|Exile|Return|Counter|Create|Search|Prevent|Put|Mill|Draw|Deal|Gain|Lose|Tap|Untap|Sacrifice|Discard|Scry|Look)\s+.*`, DealDamage, "Smart verb spell", ap.parseSmartSpell)
 
 	// Static ability catch-alls
 	ap.addPattern(Static, `(?i)^As\s+long\s+as\s+.*`, PumpCreature, "Smart as long as static", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^Enchant\s+.*`, PumpCreature, "Smart enchant static", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^Equipped\s+creature\s+.*`, PumpCreature, "Smart equipped static", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^This\s+creature\s+.*`, PumpCreature, "Smart this creature static", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^(?:Creatures|Players|Spells)\s+.*can't.*`, CantAttackBlock, "Smart can't restriction", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^Spells\s+(?:cost\s+\{?\d+\}?\s+(?:more|less)|can't\s+be\s+countered).*`, CantAttackBlock, "Smart spell restriction", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^(?:You|Each\s+player)\s+can't\s+cast.*`, CantAttackBlock, "Smart cast restriction", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^If\s+.*would.*instead.*`, KeywordAbility, "Smart replacement effect", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^(?:You|Each\s+player)\s+may\s+(?:play|put|look).*`, LookAtLibraryTop, "Smart permission static", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^As\s+(?:an?\s+)?.*(?:enters|additional\s+cost).*`, PumpCreature, "Smart as enters static", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^Choose\s+(a|one\s+or\s+more|one\s+or\s+both|two|three|any\s+number).*`, ChooseMode, "Smart choose static", ap.parseSmartStatic)
+
+	// Replacement/cant't restriction spell catch-alls
+	ap.addPattern(Activated, `(?i)^If\s+.*would.*instead.*`, KeywordAbility, "Smart replacement spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^(?:Creatures|Players|Spells)\s+.*can't.*`, CantAttackBlock, "Smart restriction spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^(?:You|Each\s+player)\s+can't.*`, CantAttackBlock, "Smart you can't spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^(?:The\s+next\s+time|Until\s+end\s+of\s+turn).*`, DealDamage, "Smart timed spell", ap.parseSmartSpell)
 }
 
 // addPattern adds a new pattern to the parser.
@@ -1650,6 +1678,45 @@ func (ap *AbilityParser) parseIntValue(s string) int {
 	return 0
 }
 
+func (ap *AbilityParser) parseIntValueOrDefault(s string, def int) int {
+	if val, err := strconv.Atoi(s); err == nil {
+		return val
+	}
+	return def
+}
+
+var abilityWordsToStrip = []string{
+	"Landfall", "Constellation", "Domain", "Metalcraft", "Threshold",
+	"Delirium", "Hellbent", "Morbid", "Raid", "Ferocious", "Spell Mastery",
+	"Revolt", "Addendum", "Alliance", "Surge", "Soulbond", "Unleash",
+	"Support", "Heroic", "Enrage", "Undergrowth", "Magecraft", "Pride",
+	"Coven", "Daybound", "Nightbound", "Pack Tactics", "Descend", "Descent",
+	"Corrupted", "For Mirrodin", "Living Weapon", "Will of the Council",
+	"Parley", "Hidden Agenda", "Manifest", "Megamorph", "Monstrosity",
+	"Bolster", "Teleport", "Drop", "Visit", "Silent Auction",
+	"Cumulative upkeep", "Kicker", "Bloodrush", "Landfall", "Paradox",
+	"Commander", "Eminence", "Devoid", "Changeling", "Reconfigure",
+	"Backup", "Bargain", "Channel", "Compleated", "Converge", "Craft",
+	"Devotion", "Domain", "Escape", "Exploit", "Fabricate", "Gift",
+	"Imprint", "Jump-start", "Landship", "Legacy", "Lieutenant",
+	"Lurking", "Mentor", "Modular", "Outlast", "Persist", "Prowl",
+	"Ripple", "Scavenge", "Scry", "Seal", "Splice", "Storm",
+	"Totem armor", "Transfigure", "Transmute", "Type-cycling",
+	"Unearth", "Vanishing", "Ward", "Wither",
+}
+
+func (ap *AbilityParser) stripAbilityWords(text string) string {
+	for _, word := range abilityWordsToStrip {
+		if strings.HasPrefix(strings.ToLower(text), strings.ToLower(word+" — ")) {
+			return text[len(word)+3:] // strip "Word — "
+		}
+		if strings.HasPrefix(strings.ToLower(text), strings.ToLower(word+"—")) {
+			return text[len(word)+1:] // strip "Word—"
+		}
+	}
+	return text
+}
+
 // Additional spell parsers
 func (ap *AbilityParser) parseSpellDrawWords(matches []string, fullText string) (*Ability, error) {
 	// Convert word numbers to integers
@@ -2069,7 +2136,6 @@ func (ap *AbilityParser) inferEffectFromText(text string) (EffectType, int) {
 func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, bool) {
 	lower := strings.ToLower(text)
 
-	// Order matters: more-specific compound keywords first.
 	if strings.Contains(lower, "create") && strings.Contains(lower, "token") {
 		return CreateToken, 1, true
 	}
@@ -2080,32 +2146,16 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 		return PreventDamage, 0, true
 	}
 	if strings.Contains(lower, "gain") && strings.Contains(lower, "life") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return GainLife, count, true
+		return GainLife, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "lose") && strings.Contains(lower, "life") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return LoseLife, count, true
+		return LoseLife, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "draw") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return DrawCards, count, true
+		return DrawCards, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "mill") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return MillCards, count, true
+		return MillCards, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "search") && strings.Contains(lower, "library") {
 		return SearchLibrary, 1, true
@@ -2117,23 +2167,18 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 		return Exile, 1, true
 	}
 	if strings.Contains(lower, "discard") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return DiscardCards, count, true
+		return DiscardCards, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "return") && strings.Contains(lower, "hand") {
 		return ReturnToHand, 1, true
 	}
-	if strings.Contains(lower, "scry") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return ScryCards, count, true
+	if strings.Contains(lower, "return") && strings.Contains(lower, "battlefield") {
+		return ReanimateCreature, 1, true
 	}
-	if strings.Contains(lower, "+1/+1") || strings.Contains(lower, "proliferate") || strings.Contains(lower, "explore") || (strings.Contains(lower, "put") && strings.Contains(lower, "counter")) {
+	if strings.Contains(lower, "scry") || strings.Contains(lower, "surveil") {
+		return ScryCards, ap.parseIntValueOrDefault(text, 1), true
+	}
+	if strings.Contains(lower, "+1/+1") || strings.Contains(lower, "proliferate") || strings.Contains(lower, "explore") || strings.Contains(lower, "bolster") || (strings.Contains(lower, "put") && strings.Contains(lower, "counter")) {
 		return AddCounters, 1, true
 	}
 	if strings.Contains(lower, "add") && (strings.Contains(lower, "mana") || strings.Contains(lower, "{")) {
@@ -2157,8 +2202,8 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "take") && strings.Contains(lower, "extra turn") {
 		return TakeExtraTurn, 1, true
 	}
-	if strings.Contains(lower, "look at") && strings.Contains(lower, "top") && strings.Contains(lower, "library") {
-		return LookAtLibraryTop, ap.parseIntValue(text), true
+	if strings.Contains(lower, "look at") && strings.Contains(lower, "top") {
+		return LookAtLibraryTop, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "reveal") {
 		return RevealInformation, 0, true
@@ -2166,18 +2211,26 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "copy") && strings.Contains(lower, "target") {
 		return CopySpell, 1, true
 	}
+	if strings.Contains(lower, "discover") {
+		return SearchLibrary, 1, true
+	}
+	if strings.Contains(lower, "populate") || strings.Contains(lower, "investigate") {
+		return CreateToken, 1, true
+	}
+	if strings.Contains(lower, "learn") {
+		return DrawCards, 1, true
+	}
+	if strings.Contains(lower, "venture") || strings.Contains(lower, "dungeon") || strings.Contains(lower, "initiative") {
+		return LookAtLibraryTop, 1, true
+	}
 	if strings.Contains(lower, "damage") {
-		count := ap.parseIntValue(text)
-		if count == 0 {
-			count = 1
-		}
-		return DealDamage, count, true
+		return DealDamage, ap.parseIntValueOrDefault(text, 1), true
 	}
 	if strings.Contains(lower, "gets") && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
 		return PumpCreature, 0, true
 	}
-	if strings.Contains(lower, "gains") || strings.Contains(lower, "have") || strings.Contains(lower, "has") {
-		kw := []string{"flying", "trample", "lifelink", "deathtouch", "haste", "vigilance", "first strike", "menace", "reach", "hexproof", "indestructible", "flash", "defender", "double strike", "protection", "shroud", "intimidate", "fear", "shadow", "infect", "wither", "poisonous", "prowess", "cascade", "convoke", "delve", "dredge", "persist", "undying", "unearth", "morph", "manifest", "embalm", "eternalize", "aftermath", "adventure", "mutate", "foretell", "strive", "rebound", "suspend", "madness", "buyback", "replicate", "splice", "transmute", "regenerate", "ward", "bloodthirst", "annihilator"}
+	if strings.Contains(lower, "gains") || strings.Contains(lower, "give") || strings.Contains(lower, "have") || strings.Contains(lower, "has") {
+		kw := []string{"flying", "trample", "lifelink", "deathtouch", "haste", "vigilance", "first strike", "menace", "reach", "hexproof", "indestructible", "flash", "defender", "double strike", "protection", "shroud", "intimidate", "fear", "shadow", "infect", "wither", "poisonous", "prowess", "cascade", "convoke", "delve", "dredge", "persist", "undying", "unearth", "morph", "manifest", "embalm", "eternalize", "aftermath", "adventure", "mutate", "foretell", "strive", "rebound", "suspend", "madness", "buyback", "replicate", "splice", "transmute", "regenerate", "ward", "bloodthirst", "annihilator", "skulk", "affinity", "bushido", "absorb", "amplify", "aura swap", "awaken", "battalion", "bloodrush", "bolster", "celebrity", "champion", "changeling", "cipher", "conspire", "crew", "dash", "detain", "devour", "dethrone", "domain", "emerge", "enrage", "evolve", "extort", "fabricate", "fading", "fateful hour", "flanking", "flashback", "fortify", "frenzy", "fuse", "graft", "haunt", "heroic", "hideaway", "horsemanship", "improvise", "ingest", "kinship", "landfall", "lieutenant", "living weapon", "madness", "metalcraft", "morbid", "ninjutsu", "offspring", "outlast", "overload", "parley", "partner", "rampage", "retrace", "revolt", "ripple", "scavenge", "soulbond", "storm", "sunburst", "surge", "threshold", "torment", "totem armor", "transfigure", "tribute", "type cycling", "unleash", "vanishing"}
 		for _, k := range kw {
 			if strings.Contains(lower, k) {
 				return KeywordAbility, 1, true
@@ -2193,6 +2246,9 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "control") && strings.Contains(lower, "target") {
 		return ChangeControl, 1, true
 	}
+	if strings.Contains(lower, "copy") {
+		return CopySpell, 1, true
+	}
 	return 0, 0, false
 }
 
@@ -2201,6 +2257,7 @@ func (ap *AbilityParser) parseSmartTrigger(matches []string, fullText string) (*
 		return nil, ErrParsingFailed
 	}
 	effectText := matches[1]
+	fullText = ap.stripAbilityWords(fullText)
 	effectType, value, ok := ap.inferSupportedEffect(effectText)
 	if !ok {
 		// Try inferring from the whole text if the capture group is empty
@@ -2245,6 +2302,8 @@ func (ap *AbilityParser) parseSmartActivated(matches []string, fullText string) 
 		return nil, ErrParsingFailed
 	}
 	effectText := matches[1]
+	fullText = ap.stripAbilityWords(fullText)
+	effectText = ap.stripAbilityWords(effectText)
 	effectType, value, ok := ap.inferSupportedEffect(effectText)
 	if !ok {
 		return nil, ErrParsingFailed
@@ -2273,12 +2332,10 @@ func hasNonManaColon(text string) bool {
 }
 
 func (ap *AbilityParser) parseSmartSpell(matches []string, fullText string) (*Ability, error) {
-	// Reject text that looks like an activated-ability cost line (e.g.
-	// "Sacrifice a creature: Draw a card.").  We only want to catch spells
-	// and one-shot effects here.
 	if hasNonManaColon(fullText) {
 		return nil, ErrParsingFailed
 	}
+	fullText = ap.stripAbilityWords(fullText)
 	effectType, value, ok := ap.inferSupportedEffect(fullText)
 	if !ok {
 		return nil, ErrParsingFailed
@@ -2287,17 +2344,16 @@ func (ap *AbilityParser) parseSmartSpell(matches []string, fullText string) (*Ab
 }
 
 func (ap *AbilityParser) parseSmartStatic(matches []string, fullText string) (*Ability, error) {
+	fullText = ap.stripAbilityWords(fullText)
 	lower := strings.ToLower(fullText)
 	var effectType EffectType
 	var value int
 
 	if strings.Contains(lower, "gets") && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
-		// Try to parse P/T delta
 		parts := strings.Split(fullText, " ")
 		for i, p := range parts {
 			if strings.Contains(p, "/") {
 				if i > 0 && (strings.Contains(parts[i-1], "+") || strings.Contains(parts[i-1], "-")) {
-					// e.g. "+2/+2"
 					val := ap.parseIntValue(parts[i-1])
 					if val != 0 {
 						value = val
@@ -2309,6 +2365,18 @@ func (ap *AbilityParser) parseSmartStatic(matches []string, fullText string) (*A
 	} else if strings.Contains(lower, "have") || strings.Contains(lower, "gains") || strings.Contains(lower, "has") || strings.Contains(lower, "is") {
 		effectType = KeywordAbility
 	} else if strings.Contains(lower, "can't") {
+		effectType = CantAttackBlock
+	} else if strings.Contains(lower, "choose") {
+		effectType = ChooseMode
+	} else if strings.Contains(lower, "look") {
+		effectType = LookAtLibraryTop
+	} else if strings.Contains(lower, "play") || strings.Contains(lower, "put") {
+		effectType = AdditionalLand
+		count := ap.parseIntValue(fullText)
+		if count > 0 {
+			value = count
+		}
+	} else if strings.Contains(lower, "cost") {
 		effectType = CantAttackBlock
 	} else {
 		return nil, ErrParsingFailed
@@ -2325,6 +2393,35 @@ func (ap *AbilityParser) parseSmartStatic(matches []string, fullText string) (*A
 				Description: fullText,
 			},
 		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseEnchantedPump(matches []string, fullText string) (*Ability, error) {
+	power := ap.parseIntValue(matches[1])
+	toughness := ap.parseIntValue(matches[2])
+	return &Ability{
+		Name: "Enchanted Creature Pump",
+		Type: Static,
+		Effects: []Effect{
+			{
+				Type:        PumpCreature,
+				Duration:    Permanent,
+				Description: "Enchanted creature gets " + matches[1] + "/" + matches[2],
+				HasPTDelta:  true,
+				PTPower:     power,
+				PTToughness: toughness,
+			},
+		},
+	}, nil
+}
+
+func (ap *AbilityParser) parseEquip(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name:     "Equip",
+		Type:     Activated,
+		Cost:     Cost{ManaCost: map[game.ManaType]int{game.Any: ap.parseIntValue(matches[1])}},
+		Effects:  []Effect{{Type: PumpCreature, Duration: Permanent, Description: "Equip " + matches[1]}},
+		TimingRestriction: SorcerySpeed,
 	}, nil
 }
 
