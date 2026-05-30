@@ -69,7 +69,13 @@ type Server struct {
 	suggestedDeck      *simulation.EDHSeat
 	suggestedDeckMu    sync.Mutex
 	recordUpload       func(name string)
+	deleteUpload       func(name string)
+	uploadedDecks      func() []string
 	cardDB             *card.CardDB
+
+	// In-memory byte caches for uploaded-filtered EDH results
+	uploadedEdhCache      []byte
+	uploadedEdhCached     time.Time
 	snapshotManager    *SnapshotManager
 	port               int
 	mux                *http.ServeMux
@@ -124,6 +130,12 @@ func (s *Server) SetGameRunner(gr GameRunner) { s.gameRunner = gr }
 // SetUploadRecorder sets a callback invoked when a deck is uploaded.
 func (s *Server) SetUploadRecorder(fn func(name string)) { s.recordUpload = fn }
 
+// SetDeleteRecorder sets a callback invoked when an uploaded deck is removed.
+func (s *Server) SetDeleteRecorder(fn func(name string)) { s.deleteUpload = fn }
+
+// SetUploadedDecksProvider sets a function that returns uploaded deck names.
+func (s *Server) SetUploadedDecksProvider(fn func() []string) { s.uploadedDecks = fn }
+
 // SetCardDB attaches a card database for deck parsing.
 func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
 
@@ -164,6 +176,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/game-status", s.handleGameStatus)
 	s.mux.HandleFunc("/api/suggested-deck", s.handleSuggestedDeck)
 	s.mux.HandleFunc("/api/upload-deck", s.handleUploadDeck)
+	s.mux.HandleFunc("/api/uploaded-decks", s.handleUploadedDecks)
 	s.mux.HandleFunc("/api/card-recommendations", s.handleCardRecommendations)
 	s.mux.HandleFunc("/api/sideboard-suggestions", s.handleSideboardSuggestions)
 	s.mux.HandleFunc("/api/matchup-matrix", s.handleMatchupMatrix)
@@ -339,22 +352,54 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve from byte cache when fresh (avoids the provider lock and
-	// JSON serialisation on every poll).
-	s.cacheMu.RLock()
-	if s.edhResultsCacheBytes != nil && time.Since(s.edhResultsBytesCached) < s.cacheMaxAge {
-		_, _ = w.Write(s.edhResultsCacheBytes)
+	uploadedOnly := r.URL.Query().Get("uploaded") == "1"
+
+	if uploadedOnly {
+		// Serve from uploaded-filtered byte cache when fresh
+		s.cacheMu.RLock()
+		if s.uploadedEdhCache != nil && time.Since(s.uploadedEdhCached) < s.cacheMaxAge {
+			_, _ = w.Write(s.uploadedEdhCache)
+			s.cacheMu.RUnlock()
+			return
+		}
 		s.cacheMu.RUnlock()
-		return
+	} else {
+		// Serve from full byte cache when fresh
+		s.cacheMu.RLock()
+		if s.edhResultsCacheBytes != nil && time.Since(s.edhResultsBytesCached) < s.cacheMaxAge {
+			_, _ = w.Write(s.edhResultsCacheBytes)
+			s.cacheMu.RUnlock()
+			return
+		}
+		s.cacheMu.RUnlock()
 	}
-	s.cacheMu.RUnlock()
 
 	allDecks := s.edhProvider()
+	var decks []simulation.EDHDeckStats
+	var totalDecks int
+
+	if uploadedOnly && s.uploadedDecks != nil {
+		names := s.uploadedDecks()
+		nameSet := make(map[string]bool, len(names))
+		for _, n := range names {
+			nameSet[n] = true
+		}
+		decks = make([]simulation.EDHDeckStats, 0, len(names))
+		for _, d := range allDecks {
+			if nameSet[d.DeckName] {
+				decks = append(decks, d)
+			}
+		}
+		totalDecks = len(decks)
+	} else {
+		decks = allDecks
+		totalDecks = len(decks)
+	}
 
 	resp := edhResultsResponse{
 		Enabled:    true,
-		TotalDecks: len(allDecks),
-		Decks:      allDecks,
+		TotalDecks: totalDecks,
+		Decks:      decks,
 	}
 
 	if s.edhSummary != nil {
@@ -368,8 +413,13 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.cacheMu.Lock()
-	s.edhResultsCacheBytes = data
-	s.edhResultsBytesCached = time.Now()
+	if uploadedOnly {
+		s.uploadedEdhCache = data
+		s.uploadedEdhCached = time.Now()
+	} else {
+		s.edhResultsCacheBytes = data
+		s.edhResultsBytesCached = time.Now()
+	}
 	s.cacheMu.Unlock()
 
 	_, _ = w.Write(data)
@@ -607,6 +657,36 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 		"message": "deck uploaded and set",
 		"name":    handler.Filename,
 	})
+}
+
+// handleUploadedDecks lists or deletes uploaded decks.
+func (s *Server) handleUploadedDecks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodDelete {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "missing name"})
+			return
+		}
+		if s.deleteUpload != nil {
+			s.deleteUpload(name)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "deleted"})
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		if s.cardLibrary != nil {
+			// Return deck names from the provider (not implemented as separate list)
+			_ = json.NewEncoder(w).Encode(map[string]any{"decks": []string{}})
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": "method not allowed"})
 }
 
 // handleCardRecommendations returns deck improvement suggestions.

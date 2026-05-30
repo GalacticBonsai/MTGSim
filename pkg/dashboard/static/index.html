@@ -28,6 +28,12 @@
 			<div class="loading">Loading...</div>
 		</div>
 
+		<div id="uploadedDecksManager" style="margin-top:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #4ecdc4; display:none;">
+			<h3 style="margin-top:0;">Uploaded Decks</h3>
+			<p style="color:#888; font-size:0.9em; margin:0 0 10px 0;">Decks you've uploaded appear in every pod. Remove them here.</p>
+			<div id="uploadedDecksList"></div>
+		</div>
+
 		<div id="gameControlsSection" style="margin-top:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #ff6b6b;">
 			<h3 style="margin-top:0;">Game Controls</h3>
 			
@@ -74,7 +80,7 @@
 			<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
 				<input id="deckSearch" class="search-box" placeholder="Search decks..." oninput="filterEDHDecks()" style="flex:1; min-width:250px;">
 				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
-					<input type="checkbox" id="showOnlyUploaded" onchange="filterEDHDecks()" checked>
+					<input type="checkbox" id="showOnlyUploaded" onchange="loadResults()" checked>
 					Show only my uploaded decks
 				</label>
 				<button id="clearDeckSelection" onclick="clearSelectedDeck()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">Clear Selection</button>

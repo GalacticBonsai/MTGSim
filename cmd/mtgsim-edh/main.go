@@ -76,6 +76,7 @@ func (gr *EDHGameRunner) RunGames(count int) {
 				uploadedNames = names
 			}
 		}
+		uploadedRRIdx := 0
 
 		numWorkers := (runtime.NumCPU() * 4) / 5
 		if numWorkers < 1 {
@@ -93,7 +94,17 @@ func (gr *EDHGameRunner) RunGames(count int) {
 				defer wg.Done()
 				for i := range gamesChan {
 					gr.mu.Lock()
-					pod := pickPodWithUploaded(gr.seats, gr.podSize, gr.rng, gr.mulligans, uploadedNames)
+					gr.suggestedDeckMu.Lock()
+					sd := gr.suggestedDeck
+					gr.suggestedDeckMu.Unlock()
+					var chosen string
+					if sd != nil {
+						chosen = sd.DeckName
+					} else if len(uploadedNames) > 0 {
+						chosen = uploadedNames[uploadedRRIdx%len(uploadedNames)]
+						uploadedRRIdx++
+					}
+					pod := pickPodWithUploaded(gr.seats, gr.podSize, gr.rng, gr.mulligans, chosen)
 					gr.mu.Unlock()
 					
 					rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
@@ -153,34 +164,43 @@ func (gr *EDHGameRunner) IsRunning() bool {
 	return gr.running
 }
 
-// pickPodWithUploaded picks n random seats, ensuring at least one uploaded
-// deck is included when the uploaded list is non-empty, then shuffles seats.
-func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, uploaded []string) []simulation.EDHSeat {
-	pod := pickPod(seats, n, rng, mulligans)
-	if len(uploaded) > 0 && !containsAny(pod, uploaded) {
-		uName := uploaded[rng.Intn(len(uploaded))]
+// pickPodWithUploaded picks n random seats, ensuring chosen (if non-empty)
+// is in the pod, then shuffles. Non-uploaded decks fill the remaining seats.
+func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
+	pod := make([]simulation.EDHSeat, 0, n)
+	used := make(map[string]bool)
+
+	// Place the chosen uploaded deck
+	if chosen != "" {
 		for _, s := range seats {
-			if s.DeckName == uName {
-				idx := rng.Intn(n)
-				pod[idx] = s
-				pod[idx].Mulligans = mulligans
+			if s.DeckName == chosen {
+				s.Mulligans = mulligans
+				pod = append(pod, s)
+				used[chosen] = true
 				break
 			}
 		}
 	}
-	rng.Shuffle(n, func(i, j int) { pod[i], pod[j] = pod[j], pod[i] })
-	return pod
-}
 
-func containsAny(pod []simulation.EDHSeat, names []string) bool {
-	for _, s := range pod {
-		for _, n := range names {
-			if s.DeckName == n {
-				return true
-			}
+	// Fill remaining with random non-uploaded decks
+	var pool []simulation.EDHSeat
+	for _, s := range seats {
+		if !used[s.DeckName] {
+			pool = append(pool, s)
 		}
 	}
-	return false
+	rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
+	needed := n - len(pod)
+	if needed > len(pool) {
+		needed = len(pool)
+	}
+	for _, s := range pool[:needed] {
+		s.Mulligans = mulligans
+		pod = append(pod, s)
+	}
+
+	rng.Shuffle(n, func(i, j int) { pod[i], pod[j] = pod[j], pod[i] })
+	return pod
 }
 
 func main() {
@@ -362,6 +382,7 @@ func main() {
 			uploadedNames = names
 		}
 	}
+	uploadedRRIdx := 0
 
 	// Start worker goroutines
 	for w := 0; w < numWorkers; w++ {
@@ -370,7 +391,12 @@ func main() {
 			defer wg.Done()
 			for i := range gamesChan {
 				mu.Lock()
-				pod := pickPodWithUploaded(seats, *podSize, rng, *mulligans, uploadedNames)
+				var chosen string
+				if len(uploadedNames) > 0 {
+					chosen = uploadedNames[uploadedRRIdx%len(uploadedNames)]
+					uploadedRRIdx++
+				}
+				pod := pickPodWithUploaded(seats, *podSize, rng, *mulligans, chosen)
 				mu.Unlock()
 				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
 					Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
@@ -660,21 +686,150 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 		return legacy.GetResults()
 	}, port)
 	server.SetEDHProvider(func() []simulation.EDHDeckStats {
+		if db != nil {
+			s, err := db.GetEDHDeckStats()
+			if err != nil {
+				logger.LogMeta("DB EDH query error: %v", err)
+				return nil
+			}
+			out := make([]simulation.EDHDeckStats, len(s))
+			for i, d := range s {
+				out[i] = simulation.EDHDeckStats{
+					DeckName:            d.DeckName,
+					CommanderName:       d.CommanderName,
+					Games:               d.Games,
+					Wins:                d.Wins,
+					Losses:              d.Losses,
+					WinRate:             d.WinRate,
+					AvgFinalLife:        d.AvgFinalLife,
+					AvgMulligans:        d.AvgMulligans,
+					CommanderDamageKOs:  d.CommanderDamageKOs,
+					LifeLossKOs:         d.LifeLossKOs,
+					MillKOs:             d.MillKOs,
+					DeckoutKOs:          d.DeckoutKOs,
+					EffectKOs:           d.EffectKOs,
+					CombatWins:          d.CombatWins,
+					EffectWins:          d.EffectWins,
+					DeckoutWins:         d.DeckoutWins,
+					AvgCommanderCasts:   d.AvgCommanderCasts,
+					AvgManaSpent:        d.AvgManaSpent,
+					AvgManaProduced:     d.AvgManaProduced,
+					AvgCardsPlayed:      d.AvgCardsPlayed,
+					AvgLandsPlayed:      d.AvgLandsPlayed,
+					AvgSpellsCast:       d.AvgSpellsCast,
+					AvgCreaturesCast:    d.AvgCreaturesCast,
+					AvgCombatDamage:     d.AvgCombatDamage,
+					MaxStormCount:       d.MaxStormCount,
+					TotalManaSpent:      d.TotalManaSpent,
+					TotalManaProduced:   d.TotalManaProduced,
+					TotalCardsPlayed:    d.TotalCardsPlayed,
+					TotalCombatDamage:   d.TotalCombatDamage,
+					Eliminations:        d.Eliminations,
+					CardStats:           map[string]simulation.CardPerformance{},
+				}
+				for k, v := range d.CardStats {
+					out[i].CardStats[k] = simulation.CardPerformance{Casts: v.Casts, Wins: v.Wins}
+				}
+			}
+			sort.Slice(out, func(i, j int) bool {
+				if out[i].WinRate != out[j].WinRate {
+					return out[i].WinRate > out[j].WinRate
+				}
+				if out[i].Games != out[j].Games {
+					return out[i].Games > out[j].Games
+				}
+				return out[i].DeckName < out[j].DeckName
+			})
+			return out
+		}
 		mu.RLock()
 		defer mu.RUnlock()
 		return edh.DeckStats()
 	})
 	server.SetEDHSummaryProvider(func() simulation.EDHSummary {
+		if db != nil {
+			s, err := db.GetEDHSummary()
+			if err != nil {
+				logger.LogMeta("DB summary error: %v", err)
+				return simulation.EDHSummary{}
+			}
+			return simulation.EDHSummary{
+				TotalGames:           s.TotalGames,
+				AverageTurns:         s.AverageTurns,
+				TotalManaSpent:       s.TotalManaSpent,
+				AverageManaSpent:     s.AverageManaSpent,
+				TotalManaProduced:    s.TotalManaProduced,
+				AverageManaProduced:  s.AverageManaProduced,
+				TotalCardsPlayed:     s.TotalCardsPlayed,
+				AverageCardsPlayed:   s.AverageCardsPlayed,
+				HighestStormCount:    s.HighestStormCount,
+				TotalCombatDamage:    s.TotalCombatDamage,
+				TotalEliminations:    s.TotalEliminations,
+				AverageEliminations:  s.AverageEliminations,
+				AverageCombatDamage:  s.AverageCombatDamage,
+			}
+		}
 		mu.RLock()
 		defer mu.RUnlock()
 		return edh.Summary()
 	})
 	server.SetEDHGamesProvider(func() []simulation.EDHGameRecord {
+		if db != nil {
+			pods, err := db.GetRecentEDHPods(10)
+			if err != nil {
+				logger.LogMeta("DB pods error: %v", err)
+				return nil
+			}
+			out := make([]simulation.EDHGameRecord, len(pods))
+			for i, p := range pods {
+				out[i] = simulation.EDHGameRecord{
+					Turns:             p.TotalTurns,
+					Winner:            p.Winner,
+					WinnerCondition:   simulation.WinCondition(p.WinnerCondition),
+					MaxStormCount:     p.MaxStormCount,
+					TotalManaSpent:    p.TotalManaSpent,
+					TotalManaProduced: p.TotalManaProduced,
+					TotalCardsPlayed:  p.TotalCardsPlayed,
+					TotalCombatDamage: p.TotalCombatDamage,
+					TotalEliminations: p.TotalEliminations,
+					Players:           make([]simulation.EDHPlayerRecord, len(p.Players)),
+				}
+				for j, pl := range p.Players {
+					out[i].Players[j] = simulation.EDHPlayerRecord{
+						DeckName:      pl.DeckName,
+						CommanderName: pl.CommanderName,
+						FinalLife:     pl.FinalLife,
+						Eliminated:    pl.Eliminated,
+						KillSource:    simulation.KillSource(pl.KillSource),
+						ManaSpent:     pl.ManaSpent,
+						ManaProduced:  pl.ManaProduced,
+						CardsPlayed:   pl.CardsPlayed,
+						CombatDamage:  pl.CombatDamage,
+						Eliminations:  pl.Eliminations,
+					}
+				}
+			}
+			return out
+		}
 		mu.RLock()
 		defer mu.RUnlock()
 		return edh.RecentGames(10)
 	})
 	server.SetCardLibraryProvider(func() map[string]stats.GlobalCardStats {
+		if db != nil {
+			cards, err := db.GetGlobalCardStats()
+			if err != nil {
+				logger.LogMeta("DB card stats error: %v", err)
+				return nil
+			}
+			out := make(map[string]stats.GlobalCardStats, len(cards))
+			for _, c := range cards {
+				out[c.CardName] = stats.GlobalCardStats{
+					Casts: c.Casts, Wins: c.Wins, WinRate: c.WinRate, ImageURL: c.ImageURL,
+				}
+			}
+			return out
+		}
 		return cardLib.Snapshot()
 	})
 	server.SetImplementationReportProvider(func() *card.ImplementationReport {
@@ -682,12 +837,21 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 	})
 	server.SetCardDB(cardDB)
 
-	// Wire upload recorder to persist deck names to database
+	// Wire upload/delete recorders to persist deck names to database
 	if db != nil {
 		server.SetUploadRecorder(func(name string) {
 			if err := db.RecordUploadedDeck(name); err != nil {
 				logger.LogMeta("Failed to record uploaded deck: %v", err)
 			}
+		})
+		server.SetDeleteRecorder(func(name string) {
+			if err := db.DeleteUploadedDeck(name); err != nil {
+				logger.LogMeta("Failed to delete uploaded deck: %v", err)
+			}
+		})
+		server.SetUploadedDecksProvider(func() []string {
+			names, _ := db.GetUploadedDeckNames()
+			return names
 		})
 	}
 

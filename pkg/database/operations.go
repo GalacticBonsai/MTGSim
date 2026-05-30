@@ -585,6 +585,12 @@ func (db *DB) RecordUploadedDeck(name string) error {
 	return err
 }
 
+// DeleteUploadedDeck removes a deck from the uploaded list.
+func (db *DB) DeleteUploadedDeck(name string) error {
+	_, err := db.sqlDB.Exec(`DELETE FROM uploaded_decks WHERE name = $1`, name)
+	return err
+}
+
 // GetUploadedDeckNames returns all uploaded deck names.
 func (db *DB) GetUploadedDeckNames() ([]string, error) {
 	rows, err := db.sqlDB.Query(`SELECT name FROM uploaded_decks ORDER BY created_at DESC`)

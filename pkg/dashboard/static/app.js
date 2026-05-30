@@ -169,6 +169,42 @@
 		});
 	}
 
+	function renderUploadedDecks() {
+		const container = document.getElementById('uploadedDecksList');
+		const section = document.getElementById('uploadedDecksManager');
+		if (!container || !section) return;
+		const names = Array.from(uploadedDeckNames);
+		if (names.length === 0) {
+			section.style.display = 'none';
+			return;
+		}
+		section.style.display = '';
+		let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
+		for (let name of names) {
+			const escaped = name.replace(/'/g, "\\'");
+			html += '<div style="display:flex; align-items:center; justify-content:space-between; background:#1a1a1a; padding:8px 12px; border-radius:4px;">'
+				+ '<span>' + escapeHtml(name) + '</span>'
+				+ '<button onclick="deleteUploadedDeck(\'' + escaped + '\')" style="padding:4px 10px; background:#e74c3c; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:0.85em;">Remove</button>'
+				+ '</div>';
+		}
+		html += '</div>';
+		container.innerHTML = html;
+	}
+
+	async function deleteUploadedDeck(name) {
+		try {
+			const res = await fetch('/api/uploaded-decks?name=' + encodeURIComponent(name), { method: 'DELETE' });
+			if (res.ok) {
+				uploadedDeckNames.delete(name);
+				saveUploadedDecks();
+				renderUploadedDecks();
+				filterEDHDecks();
+			}
+		} catch (err) {
+			console.error('Failed to delete uploaded deck:', err);
+		}
+	}
+
 	function sortEDH(key) {
 		if (!currentEDHData || !currentEDHData.decks) return;
 		if (edhSortState.key === key) {
@@ -200,9 +236,10 @@
 	}
 
 	async function loadResults() {
+		const edhURL = '/api/edh-results' + (document.getElementById('showOnlyUploaded').checked ? '?uploaded=1' : '');
 		const [resultsRes, edhRes, libRes] = await Promise.all([
 			fetchWithTimeout('/api/results', 10000).catch(() => null),
-			fetchWithTimeout('/api/edh-results', 10000).catch(() => null),
+			fetchWithTimeout(edhURL, 10000).catch(() => null),
 			fetchWithTimeout('/api/card-library', 10000).catch(() => null),
 		]);
 
@@ -282,14 +319,8 @@
 	function filterEDHDecks() {
 		let decks = (allEDHDecksList || []).slice();
 		const search = (document.getElementById('deckSearch') ? document.getElementById('deckSearch').value : '').toLowerCase();
-		const onlyUploaded = document.getElementById('showOnlyUploaded') ? document.getElementById('showOnlyUploaded').checked : false;
 
-		// Filter to uploaded decks only
-		if (onlyUploaded) {
-			decks = decks.filter(d => isUploadedDeck(d));
-		}
-
-		// Filter by search term
+		// Filter by search term only (uploaded filter is server-side now)
 		if (search) {
 			decks = decks.filter(d =>
 				(d.deck_name || '').toLowerCase().includes(search) ||
@@ -937,6 +968,7 @@
 				// Track this deck as user-uploaded (normalized name without extension)
 				uploadedDeckNames.add(normalizeUploadedName(file.name));
 				saveUploadedDecks(); // Persist to localStorage
+				renderUploadedDecks();
 
 				status.textContent = '✓ ' + file.name + ' uploaded';
 				status.style.color = '#4ecdc4';
@@ -998,6 +1030,7 @@
 			if (res.ok) {
 				uploadedDeckNames.add(normalizeUploadedName(file.name));
 				saveUploadedDecks();
+				renderUploadedDecks();
 				status.textContent = '✓ ' + file.name + ' uploaded';
 				status.style.color = '#4ecdc4';
 				fileInput.value = '';
@@ -1361,6 +1394,7 @@
 			if (res.ok) {
 				uploadedDeckNames.add(normalizeUploadedName(filename));
 				saveUploadedDecks();
+				renderUploadedDecks();
 				saveDeckEditorState();
 				alert('✓ ' + filename + ' uploaded. Go to Overview to run games with it.');
 				populateRecommendationsDeckSelect();
@@ -1762,6 +1796,7 @@
 
 	// Initialize - load persistent state first
 	loadUploadedDecks();
+	renderUploadedDecks();
 	loadDeckEditorState();
 	loadImplementationStatus();
 	setupRecDeckSelectHandler();
