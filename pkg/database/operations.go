@@ -101,7 +101,7 @@ type EDHPlayerRecord struct {
 
 // RecordEDHPod inserts a pod and its players, plus per-deck card stats.
 func (db *DB) RecordEDHPod(pod EDHPodRecord, players []EDHPlayerRecord, cardStats map[string]map[string]struct{ Casts, Wins int }) error {
-	return db.txHelper(func(tx *sql.Tx) error {
+	return db.txHelperRetry(func(tx *sql.Tx) error {
 		var podID int64
 		err := tx.QueryRow(
 			`INSERT INTO edh_pods(total_turns, winner, winner_condition, max_storm_count,
@@ -573,4 +573,32 @@ func (db *DB) UpdateCardImageURL(cardName, url string) error {
 		updated_at = EXCLUDED.updated_at`,
 		cardName, url, now())
 	return err
+}
+
+// RecordUploadedDeck inserts or refreshes an uploaded deck name.
+func (db *DB) RecordUploadedDeck(name string) error {
+	_, err := db.sqlDB.Exec(
+		`INSERT INTO uploaded_decks(name, created_at)
+		VALUES ($1, $2)
+		ON CONFLICT (name) DO UPDATE SET created_at = EXCLUDED.created_at`,
+		name, now())
+	return err
+}
+
+// GetUploadedDeckNames returns all uploaded deck names.
+func (db *DB) GetUploadedDeckNames() ([]string, error) {
+	rows, err := db.sqlDB.Query(`SELECT name FROM uploaded_decks ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
 }

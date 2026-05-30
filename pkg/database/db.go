@@ -4,6 +4,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -117,6 +118,11 @@ CREATE INDEX IF NOT EXISTS idx_edh_pod_players_deck ON edh_pod_players(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_card_stats_deck ON deck_card_stats(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_card_stats_name ON deck_card_stats(card_name);
 CREATE INDEX IF NOT EXISTS idx_edh_pods_created ON edh_pods(created_at);
+
+CREATE TABLE IF NOT EXISTS uploaded_decks (
+    name TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 `
 	if _, err := db.sqlDB.Exec(schema); err != nil {
 		return err
@@ -146,6 +152,23 @@ func (db *DB) txHelper(f func(*sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// txHelperRetry runs f inside a transaction, retrying up to 3 times on
+// PostgreSQL deadlocks (SQLSTATE 40P01).
+func (db *DB) txHelperRetry(f func(*sql.Tx) error) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastErr = db.txHelper(f)
+		if lastErr == nil {
+			return nil
+		}
+		if !strings.Contains(lastErr.Error(), "40P01") {
+			return lastErr
+		}
+		time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+	}
+	return fmt.Errorf("tx failed after 3 retries: %w", lastErr)
 }
 
 func now() time.Time {

@@ -68,6 +68,7 @@ type Server struct {
 	gameRunner         GameRunner
 	suggestedDeck      *simulation.EDHSeat
 	suggestedDeckMu    sync.Mutex
+	recordUpload       func(name string)
 	cardDB             *card.CardDB
 	snapshotManager    *SnapshotManager
 	port               int
@@ -119,6 +120,9 @@ func (s *Server) SetImplementationReportProvider(p ImplementationReportProvider)
 
 // SetGameRunner attaches a game runner for /api/run-games endpoint.
 func (s *Server) SetGameRunner(gr GameRunner) { s.gameRunner = gr }
+
+// SetUploadRecorder sets a callback invoked when a deck is uploaded.
+func (s *Server) SetUploadRecorder(fn func(name string)) { s.recordUpload = fn }
 
 // SetCardDB attaches a card database for deck parsing.
 func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
@@ -593,6 +597,11 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 	
 	// Set as suggested deck
 	s.SetSuggestedDeck(&seat)
+	
+	// Persist to uploaded decks table
+	if s.recordUpload != nil {
+		s.recordUpload(deckName)
+	}
 	
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "deck uploaded and set",

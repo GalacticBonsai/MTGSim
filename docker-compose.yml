@@ -18,7 +18,7 @@ services:
           memory: 512M
     restart: unless-stopped
 
-  edh-runner:
+  app:
     build: .
     command:
       - mtgsim-edh
@@ -27,8 +27,10 @@ services:
       - -games=1000
       - -pod=4
       - -max-turns=50
-      - -port=0
+      - -port=8080
       - -card-stats=/data/card_library.json
+    ports:
+      - "8080:8080"
     volumes:
       - ./decks:/app/decks:ro
       - ./.cache:/app/.cache
@@ -40,23 +42,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  dashboard:
-    build: .
-    command:
-      - mtgsim-dashboard
-      - -db=postgres://mtgsim:mtgsim@postgres:5432/mtgsim?sslmode=disable
-      - -decks=/app/decks
-      - -port=8080
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./decks:/app/decks:ro
-      - ./.cache:/app/.cache
     restart: unless-stopped
     depends_on:
       postgres:

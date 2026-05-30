@@ -33,6 +33,7 @@ import (
 type EDHGameRunner struct {
 	seats          []simulation.EDHSeat
 	cardDB         *card.CardDB
+	db             *database.DB
 	edhResults     *simulation.EDHResults
 	legacyRes      *simulation.Results
 	cardLib        *stats.CardLibrary
@@ -43,7 +44,7 @@ type EDHGameRunner struct {
 	maxTurns       int
 	mulligans      int
 	replayDir      string
-	suggestedDeck  *simulation.EDHSeat
+	suggestedDeck   *simulation.EDHSeat
 	suggestedDeckMu sync.Mutex
 }
 
@@ -68,6 +69,14 @@ func (gr *EDHGameRunner) RunGames(count int) {
 
 		logger.LogMeta("Starting %d EDH pods...", count)
 
+		// Load uploaded deck names from DB
+		var uploadedNames []string
+		if gr.db != nil {
+			if names, err := gr.db.GetUploadedDeckNames(); err == nil {
+				uploadedNames = names
+			}
+		}
+
 		numWorkers := (runtime.NumCPU() * 4) / 5
 		if numWorkers < 1 {
 			numWorkers = 1
@@ -84,16 +93,7 @@ func (gr *EDHGameRunner) RunGames(count int) {
 				defer wg.Done()
 				for i := range gamesChan {
 					gr.mu.Lock()
-					gr.suggestedDeckMu.Lock()
-					var pod []simulation.EDHSeat
-					if gr.suggestedDeck != nil {
-						// If suggested deck is set, use it as first player and pick others
-						pod = gr.buildPodWithSuggestedDeck(gr.suggestedDeck)
-					} else {
-						// Otherwise use normal pod picking
-						pod = pickPod(gr.seats, gr.podSize, gr.rng, gr.mulligans)
-					}
-					gr.suggestedDeckMu.Unlock()
+					pod := pickPodWithUploaded(gr.seats, gr.podSize, gr.rng, gr.mulligans, uploadedNames)
 					gr.mu.Unlock()
 					
 					rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
@@ -153,27 +153,34 @@ func (gr *EDHGameRunner) IsRunning() bool {
 	return gr.running
 }
 
-// buildPodWithSuggestedDeck builds a pod with the suggested deck as first player
-func (gr *EDHGameRunner) buildPodWithSuggestedDeck(suggestedDeck *simulation.EDHSeat) []simulation.EDHSeat {
-	pod := make([]simulation.EDHSeat, gr.podSize)
-	
-	// Add the suggested deck as the first player
-	pod[0] = *suggestedDeck
-	pod[0].Mulligans = gr.mulligans
-	
-	// Fill remaining slots with random decks from the collection
-	if gr.podSize > 1 {
-		idxs := gr.rng.Perm(len(gr.seats))
-		count := 0
-		for i := 1; i < gr.podSize && count < len(idxs); i++ {
-			seat := gr.seats[idxs[count]]
-			seat.Mulligans = gr.mulligans
-			pod[i] = seat
-			count++
+// pickPodWithUploaded picks n random seats, ensuring at least one uploaded
+// deck is included when the uploaded list is non-empty, then shuffles seats.
+func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, uploaded []string) []simulation.EDHSeat {
+	pod := pickPod(seats, n, rng, mulligans)
+	if len(uploaded) > 0 && !containsAny(pod, uploaded) {
+		uName := uploaded[rng.Intn(len(uploaded))]
+		for _, s := range seats {
+			if s.DeckName == uName {
+				idx := rng.Intn(n)
+				pod[idx] = s
+				pod[idx].Mulligans = mulligans
+				break
+			}
 		}
 	}
-	
+	rng.Shuffle(n, func(i, j int) { pod[i], pod[j] = pod[j], pod[i] })
 	return pod
+}
+
+func containsAny(pod []simulation.EDHSeat, names []string) bool {
+	for _, s := range pod {
+		for _, n := range names {
+			if s.DeckName == n {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func main() {
@@ -325,7 +332,7 @@ func main() {
 	}
 
 	if *port > 0 {
-		startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport, seats, cardDB, *podSize, *maxTurns, *mulligans, *replayDir, rng)
+		startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport, seats, cardDB, *podSize, *maxTurns, *mulligans, *replayDir, rng, db)
 	}
 	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
 	start := time.Now()
@@ -348,6 +355,14 @@ func main() {
 	gamesChan := make(chan int, numWorkers)
 	var wg sync.WaitGroup
 
+	// Load uploaded deck names for the initial batch
+	var uploadedNames []string
+	if db != nil {
+		if names, err := db.GetUploadedDeckNames(); err == nil {
+			uploadedNames = names
+		}
+	}
+
 	// Start worker goroutines
 	for w := 0; w < numWorkers; w++ {
 		wg.Add(1)
@@ -355,7 +370,7 @@ func main() {
 			defer wg.Done()
 			for i := range gamesChan {
 				mu.Lock()
-				pod := pickPod(seats, *podSize, rng, *mulligans)
+				pod := pickPodWithUploaded(seats, *podSize, rng, *mulligans, uploadedNames)
 				mu.Unlock()
 				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
 					Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
@@ -638,7 +653,7 @@ func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
 	}
 }
 
-func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.RWMutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand) {
+func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.RWMutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand, db *database.DB) {
 	server := dashboard.NewServer(func() []simulation.Result {
 		mu.RLock()
 		defer mu.RUnlock()
@@ -667,10 +682,20 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 	})
 	server.SetCardDB(cardDB)
 
+	// Wire upload recorder to persist deck names to database
+	if db != nil {
+		server.SetUploadRecorder(func(name string) {
+			if err := db.RecordUploadedDeck(name); err != nil {
+				logger.LogMeta("Failed to record uploaded deck: %v", err)
+			}
+		})
+	}
+
 	// Create and set game runner
 	gameRunner := &EDHGameRunner{
 		seats:      seats,
 		cardDB:     cardDB,
+		db:         db,
 		edhResults: edh,
 		legacyRes:  legacy,
 		cardLib:    cardLib,
