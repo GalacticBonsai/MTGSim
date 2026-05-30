@@ -446,7 +446,7 @@
 			let img = c.image_url
 				? '<img src="' + c.image_url + '" height="40" style="vertical-align:middle;margin-right:8px;border-radius:4px;">'
 				: '';
-			const escapedName = c.name.replace(/'/g, "\\'");
+			const escapedName = String(c.name).replace(/['\\]/g, "\\$&");
 
 			let tooltip =
 				c.name + ' in ' + c.deck +
