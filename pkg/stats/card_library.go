@@ -10,9 +10,15 @@ import (
 // GlobalCardStats tracks aggregate cast and win data for a single card
 // across all simulations and decks.
 type GlobalCardStats struct {
-	Casts    int    `json:"casts"`
-	Wins     int    `json:"wins"`
-	ImageURL string `json:"image_url,omitempty"`
+	Casts              int     `json:"casts"`
+	Wins               int     `json:"wins"`
+	ImageURL           string  `json:"image_url,omitempty"`
+	WinRate            float64 `json:"win_rate"`
+	CastFrequency      float64 `json:"cast_frequency"` // Percentage of games this card was cast
+	AvgTurnsWhenCast   float64 `json:"avg_turns_when_cast"`
+	AvgTurnsWhenWon    float64 `json:"avg_turns_when_won"`
+	AvgTurnsWhenLost   float64 `json:"avg_turns_when_lost"`
+	TotalGamesTracked  int     `json:"total_games_tracked"`
 }
 
 // CardLibrary is a thread-safe, persistent collection of global card stats.

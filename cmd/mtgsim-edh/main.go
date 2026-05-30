@@ -30,18 +30,27 @@ import (
 
 // EDHGameRunner manages running EDH games and updating results
 type EDHGameRunner struct {
-	seats       []simulation.EDHSeat
-	cardDB      *card.CardDB
-	edhResults  *simulation.EDHResults
-	legacyRes   *simulation.Results
-	cardLib     *stats.CardLibrary
-	mu          *sync.Mutex
-	rng         *rand.Rand
-	running     bool
-	podSize     int
-	maxTurns    int
-	mulligans   int
-	replayDir   string
+	seats          []simulation.EDHSeat
+	cardDB         *card.CardDB
+	edhResults     *simulation.EDHResults
+	legacyRes      *simulation.Results
+	cardLib        *stats.CardLibrary
+	mu             *sync.Mutex
+	rng            *rand.Rand
+	running        bool
+	podSize        int
+	maxTurns       int
+	mulligans      int
+	replayDir      string
+	suggestedDeck  *simulation.EDHSeat
+	suggestedDeckMu sync.Mutex
+}
+
+// SetSuggestedDeck sets the suggested deck to use in every pod
+func (gr *EDHGameRunner) SetSuggestedDeck(seat *simulation.EDHSeat) {
+	gr.suggestedDeckMu.Lock()
+	defer gr.suggestedDeckMu.Unlock()
+	gr.suggestedDeck = seat
 }
 
 // RunGames runs the specified number of EDH pods
@@ -71,8 +80,18 @@ func (gr *EDHGameRunner) RunGames(count int) {
 				defer wg.Done()
 				for i := range gamesChan {
 					gr.mu.Lock()
-					pod := pickPod(gr.seats, gr.podSize, gr.rng, gr.mulligans)
+					gr.suggestedDeckMu.Lock()
+					var pod []simulation.EDHSeat
+					if gr.suggestedDeck != nil {
+						// If suggested deck is set, use it as first player and pick others
+						pod = gr.buildPodWithSuggestedDeck(gr.suggestedDeck)
+					} else {
+						// Otherwise use normal pod picking
+						pod = pickPod(gr.seats, gr.podSize, gr.rng, gr.mulligans)
+					}
+					gr.suggestedDeckMu.Unlock()
 					gr.mu.Unlock()
+					
 					rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
 						Seats: pod, MaxTurns: gr.maxTurns, RNG: rand.New(rand.NewSource(gr.rng.Int63())),
 						RecordEvents: gr.replayDir != "",
@@ -124,6 +143,29 @@ func (gr *EDHGameRunner) IsRunning() bool {
 	gr.mu.Lock()
 	defer gr.mu.Unlock()
 	return gr.running
+}
+
+// buildPodWithSuggestedDeck builds a pod with the suggested deck as first player
+func (gr *EDHGameRunner) buildPodWithSuggestedDeck(suggestedDeck *simulation.EDHSeat) []simulation.EDHSeat {
+	pod := make([]simulation.EDHSeat, gr.podSize)
+	
+	// Add the suggested deck as the first player
+	pod[0] = *suggestedDeck
+	pod[0].Mulligans = gr.mulligans
+	
+	// Fill remaining slots with random decks from the collection
+	if gr.podSize > 1 {
+		idxs := gr.rng.Perm(len(gr.seats))
+		count := 0
+		for i := 1; i < gr.podSize && count < len(idxs); i++ {
+			seat := gr.seats[idxs[count]]
+			seat.Mulligans = gr.mulligans
+			pod[i] = seat
+			count++
+		}
+	}
+	
+	return pod
 }
 
 func main() {
@@ -536,6 +578,7 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 	server.SetImplementationReportProvider(func() *card.ImplementationReport {
 		return implReport
 	})
+	server.SetCardDB(cardDB)
 
 	// Create and set game runner
 	gameRunner := &EDHGameRunner{
