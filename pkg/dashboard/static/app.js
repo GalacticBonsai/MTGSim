@@ -581,7 +581,7 @@
 
 			for (let c of rows) {
 				let img = '';
-				const escapedName = c.name.replace(/'/g, "\\'");
+				const escapedName = c.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 				if (c.image_url) {
 					img =
@@ -989,7 +989,7 @@
 				html += '<p style="color:#888; margin:10px 0;">These cards have below-average performance in this deck:</p>';
 				html += '<div>';
 				for (let c of recs.remove_candidates) {
-					const escaped = c.card_name.replace(/'/g, "\\'");
+					const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
 					html += '<div><strong>' + c.card_name + '</strong> ';
 					html += '<span style="color:#ff6b6b;">Win Rate: ' + c.win_rate.toFixed(1) + '%</span> ';
@@ -1006,7 +1006,7 @@
 				html += '<p style="color:#888; margin:10px 0;">These cards perform well globally and might improve this deck:</p>';
 				html += '<div>';
 				for (let c of recs.add_candidates.slice(0, 10)) {
-					const escaped = c.card_name.replace(/'/g, "\\'");
+					const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
 					html += '<div><strong>' + c.card_name + '</strong> ';
 					html += '<span style="color:#2ecc71;">Win Rate: ' + c.win_rate.toFixed(1) + '%</span> ';
@@ -1146,6 +1146,15 @@
 		return !unimplementedCards.has(cardName.toLowerCase());
 	}
 
+	function escapeHtml(value) {
+		return String(value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
 	function updateDeckEditorStats() {
 		const container = document.getElementById('deckEditorCardStats');
 		if (!container || currentDeckList.length === 0) {
@@ -1156,17 +1165,18 @@
 		let found = 0;
 		for (let card of currentDeckList) {
 			const lib = globalCardLibraryMap[card.name.toLowerCase()];
+			const safeCardName = escapeHtml(card.name);
 			const implWarning = isCardImplemented(card.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
 			if (lib) {
 				found++;
 				const wrColor = lib.winRate >= 55 ? '#2ecc71' : lib.winRate >= 45 ? '#f39c12' : '#e74c3c';
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
-				html += '<span>' + card.count + 'x ' + card.name + implWarning + '</span>';
+				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
 				html += '<span style="color:' + wrColor + ';">' + lib.winRate.toFixed(1) + '% WR (' + lib.casts + ' casts)</span>';
 				html += '</div>';
 			} else {
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
-				html += '<span>' + card.count + 'x ' + card.name + implWarning + '</span>';
+				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
 				html += '<span style="color:#666;">no data</span>';
 				html += '</div>';
 			}
@@ -1237,6 +1247,15 @@
 	}
 
 	// Card Search
+	function escapeHtml(value) {
+		return String(value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
 	async function performCardSearch() {
 		const query = document.getElementById('cardSearchInput').value.trim();
 		const sortBy = document.getElementById('cardSortSelect').value;
@@ -1275,7 +1294,7 @@
 			for (let card of results.slice(0, 50)) {
 				const wr = card.win_rate || 0;
 				const wrColor = wr >= 55 ? '#2ecc71' : wr >= 45 ? '#f39c12' : '#e74c3c';
-				const escapedName = card.name.replace(/'/g, "\\'");
+				const escapedName = card.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 				html += '<div style="padding:12px; background:#1a1a1a; border-radius:6px; border-left:4px solid ' + wrColor + ';">';
 				if (card.image) {
@@ -1293,7 +1312,7 @@
 			}
 
 			if (results.length === 0) {
-				html = '<div class="error" style="grid-column:1/-1;">No cards found matching "' + query + '"</div>';
+				html = '<div class="error" style="grid-column:1/-1;">No cards found matching "' + escapeHtml(query) + '"</div>';
 			}
 
 			resultsDiv.innerHTML = html;
@@ -1336,7 +1355,7 @@
 
 		for (let d of decks) {
 			const wrColor = d.win_rate >= 55 ? '#2ecc71' : d.win_rate >= 45 ? '#f39c12' : '#e74c3c';
-			const escapedName = d.name.replace(/'/g, "\\'");
+			const deckNameAttr = JSON.stringify(String(d.name || '')).slice(1, -1).replace(/"/g, '&quot;');
 			html += '<tr>';
 			html += '<td>' + getDeckDisplayName(d.name) + '</td>';
 			html += '<td>' + d.commander + '</td>';
@@ -1344,11 +1363,17 @@
 			html += '<td>' + d.games + '</td>';
 			html += '<td>' + Math.round(d.games * (d.win_rate || 0) / 100) + '</td>';
 			html += '<td>' + Math.round(d.games * (1 - (d.win_rate || 0) / 100)) + '</td>';
-			html += '<td><button onclick="selectDeck(\'' + escapedName + '\'); goToRecommendations();" style="padding:4px 10px; background:#5a6dd8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔮 Recs</button></td>';
+			html += '<td><button class="matchup-recs-btn" data-deck="' + deckNameAttr + '" style="padding:4px 10px; background:#5a6dd8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔮 Recs</button></td>';
 			html += '</tr>';
 		}
 
 		bodyEl.innerHTML = html || '<tr><td colspan="7">No matchup data available</td></tr>';
+		bodyEl.querySelectorAll('.matchup-recs-btn').forEach(btn => {
+			btn.addEventListener('click', () => {
+				selectDeck(btn.dataset.deck || '');
+				goToRecommendations();
+			});
+		});
 	}
 
 	function filterMatchupMatrix() {
@@ -1500,8 +1525,8 @@
 					html += '<div>' + arrow + ' <strong>' + cardName + '</strong>: ';
 					html += '<span style="color:' + color + '; font-weight:bold;">' + (change > 0 ? '+' : '') + change.toFixed(1) + '%</span>';
 					html += ' <span style="color:#888; font-size:0.85em;">(' + (shift.casts || 0) + ' casts)</span></div>';
-					const escaped = cardName.replace(/'/g, "\\'");
-					html += '<button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:4px 10px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">+ Add</button>';
+					const escaped = JSON.stringify(cardName);
+					html += '<button onclick="addCardToMyDeck(' + escaped + ')" style="padding:4px 10px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-size:0.8em; font-weight:bold;">+ Add</button>';
 					html += '</div>';
 				}
 				html += '</div>';
