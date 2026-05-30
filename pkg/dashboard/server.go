@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,14 +72,31 @@ type Server struct {
 	snapshotManager    *SnapshotManager
 	port               int
 	mux                *http.ServeMux
+	
+	// Cache for provider results to reduce lock contention
+	cacheMu              sync.RWMutex
+	edhResultsCache      []simulation.EDHDeckStats
+	edhResultsCached     time.Time
+	edhSummaryCache      simulation.EDHSummary
+	edhGamesCacheData    []simulation.EDHGameRecord
+	edhGamesCached       time.Time
+	cacheMaxAge          time.Duration
+
+	// In-memory byte caches for serialised API responses so we avoid
+	// re-computing and re-serialising on every poll cycle.
+	resultsCache         []byte
+	resultsCached        time.Time
+	edhResultsCacheBytes []byte
+	edhResultsBytesCached time.Time
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
 func NewServer(provider ResultsProvider, port int) *Server {
 	return &Server{
-		provider: provider,
-		port:     port,
-		mux:      http.NewServeMux(),
+		provider:    provider,
+		port:        port,
+		mux:         http.NewServeMux(),
+		cacheMaxAge: 30 * time.Second,
 	}
 }
 
@@ -160,7 +178,19 @@ func (s *Server) Start() error {
 	s.registerRoutes()
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("Starting dashboard server on http://localhost%s\n", addr)
-	return http.ListenAndServe(addr, s.mux)
+	
+	// Timeouts are generous because some API handlers (e.g. handleResults)
+	// may block briefly on the simulation mutex before returning a cached
+	// response.  Caching ensures most requests complete in under 100 ms so
+	// pile-up is not a practical concern.
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      s.mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  10 * time.Second,
+	}
+	return server.ListenAndServe()
 }
 
 type deckRow struct {
@@ -170,6 +200,11 @@ type deckRow struct {
 	WinRate float64 `json:"win_rate"`
 }
 
+type winRateBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
 type resultsResponse struct {
 	TotalGames  int       `json:"total_games"`
 	UniqueDecks int       `json:"unique_decks"`
@@ -177,17 +212,30 @@ type resultsResponse struct {
 
 	TotalDecks int  `json:"totalDecks,omitempty"`
 	Truncated  bool `json:"truncated,omitempty"`
+
+	// Server-computed win-rate histogram so the front-end doesn't need
+	// to iterate the full deck list.
+	WinRateBuckets []winRateBucket `json:"win_rate_buckets,omitempty"`
 }
 
 // handleResults returns deck win/loss aggregates derived from simulation.Results.
 func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Try serving from the byte cache first (avoids provider lock, sort, and
+	// JSON serialisation on every poll cycle).
+	s.cacheMu.RLock()
+	if s.resultsCache != nil && time.Since(s.resultsCached) < s.cacheMaxAge {
+		_, _ = w.Write(s.resultsCache)
+		s.cacheMu.RUnlock()
+		return
+	}
+	s.cacheMu.RUnlock()
+
 	snapshot := s.provider()
 
-	rows := make([]deckRow, 0, len(snapshot))
-
 	totalRecords := 0
+	rows := make([]deckRow, 0, len(snapshot))
 
 	for _, res := range snapshot {
 		rows = append(rows, deckRow{
@@ -196,7 +244,6 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 			Losses:  res.Losses,
 			WinRate: res.WinPercentage(),
 		})
-
 		totalRecords += res.Wins + res.Losses
 	}
 
@@ -204,14 +251,70 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		return rows[i].WinRate > rows[j].WinRate
 	})
 
-	resp := resultsResponse{
-		TotalGames:  totalRecords / 2,
-		UniqueDecks: len(rows),
-		TotalDecks:  len(rows),
-		Decks:       rows,
+	// Build win-rate histogram from the full dataset before truncation.
+	buckets := computeWinRateBuckets(rows)
+
+	// Default limit prevents blowing up JSON payload size for very large
+	// result sets.  The front-end charts (win-rate histogram, top-N bar
+	// chart) all work from the histogram or the first few entries.
+	const defaultMaxDecks = 500
+	totalDecks := len(rows)
+	limit := defaultMaxDecks
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if v, err := strconv.Atoi(limitStr); err == nil && v >= 0 {
+			limit = v
+		}
+	}
+	truncated := limit > 0 && limit < len(rows)
+	if truncated {
+		rows = rows[:limit]
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	resp := resultsResponse{
+		TotalGames:     totalRecords / 2,
+		UniqueDecks:    totalDecks,
+		TotalDecks:     totalDecks,
+		Decks:          rows,
+		Truncated:      truncated,
+		WinRateBuckets: buckets,
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "json marshal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.cacheMu.Lock()
+	s.resultsCache = data
+	s.resultsCached = time.Now()
+	s.cacheMu.Unlock()
+
+	_, _ = w.Write(data)
+}
+
+// computeWinRateBuckets partitions decks into the four win-rate quartiles
+// used by the front-end doughnut chart.
+func computeWinRateBuckets(decks []deckRow) []winRateBucket {
+	var lt25, lt50, lt75, ge75 int
+	for _, d := range decks {
+		switch {
+		case d.WinRate < 25:
+			lt25++
+		case d.WinRate < 50:
+			lt50++
+		case d.WinRate < 75:
+			lt75++
+		default:
+			ge75++
+		}
+	}
+	return []winRateBucket{
+		{Label: "0-25%", Count: lt25},
+		{Label: "25-50%", Count: lt50},
+		{Label: "50-75%", Count: lt75},
+		{Label: "75-100%", Count: ge75},
+	}
 }
 
 type edhResultsResponse struct {
@@ -232,6 +335,16 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve from byte cache when fresh (avoids the provider lock and
+	// JSON serialisation on every poll).
+	s.cacheMu.RLock()
+	if s.edhResultsCacheBytes != nil && time.Since(s.edhResultsBytesCached) < s.cacheMaxAge {
+		_, _ = w.Write(s.edhResultsCacheBytes)
+		s.cacheMu.RUnlock()
+		return
+	}
+	s.cacheMu.RUnlock()
+
 	allDecks := s.edhProvider()
 
 	resp := edhResultsResponse{
@@ -244,7 +357,18 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		resp.Summary = s.edhSummary()
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	data, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "json marshal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.cacheMu.Lock()
+	s.edhResultsCacheBytes = data
+	s.edhResultsBytesCached = time.Now()
+	s.cacheMu.Unlock()
+
+	_, _ = w.Write(data)
 }
 
 type edhGamesResponse struct {

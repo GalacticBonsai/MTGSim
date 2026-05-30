@@ -1,9 +1,28 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mtgsim
+      POSTGRES_PASSWORD: mtgsim
+      POSTGRES_DB: mtgsim
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mtgsim"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
   edh-runner:
     build: .
     command:
       - mtgsim-edh
-      - -db=/data/mtgsim.db
+      - -db=postgres://mtgsim:mtgsim@postgres:5432/mtgsim?sslmode=disable
       - -decks=/app/decks
       - -games=1000
       - -pod=4
@@ -11,7 +30,6 @@ services:
       - -port=0
       - -card-stats=/data/card_library.json
     volumes:
-      - mtgsim-data:/data
       - ./decks:/app/decks:ro
       - ./.cache:/app/.cache
     deploy:
@@ -23,23 +41,26 @@ services:
           cpus: '0.5'
           memory: 256M
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   dashboard:
     build: .
     command:
       - mtgsim-dashboard
-      - -db=/data/mtgsim.db
+      - -db=postgres://mtgsim:mtgsim@postgres:5432/mtgsim?sslmode=disable
       - -decks=/app/decks
       - -port=8080
     ports:
       - "8080:8080"
     volumes:
-      - mtgsim-data:/data
       - ./decks:/app/decks:ro
       - ./.cache:/app/.cache
     restart: unless-stopped
     depends_on:
-      - edh-runner
+      postgres:
+        condition: service_healthy
 
 volumes:
-  mtgsim-data:
+  pg-data:

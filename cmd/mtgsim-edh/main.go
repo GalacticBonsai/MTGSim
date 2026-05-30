@@ -36,7 +36,7 @@ type EDHGameRunner struct {
 	edhResults     *simulation.EDHResults
 	legacyRes      *simulation.Results
 	cardLib        *stats.CardLibrary
-	mu             *sync.Mutex
+	mu             *sync.RWMutex
 	rng            *rand.Rand
 	running        bool
 	podSize        int
@@ -72,6 +72,9 @@ func (gr *EDHGameRunner) RunGames(count int) {
 		if numWorkers < 1 {
 			numWorkers = 1
 		}
+		if numWorkers > 4 {
+			numWorkers = 4
+		}
 		gamesChan := make(chan int, numWorkers)
 		var wg sync.WaitGroup
 
@@ -101,9 +104,12 @@ func (gr *EDHGameRunner) RunGames(count int) {
 						logger.LogMeta("Pod skipped: %v", err)
 						continue
 					}
+					// RecordGame and RecordCounts have their own internal locks;
+					// only hold gr.mu for the non-thread-safe legacyResults.
 					gr.mu.Lock()
-					gr.edhResults.RecordGame(rec)
 					recordLegacy(gr.legacyRes, rec)
+					gr.mu.Unlock()
+					gr.edhResults.RecordGame(rec)
 					for _, p := range rec.Players {
 						for cName, perf := range p.CardStats {
 							wins := 0
@@ -113,7 +119,6 @@ func (gr *EDHGameRunner) RunGames(count int) {
 							gr.cardLib.RecordCounts(cName, perf.Casts, wins)
 						}
 					}
-					gr.mu.Unlock()
 					if gr.replayDir != "" {
 						writeReplay(gr.replayDir, i+1, rec)
 					}
@@ -185,7 +190,7 @@ func main() {
 	sideboardVariants := flag.Int("sideboard-variants", 0, "Generated sideboard variants per imported deck (0 = disabled)")
 	sideboardSwaps := flag.Int("sideboard-swaps", 3, "Cards swapped per generated sideboard variant")
 	cardStatsFlag := flag.String("card-stats", "card_library.json", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
-	dbPath := flag.String("db", "", "Path to SQLite database for persistent results (empty = disabled)")
+	dbPath := flag.String("db", "", "PostgreSQL DSN for persistent results (empty = disabled)")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
@@ -260,10 +265,10 @@ func main() {
 				deckCards = append(deckCards, c)
 			}
 		}
-		unimpl := implTracker.CheckDeck(deckCards, cardDB)
-		for _, name := range unimpl {
-			logger.LogMeta("Warning: unimplemented card in %s: %s", seat.DeckPath, name)
-		}
+		// unimpl := implTracker.CheckDeck(deckCards, cardDB)
+		// for _, name := range unimpl {
+		// 	logger.LogMeta("Warning: unimplemented card in %s: %s", seat.DeckPath, name)
+		// }
 	}
 	var implReport *card.ImplementationReport
 	if report, err := card.ComputeImplementationStatus(cardDB, implTracker); err == nil {
@@ -274,7 +279,7 @@ func main() {
 
 	edhResults := simulation.NewEDHResults()
 	legacyResults := simulation.NewResults()
-	var mu sync.Mutex
+	var mu sync.RWMutex
 
 	var db *database.DB
 	if *dbPath != "" {
@@ -332,10 +337,13 @@ func main() {
 		}
 	}
 
-	// Cap CPU at ~20% by using 20% of available cores
+	// Cap CPU at ~20% of available cores, max 4 workers
 	numWorkers := (runtime.NumCPU()) / 5
 	if numWorkers < 1 {
 		numWorkers = 1
+	}
+	if numWorkers > 4 {
+		numWorkers = 4
 	}
 	gamesChan := make(chan int, numWorkers)
 	var wg sync.WaitGroup
@@ -357,9 +365,12 @@ func main() {
 					logger.LogMeta("Pod %d skipped: %v", i+1, err)
 					continue
 				}
+				// RecordGame and RecordCounts have their own internal locks;
+				// only hold the external mu for the non-thread-safe legacyResults.
 				mu.Lock()
-				edhResults.RecordGame(rec)
 				recordLegacy(legacyResults, rec)
+				mu.Unlock()
+				edhResults.RecordGame(rec)
 				for _, p := range rec.Players {
 					for cName, perf := range p.CardStats {
 						wins := 0
@@ -372,7 +383,6 @@ func main() {
 				if db != nil {
 					persistEDHPod(db, rec)
 				}
-				mu.Unlock()
 				if *replayDir != "" {
 					writeReplay(*replayDir, i+1, rec)
 				}
@@ -628,25 +638,25 @@ func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
 	}
 }
 
-func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.Mutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand) {
+func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.RWMutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand) {
 	server := dashboard.NewServer(func() []simulation.Result {
-		mu.Lock()
-		defer mu.Unlock()
+		mu.RLock()
+		defer mu.RUnlock()
 		return legacy.GetResults()
 	}, port)
 	server.SetEDHProvider(func() []simulation.EDHDeckStats {
-		mu.Lock()
-		defer mu.Unlock()
+		mu.RLock()
+		defer mu.RUnlock()
 		return edh.DeckStats()
 	})
 	server.SetEDHSummaryProvider(func() simulation.EDHSummary {
-		mu.Lock()
-		defer mu.Unlock()
+		mu.RLock()
+		defer mu.RUnlock()
 		return edh.Summary()
 	})
 	server.SetEDHGamesProvider(func() []simulation.EDHGameRecord {
-		mu.Lock()
-		defer mu.Unlock()
+		mu.RLock()
+		defer mu.RUnlock()
 		return edh.RecentGames(10)
 	})
 	server.SetCardLibraryProvider(func() map[string]stats.GlobalCardStats {

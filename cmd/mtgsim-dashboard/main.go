@@ -107,7 +107,7 @@ func main() {
 	port := flag.Int("port", 8080, "Dashboard port")
 	logLevel := flag.String("log", "META", "Log level (META, GAME, PLAYER, CARD)")
 	keepAlive := flag.Bool("keep-alive", true, "Keep server running after simulation")
-	dbPath := flag.String("db", "", "Path to SQLite database for persistent results (empty = disabled)")
+	dbPath := flag.String("db", "", "PostgreSQL DSN for persistent results (empty = in-memory only)")
 	flag.Parse()
 
 	logger.SetLogLevel(logger.ParseLogLevel(*logLevel))
@@ -151,8 +151,6 @@ func main() {
 			}
 			return db1v1ToResults(r)
 		}
-		mu.Lock()
-		defer mu.Unlock()
 		return results.GetResults()
 	}, *port)
 

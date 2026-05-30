@@ -186,38 +186,61 @@
 		renderEDH(currentEDHData);
 	}
 
+	// Helper: fetch with an AbortController timeout so a stuck request
+	// doesn't block polls forever.  Returns null on error / timeout.
+	async function fetchWithTimeout(url, ms) {
+		const ctrl = new AbortController();
+		const id = setTimeout(() => ctrl.abort(), ms);
+		try {
+			const res = await fetch(url, { signal: ctrl.signal });
+			return res;
+		} finally {
+			clearTimeout(id);
+		}
+	}
+
 	async function loadResults() {
-		try {
-			const res = await fetch('/api/results');
-			const data = await res.json();
-			renderSummary(data);
-			renderWinRateChart(data);
-			renderTopDecksChart(data);
-		} catch (err) {
-			console.error('Error loading results:', err);
-		}
-		try {
-			const res = await fetch('/api/edh-results');
-			const data = await res.json();
-			if (data.enabled) {
-				document.getElementById('edhSummarySection').style.display = '';
-				renderEDHSummary(data.summary || {});
-				renderEDH(data);
-				renderTopCards(data);
+		const [resultsRes, edhRes, libRes] = await Promise.all([
+			fetchWithTimeout('/api/results', 10000).catch(() => null),
+			fetchWithTimeout('/api/edh-results', 10000).catch(() => null),
+			fetchWithTimeout('/api/card-library', 10000).catch(() => null),
+		]);
+
+		if (resultsRes && resultsRes.ok) {
+			try {
+				const data = await resultsRes.json();
+				renderSummary(data);
+				renderWinRateChart(data);
+				renderTopDecksChart(data);
+			} catch (err) {
+				console.error('Error parsing results:', err);
 			}
-		} catch (err) {
-			console.error('Error loading EDH results:', err);
-		}
-		try {
-			const res = await fetch('/api/card-library');
-			const data = await res.json();
-			if (data.enabled) {
-				renderCardLibrary(data.cards || {});
-			}
-		} catch (err) {
-			console.error('Error loading card library:', err);
 		}
 
+		if (edhRes && edhRes.ok) {
+			try {
+				const data = await edhRes.json();
+				if (data.enabled) {
+					document.getElementById('edhSummarySection').style.display = '';
+					renderEDHSummary(data.summary || {});
+					renderEDH(data);
+					renderTopCards(data);
+				}
+			} catch (err) {
+				console.error('Error parsing EDH results:', err);
+			}
+		}
+
+		if (libRes && libRes.ok) {
+			try {
+				const data = await libRes.json();
+				if (data.enabled) {
+					renderCardLibrary(data.cards || {});
+				}
+			} catch (err) {
+				console.error('Error parsing card library:', err);
+			}
+		}
 	}
 
 	function renderSummary(data) {
@@ -672,22 +695,29 @@
 	let topDecksChart = null;
 
 	function renderWinRateChart(data) {
-		const decks = data.decks || [];
-		
-		// Group decks by win rate ranges
-		const ranges = {
+		let ranges = {
 			'0-25%': 0,
 			'25-50%': 0,
 			'50-75%': 0,
 			'75-100%': 0
 		};
-		
-		for (let d of decks) {
-			const wr = d.win_rate || 0;
-			if (wr < 25) ranges['0-25%']++;
-			else if (wr < 50) ranges['25-50%']++;
-			else if (wr < 75) ranges['50-75%']++;
-			else ranges['75-100%']++;
+
+		// Use server-computed histogram when available (avoids iterating
+		// thousands of deck entries shipped only for this chart).
+		if (data.win_rate_buckets) {
+			for (let b of data.win_rate_buckets) {
+				ranges[b.label] = b.count;
+			}
+		} else {
+			// Fallback for older server versions.
+			const decks = data.decks || [];
+			for (let d of decks) {
+				const wr = d.win_rate || 0;
+				if (wr < 25) ranges['0-25%']++;
+				else if (wr < 50) ranges['25-50%']++;
+				else if (wr < 75) ranges['50-75%']++;
+				else ranges['75-100%']++;
+			}
 		}
 		
 		const ctx = document.getElementById('winRateChart');
@@ -830,6 +860,8 @@
 		}
 	}
 
+	let previousRunning = false;
+
 	async function updateGameStatus() {
 		try {
 			const res = await fetch('/api/game-status');
@@ -848,6 +880,16 @@
 				btn.disabled = false;
 				btn.textContent = '▶ Run Games';
 			}
+
+			// When a run completes (transition from running→ready),
+			// refresh results immediately to repopulate the server cache.
+			if (previousRunning && !data.running) {
+				console.log('[Polling] Run completed – refreshing results');
+				loadResults();
+				loadEDHGames();
+				loadMatchupMatrix();
+			}
+			previousRunning = data.running;
 		} catch (err) {
 			console.error('Error checking game status:', err);
 		}
@@ -1724,17 +1766,59 @@
 	loadImplementationStatus();
 	setupRecDeckSelectHandler();
 
-	// Load snapshots on page load
-	setInterval(loadSnapshotsList, 10000);
-	loadSnapshotsList();
+	// ===== Polling =====
+	//
+	// Each endpoint gets its own interval so a slow endpoint doesn't
+	// block faster, more important polls.  Start times are staggered
+	// so not all requests fire in the same event-loop tick.
 
-	setInterval(loadResults, 5000);
-	setInterval(updateGameStatus, 2000);
-	setInterval(loadEDHGames, 5000);
-	setInterval(loadMatchupMatrix, 5000);
+	const POLL = {
+		gameStatus:   { fn: updateGameStatus,      ms: 2000, delay: 0    },
+		results:     { fn: loadResults,            ms: 5000, delay: 500 },
+		edhGames:    { fn: loadEDHGames,           ms: 8000, delay: 1500 },
+		matchupMatrix: { fn: loadMatchupMatrix,    ms: 10000, delay: 2500 },
+		snapshots:   { fn: loadSnapshotsList,      ms: 15000, delay: 3500 },
+	};
+
+	let pollingTimers = {};
+
+	function startPolling() {
+		for (const [key, cfg] of Object.entries(POLL)) {
+			if (pollingTimers[key]) continue;
+			// Stagger the initial fire so requests don't pile up.
+			setTimeout(() => {
+				cfg.fn();
+				pollingTimers[key] = setInterval(cfg.fn, cfg.ms);
+				console.log('[Polling] Started ' + key + ' every ' + cfg.ms + 'ms');
+			}, cfg.delay);
+		}
+	}
+
+	function stopPolling() {
+		for (const key in pollingTimers) {
+			if (pollingTimers[key]) {
+				clearInterval(pollingTimers[key]);
+				pollingTimers[key] = null;
+				console.log('[Polling] Stopped ' + key);
+			}
+		}
+	}
+
+	// Use Page Visibility API to pause/resume polling
+	document.addEventListener('visibilitychange', () => {
+		if (document.hidden) {
+			stopPolling();
+		} else {
+			startPolling();
+		}
+	});
+
+	// Initial loads (fire immediately, not staggered)
+	loadSnapshotsList();
 	loadResults();
 	loadEDHGames();
 	loadMatchupMatrix();
+	startPolling();
 
 	// After initial load, try to restore active deck selection across tabs
 	setTimeout(() => {
