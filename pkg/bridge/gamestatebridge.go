@@ -79,6 +79,7 @@ func (pa *permAdapter) RemoveAbility(id uuid.UUID) {
 		}
 	}
 }
+func (pa *permAdapter) GetSource() game.SimpleCard { return pa.P.GetSource() }
 func (pa *permAdapter) Tap()            { pa.P.Tap() }
 func (pa *permAdapter) Untap()          { pa.P.Untap() }
 func (pa *permAdapter) IsTapped() bool  { return pa.P.IsTapped() }

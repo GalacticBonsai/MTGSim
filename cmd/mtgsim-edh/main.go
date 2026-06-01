@@ -73,6 +73,21 @@ func (gr *EDHGameRunner) SetSuggestedDeck(seat *simulation.EDHSeat) {
 	}
 }
 
+// ResetCardLibrary clears the in-memory card stats library.
+func (gr *EDHGameRunner) ResetCardLibrary() {
+	gr.cardLib.Reset()
+	logger.LogMeta("Card library reset by user")
+}
+
+// ResetGameLogs clears the in-memory game log ring buffer.
+func (gr *EDHGameRunner) ResetGameLogs() {
+	gr.gameLogMu.Lock()
+	gr.gameLogBuffer = nil
+	gr.gameLogMu.Unlock()
+	gr.edhResults.Clear()
+	logger.LogMeta("Game logs reset by user")
+}
+
 // RunGames runs the specified number of EDH pods
 func (gr *EDHGameRunner) RunGames(count int) {
 	go func() {
@@ -882,6 +897,7 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 		replayDir:  replayDir,
 	}
 	server.SetGameRunner(gameRunner)
+	server.SetDataResetter(gameRunner)
 
 	server.SetGameLogProvider(func() ([]dashboard.GameLogEntry, func(id int) *simulation.EDHGameRecord) {
 		gameRunner.gameLogMu.Lock()

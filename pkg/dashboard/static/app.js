@@ -1154,6 +1154,50 @@
 		}
 	}
 
+	async function resetCardLibrary() {
+		const status = document.getElementById('resetStatus');
+		status.textContent = 'Resetting...';
+		status.style.color = '#e74c3c';
+		try {
+			const res = await fetch('/api/reset-card-library', { method: 'POST' });
+			const data = await res.json();
+			if (res.ok) {
+				status.textContent = '✓ Card library reset';
+				status.style.color = '#2ecc71';
+				loadResults();
+			} else {
+				status.textContent = '✗ ' + (data.error || 'Error');
+				status.style.color = '#e74c3c';
+			}
+		} catch (err) {
+			status.textContent = '✗ Request failed';
+			status.style.color = '#e74c3c';
+		}
+		setTimeout(() => { status.textContent = ''; }, 5000);
+	}
+
+	async function resetGameLogs() {
+		const status = document.getElementById('resetStatus');
+		status.textContent = 'Resetting...';
+		status.style.color = '#e67e22';
+		try {
+			const res = await fetch('/api/reset-game-logs', { method: 'POST' });
+			const data = await res.json();
+			if (res.ok) {
+				status.textContent = '✓ Game logs cleared';
+				status.style.color = '#2ecc71';
+				loadResults();
+			} else {
+				status.textContent = '✗ ' + (data.error || 'Error');
+				status.style.color = '#e74c3c';
+			}
+		} catch (err) {
+			status.textContent = '✗ Request failed';
+			status.style.color = '#e74c3c';
+		}
+		setTimeout(() => { status.textContent = ''; }, 5000);
+	}
+
 	let previousRunning = false;
 
 	async function updateGameStatus() {

@@ -177,6 +177,15 @@ func NewEDHResults() *EDHResults {
 	return &EDHResults{byDeck: map[string]*deckAccumulator{}}
 }
 
+// Clear resets all EDH results back to an empty state.
+func (r *EDHResults) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.games = nil
+	r.byDeck = make(map[string]*deckAccumulator)
+	r.summary = EDHSummary{}
+}
+
 // RecordGame appends a completed pod and updates per-deck aggregates.
 func (r *EDHResults) RecordGame(rec EDHGameRecord) {
 	r.mu.Lock()

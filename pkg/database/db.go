@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -12,7 +13,8 @@ import (
 
 // DB wraps a sql.DB with MTGSim-specific helpers.
 type DB struct {
-	sqlDB *sql.DB
+	sqlDB   *sql.DB
+	writeMu sync.Mutex
 }
 
 // Open opens the PostgreSQL database at the given DSN and runs migrations.
@@ -142,7 +144,11 @@ CREATE TABLE IF NOT EXISTS uploaded_decks (
 }
 
 // txHelper runs f inside a transaction and commits or rolls back.
+// All transactions are serialized via writeMu to prevent PostgreSQL deadlocks
+// from concurrent upsert-heavy writes (e.g., RecordEDHPod).
 func (db *DB) txHelper(f func(*sql.Tx) error) error {
+	db.writeMu.Lock()
+	defer db.writeMu.Unlock()
 	tx, err := db.sqlDB.Begin()
 	if err != nil {
 		return err

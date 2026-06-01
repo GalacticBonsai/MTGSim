@@ -41,6 +41,8 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Mana, `\{T\}:\s*Add\s*\{([WUBRGC])\}`, AddMana, "Tap for mana", ap.parseManaAbility)
 	ap.addPattern(Mana, `\{T\}:\s*Add\s*one\s*mana\s*of\s*any\s*color`, AddMana, "Tap for any color", ap.parseAnyColorMana)
 	ap.addPattern(Mana, `\{T\}:\s*Add\s*\{C\}\{C\}`, AddMana, "Tap for colorless mana", ap.parseColorlessMana)
+	ap.addPattern(Mana, `\{T\}:\s*For\s+each\s+color\s+among\s+permanents\s+you\s+control,\s*add\s+one\s+mana\s+of\s+that\s+color`, AddMana, "Vivid mana", ap.parseVividMana)
+	ap.addPattern(Mana, `\{T\}:\s*Add\s+one\s+mana\s+of\s+any\s+of\s+the\s+exiled\s+card'?s\s+colors`, AddMana, "Imprint mana", ap.parseAnyColorMana)
 
 	// Triggered abilities - ETB effects
 	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+draw\s+(\d+)\s+cards?`, DrawCards, "ETB draw cards", ap.parseETBDrawCards)
@@ -604,6 +606,9 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `(?i)^Tap\s+(?:\d+|X)\s+target\s+(.*)`, TapUntap, "Tap target spell", ap.activatedParserFactory(TapUntap, "Tap Target Spell"))
 	ap.addPattern(Triggered, `Whenever\s+(?:a\s+)?creature\s+dies,\s+amass\s+(\d+)`, CreateToken, "Creature dies amass", ap.triggeredParserFactory(CreateToken, Dies, "Creature Dies Amass"))
 
+	// Imprint — ETB exile from hand (Chrome Mox, etc.)
+	ap.addPattern(Triggered, `When\s+.*\s+enters(?:\s+the\s+battlefield)?,\s+you\s+may\s+exile\s+a\s+nonartifact,\s*nonland\s+card\s+from\s+your\s+hand`, ImprintCards, "Imprint ETB", ap.parseImprintETB)
+
 	// Broad smart catch-all patterns for sentences that still haven't matched.
 	// These are intentionally placed at the very end so specific patterns win.
 	// They infer the effect type from the sentence and only return a valid ability
@@ -847,6 +852,25 @@ func (ap *AbilityParser) parseColorlessMana(matches []string, fullText string) (
 				Value:       2,
 				Duration:    Instant,
 				Description: "Add {C}{C}",
+			},
+		},
+		TimingRestriction: AnyTime,
+	}, nil
+}
+
+func (ap *AbilityParser) parseVividMana(matches []string, fullText string) (*Ability, error) {
+	return &Ability{
+		Name: "Vivid Mana",
+		Type: Mana,
+		Cost: Cost{
+			TapCost: true,
+		},
+		Effects: []Effect{
+			{
+				Type:        AddMana,
+				Value:       0,
+				Duration:    Instant,
+				Description: "For each color among permanents you control, add one mana of that color",
 			},
 		},
 		TimingRestriction: AnyTime,
@@ -3364,6 +3388,9 @@ func parseIntOrOne(s string) int {
 // ETB trigger parsers
 func (ap *AbilityParser) parseETBExile(matches []string, fullText string) (*Ability, error) {
 	return makeTriggeredAbility("ETB Exile", Exile, 0, Instant, fullText), nil
+}
+func (ap *AbilityParser) parseImprintETB(matches []string, fullText string) (*Ability, error) {
+	return makeTriggeredAbility("Imprint ETB", ImprintCards, 0, Instant, fullText), nil
 }
 func (ap *AbilityParser) parseETBReturn(matches []string, fullText string) (*Ability, error) {
 	return makeTriggeredAbility("ETB Return", ReturnToHand, 0, Instant, fullText), nil

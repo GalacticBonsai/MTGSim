@@ -242,6 +242,7 @@ skipCommander:
 				continue
 			}
 		perm.SetEnteredTurn(g.GetTurnNumber())
+		resolvePermanentETB(g, perm, ap, log)
 		storm := 0
 		if metrics != nil {
 			storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
@@ -322,6 +323,40 @@ func castNonPermanentSpell(g *game.Game, ap *game.Player, c game.SimpleCard, log
 	}
 	ap.Graveyard = append(ap.Graveyard, c)
 	return true
+}
+
+func resolvePermanentETB(g *game.Game, perm *game.Permanent, ap *game.Player, log *EDHEventLog) {
+	gs := bridge.NewAbilityGameState(g)
+	engine := abil.NewExecutionEngine(gs)
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		return
+	}
+	src := perm.GetSource()
+	if src.OracleText == "" {
+		return
+	}
+	abilities, err := engine.ParseAndRegisterAbilities(src.OracleText, src)
+	if err != nil || len(abilities) == 0 {
+		return
+	}
+	for _, ab := range abilities {
+		if ab.Type != abil.Triggered || ab.TriggerCondition != abil.EntersTheBattlefield {
+			continue
+		}
+		var targets []any
+		for _, eff := range ab.Effects {
+			for _, tgt := range eff.Targets {
+				if tgt.Required {
+					potentials := engine.GetPotentialTargets(tgt.Type, nil)
+					if len(potentials) > 0 {
+						targets = append(targets, potentials[0])
+					}
+				}
+			}
+		}
+		engine.ExecuteAbility(ab, playerAdapter, targets)
+	}
 }
 
 func eventDetail(name string, manaSpent, storm int) string {
@@ -429,6 +464,8 @@ func intString(v int) string {
 func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player, idx int, metrics *edhMetrics) {
 	demand := aggregateMainPhaseManaDemand(ap)
 	totalProduced := 0
+	hasUrborg := permanentOnBattlefield(ap, "Urborg, Tomb of Yawgmoth")
+	hasYavimaya := permanentOnBattlefield(ap, "Yavimaya, Cradle of Growth")
 	for _, perm := range ap.Battlefield {
 		if perm.IsTapped() {
 			continue
@@ -440,6 +477,20 @@ func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player, idx int, metr
 		if perm.IsCreature() && perm.GetEnteredTurn() == g.GetTurnNumber() && !perm.HasKeyword(game.KWHaste) {
 			continue
 		}
+		if hasUrborg && perm.GetSource().IsLand() {
+			hasBlack := false
+			for mt := range produced {
+				if mt == game.Black { hasBlack = true; break }
+			}
+			if !hasBlack { produced[game.Black] = produced[game.Black] + 1 }
+		}
+		if hasYavimaya && perm.GetSource().IsLand() {
+			hasGreen := false
+			for mt := range produced {
+				if mt == game.Green { hasGreen = true; break }
+			}
+			if !hasGreen { produced[game.Green] = produced[game.Green] + 1 }
+		}
 		perm.Tap()
 		for mt, n := range produced {
 			ap.AddManaToPool(mt, n)
@@ -449,6 +500,15 @@ func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player, idx int, metr
 	if metrics != nil && idx >= 0 {
 		metrics.recordManaProduced(idx, totalProduced)
 	}
+}
+
+func permanentOnBattlefield(ap *game.Player, name string) bool {
+	for _, perm := range ap.Battlefield {
+		if strings.EqualFold(perm.GetName(), name) {
+			return true
+		}
+	}
+	return false
 }
 
 func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
@@ -551,7 +611,18 @@ func manaProductionOptions(c game.SimpleCard) []game.Mana {
 			}
 		}
 	}
-	if strings.Contains(text, "one mana of any color") || strings.Contains(text, "one mana of any type") {
+	// Chrome Mox-style: "any of the exiled card's colors"
+	if strings.Contains(text, "one mana of any color") || strings.Contains(text, "one mana of any type") ||
+		strings.Contains(text, "any of the exiled card") {
+		return []game.Mana{{game.White: 1}, {game.Blue: 1}, {game.Black: 1}, {game.Red: 1}, {game.Green: 1}}
+	}
+	// Bloom Tender-style: produce one mana of each color among permanents (approximate as all 5)
+	if strings.Contains(text, "for each color among permanents you control") {
+		return []game.Mana{{game.White: 1, game.Blue: 1, game.Black: 1, game.Red: 1, game.Green: 1}}
+	}
+	// Mox-style: "Mox" cards that produce any color
+	name := strings.ToLower(c.Name)
+	if strings.Contains(name, "mox") && !strings.Contains(name, "moxfield") {
 		return []game.Mana{{game.White: 1}, {game.Blue: 1}, {game.Black: 1}, {game.Red: 1}, {game.Green: 1}}
 	}
 	if strings.Contains(text, "{c}{c}") {

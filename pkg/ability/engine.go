@@ -202,15 +202,68 @@ func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, 
 
 // resolveManaAbility resolves a mana ability immediately.
 func (ee *ExecutionEngine) resolveManaAbility(ability *Ability, controller AbilityPlayer) error {
+	oracleText := strings.ToLower(ability.OracleText)
+
+	// Bloom Tender / Vivid: {T}: For each color among permanents you control, add one mana of that color.
+	if strings.Contains(oracleText, "for each color among permanents you control") {
+		colors := ee.collectDistinctPermanentColors(controller)
+		for _, mt := range colors {
+			ee.gameState.AddManaToPool(controller, mt, 1)
+		}
+		logger.LogCard("%s adds vivid mana for %d colors: %v", controller.GetName(), len(colors), colors)
+		return nil
+	}
+
 	for _, effect := range ability.Effects {
 		if effect.Type == AddMana {
-			// Determine mana type from ability description or effect
 			manaType := ee.determineManaType(ability, effect)
+
+			// Chrome Mox imprint: "any of the exiled card's colors" → produce any-color mana
+			if strings.Contains(oracleText, "exiled card") && strings.Contains(oracleText, "colors") {
+				manaType = game.Any
+			}
+
 			ee.gameState.AddManaToPool(controller, manaType, effect.Value)
 			logger.LogCard("%s adds %d %s mana", controller.GetName(), effect.Value, string(manaType))
 		}
 	}
 	return nil
+}
+
+// collectDistinctPermanentColors returns the set of distinct colors among the
+// controller's permanents, used by vivid mana abilities like Bloom Tender.
+func (ee *ExecutionEngine) collectDistinctPermanentColors(controller AbilityPlayer) []game.ManaType {
+	distinct := make(map[game.ManaType]bool)
+
+	// Duck-type interface for accessing card source info
+	type cardColorSource interface {
+		GetSource() game.SimpleCard
+	}
+
+	check := func(perms []any) {
+		for _, p := range perms {
+			if src, ok := p.(cardColorSource); ok {
+				for _, color := range src.GetSource().Colors {
+					mt := game.ManaType(color)
+					if mt == game.White || mt == game.Blue || mt == game.Black || mt == game.Red || mt == game.Green {
+						distinct[mt] = true
+					}
+				}
+			}
+		}
+	}
+
+	check(controller.GetCreatures())
+	check(controller.GetLands())
+
+	var result []game.ManaType
+	for mt := range distinct {
+		result = append(result, mt)
+	}
+	if len(result) == 0 {
+		result = append(result, game.Colorless)
+	}
+	return result
 }
 
 // resolveAbility resolves a non-mana ability.
@@ -575,6 +628,9 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			}
 		}
 
+	case ImprintCards:
+		logger.LogCard("Imprint effect resolves (card exiled from hand)")
+
 	case ReanimateCreature:
 		var reanimatedCard game.SimpleCard
 		found := false
@@ -652,7 +708,7 @@ func CanExecuteEffect(effectType EffectType) bool {
 		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
 		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
 		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature,
-		WinGame, LoseGame, LookAtLibraryTop, RevealInformation:
+		WinGame, LoseGame, LookAtLibraryTop, RevealInformation, ImprintCards:
 		return true
 	default:
 		return false

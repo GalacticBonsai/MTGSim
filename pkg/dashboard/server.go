@@ -71,6 +71,12 @@ type GameRunner interface {
 	SetSuggestedDeck(seat *simulation.EDHSeat)
 }
 
+// DataResetter allows resetting persistent game data from the dashboard UI.
+type DataResetter interface {
+	ResetCardLibrary()
+	ResetGameLogs()
+}
+
 // SuggestedDeckProvider returns the currently suggested deck, or nil if none is set.
 type SuggestedDeckProvider func() *simulation.EDHSeat
 
@@ -107,6 +113,8 @@ type Server struct {
 	edhGamesCacheData    []simulation.EDHGameRecord
 	edhGamesCached       time.Time
 	cacheMaxAge          time.Duration
+
+	dataResetter DataResetter
 
 	// In-memory byte caches for serialised API responses so we avoid
 	// re-computing and re-serialising on every poll cycle.
@@ -163,6 +171,9 @@ func (s *Server) SetScryfallClient(cl *scryfall.Client) { s.scryfallClient = cl 
 // SetGameLogProvider attaches a game log ring buffer for /api/game-log-list and /api/game-log.
 func (s *Server) SetGameLogProvider(p GameLogProvider) { s.gameLogProvider = p }
 
+// SetDataResetter attaches a data reseter for resetting card library and game logs.
+func (s *Server) SetDataResetter(d DataResetter) { s.dataResetter = d }
+
 // SetSnapshotManager attaches a snapshot manager for meta tracking.
 func (s *Server) SetSnapshotManager(sm *SnapshotManager) { s.snapshotManager = sm }
 
@@ -213,6 +224,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/meta-trends", s.handleMetaTrends)
 	s.mux.HandleFunc("/api/game-log-list", s.handleGameLogList)
 	s.mux.HandleFunc("/api/game-log", s.handleGameLog)
+	s.mux.HandleFunc("/api/reset-card-library", s.handleResetCardLibrary)
+	s.mux.HandleFunc("/api/reset-game-logs", s.handleResetGameLogs)
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -589,6 +602,38 @@ func (s *Server) handleRunGames(w http.ResponseWriter, r *http.Request) {
 		"message": "games started",
 		"count":   count,
 	})
+}
+
+func (s *Server) handleResetCardLibrary(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "POST required"})
+		return
+	}
+	if s.dataResetter == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "data reseter not configured"})
+		return
+	}
+	s.dataResetter.ResetCardLibrary()
+	_ = json.NewEncoder(w).Encode(map[string]any{"message": "card library reset"})
+}
+
+func (s *Server) handleResetGameLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "POST required"})
+		return
+	}
+	if s.dataResetter == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "data reseter not configured"})
+		return
+	}
+	s.dataResetter.ResetGameLogs()
+	_ = json.NewEncoder(w).Encode(map[string]any{"message": "game logs cleared"})
 }
 
 // handleGameStatus returns the current status of game running

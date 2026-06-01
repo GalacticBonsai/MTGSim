@@ -53,6 +53,13 @@
 				<button id="runGamesBtn" onclick="runMoreGames()" style="padding:8px 16px; background:#ff6b6b; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">▶ Run Games</button>
 				<span id="gameStatusIndicator" style="color:#888; font-size:0.9em;"></span>
 			</div>
+
+			<div style="margin-top:15px; padding-top:12px; border-top:1px solid #444; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+				<span style="color:#888; font-size:0.9em; margin-right:5px;">Reset data:</span>
+				<button onclick="resetCardLibrary()" style="padding:6px 14px; background:#e74c3c; color:#fff; border:none; border-radius:4px; cursor:pointer;">🗑 Card Library</button>
+				<button onclick="resetGameLogs()" style="padding:6px 14px; background:#e67e22; color:#fff; border:none; border-radius:4px; cursor:pointer;">🗑 Game Logs</button>
+				<span id="resetStatus" style="color:#2ecc71; font-size:0.9em;"></span>
+			</div>
 		</div>
 
 		<h3 style="margin-top:30px;">Win Rate Distribution</h3>
