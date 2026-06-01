@@ -19,6 +19,7 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/scryfall"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
@@ -72,6 +73,7 @@ type Server struct {
 	deleteUpload       func(name string)
 	uploadedDecks      func() []string
 	cardDB             *card.CardDB
+	scryfallClient     *scryfall.Client
 
 	// In-memory byte caches for uploaded-filtered EDH results
 	uploadedEdhCache      []byte
@@ -139,6 +141,8 @@ func (s *Server) SetUploadedDecksProvider(fn func() []string) { s.uploadedDecks 
 // SetCardDB attaches a card database for deck parsing.
 func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
 
+func (s *Server) SetScryfallClient(cl *scryfall.Client) { s.scryfallClient = cl }
+
 // SetSnapshotManager attaches a snapshot manager for meta tracking.
 func (s *Server) SetSnapshotManager(sm *SnapshotManager) { s.snapshotManager = sm }
 
@@ -181,6 +185,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/sideboard-suggestions", s.handleSideboardSuggestions)
 	s.mux.HandleFunc("/api/matchup-matrix", s.handleMatchupMatrix)
 	s.mux.HandleFunc("/api/card-search", s.handleCardSearch)
+	s.mux.HandleFunc("/api/db-status", s.handleDBStatus)
+	s.mux.HandleFunc("/api/card-image", s.handleCardImage)
 	s.mux.HandleFunc("/api/save-snapshot", s.handleSaveSnapshot)
 	s.mux.HandleFunc("/api/snapshots", s.handleListSnapshots)
 	s.mux.HandleFunc("/api/snapshot-comparison", s.handleSnapshotComparison)
@@ -353,47 +359,69 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uploadedOnly := r.URL.Query().Get("uploaded") == "1"
+	light := r.URL.Query().Get("light") == "1"
+	deckFilter := r.URL.Query().Get("deck")
 
-	if uploadedOnly {
-		// Serve from uploaded-filtered byte cache when fresh
-		s.cacheMu.RLock()
-		if s.uploadedEdhCache != nil && time.Since(s.uploadedEdhCached) < s.cacheMaxAge {
-			_, _ = w.Write(s.uploadedEdhCache)
+	if !light && deckFilter == "" {
+		if uploadedOnly {
+			s.cacheMu.RLock()
+			if s.uploadedEdhCache != nil && time.Since(s.uploadedEdhCached) < s.cacheMaxAge {
+				_, _ = w.Write(s.uploadedEdhCache)
+				s.cacheMu.RUnlock()
+				return
+			}
 			s.cacheMu.RUnlock()
-			return
-		}
-		s.cacheMu.RUnlock()
-	} else {
-		// Serve from full byte cache when fresh
-		s.cacheMu.RLock()
-		if s.edhResultsCacheBytes != nil && time.Since(s.edhResultsBytesCached) < s.cacheMaxAge {
-			_, _ = w.Write(s.edhResultsCacheBytes)
+		} else {
+			s.cacheMu.RLock()
+			if s.edhResultsCacheBytes != nil && time.Since(s.edhResultsBytesCached) < s.cacheMaxAge {
+				_, _ = w.Write(s.edhResultsCacheBytes)
+				s.cacheMu.RUnlock()
+				return
+			}
 			s.cacheMu.RUnlock()
-			return
 		}
-		s.cacheMu.RUnlock()
 	}
 
 	allDecks := s.edhProvider()
 	var decks []simulation.EDHDeckStats
 	var totalDecks int
 
-	if uploadedOnly && s.uploadedDecks != nil {
+	if deckFilter != "" {
+		for _, d := range allDecks {
+			if d.DeckName == deckFilter {
+				decks = append(decks, d)
+				totalDecks = 1
+				break
+			}
+		}
+	} else if uploadedOnly && s.uploadedDecks != nil {
 		names := s.uploadedDecks()
 		nameSet := make(map[string]bool, len(names))
 		for _, n := range names {
 			nameSet[n] = true
 		}
-		decks = make([]simulation.EDHDeckStats, 0, len(names))
 		for _, d := range allDecks {
 			if nameSet[d.DeckName] {
-				decks = append(decks, d)
+				d2 := d
+				if light { d2.CardStats = nil }
+				decks = append(decks, d2)
 			}
 		}
 		totalDecks = len(decks)
 	} else {
-		decks = allDecks
+		for _, d := range allDecks {
+			d2 := d
+			if light { d2.CardStats = nil }
+			decks = append(decks, d2)
+		}
 		totalDecks = len(decks)
+		limit := 100
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 { limit = v }
+		}
+		if deckFilter == "" && !uploadedOnly && len(decks) > limit {
+			decks = decks[:limit]
+		}
 	}
 
 	resp := edhResultsResponse{
@@ -442,6 +470,15 @@ func (s *Server) handleEDHGames(w http.ResponseWriter, r *http.Request) {
 type cardLibraryResponse struct {
 	Enabled bool                             `json:"enabled"`
 	Cards   map[string]stats.GlobalCardStats `json:"cards"`
+	CardDB  map[string]cardMeta              `json:"card_db,omitempty"`
+}
+
+type cardMeta struct {
+	TypeLine string   `json:"type_line"`
+	CMC      float32  `json:"cmc"`
+	ManaCost string   `json:"mana_cost"`
+	Colors   []string `json:"colors,omitempty"`
+	ImageURL string   `json:"image_url,omitempty"`
 }
 
 func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
@@ -450,7 +487,33 @@ func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: false})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: true, Cards: s.cardLibrary()})
+	lib := s.cardLibrary()
+	resp := cardLibraryResponse{Enabled: true, Cards: lib}
+	if len(resp.Cards) > 500 {
+		filtered := make(map[string]stats.GlobalCardStats, 500)
+		type entry struct{ name string; casts int }
+		var entries []entry
+		for name, s := range resp.Cards { entries = append(entries, entry{name, s.Casts}) }
+		sort.Slice(entries, func(i, j int) bool { return entries[i].casts > entries[j].casts })
+		for i := 0; i < 500 && i < len(entries); i++ {
+			filtered[entries[i].name] = resp.Cards[entries[i].name]
+		}
+		resp.Cards = filtered
+	}
+	if s.cardDB != nil {
+		resp.CardDB = make(map[string]cardMeta)
+		for name, card := range lib {
+			if c, ok := s.cardDB.GetCardByName(name); ok {
+				imageURL := card.ImageURL
+				if imageURL == "" && c.ImageURIs != nil { imageURL = c.ImageURIs.Normal }
+				resp.CardDB[name] = cardMeta{
+					TypeLine: c.TypeLine, CMC: c.CMC, ManaCost: c.ManaCost,
+					Colors: c.ColorIdentity, ImageURL: imageURL,
+				}
+			}
+		}
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 type implementationResponse struct {
@@ -989,6 +1052,59 @@ func (s *Server) handleMetaTrends(w http.ResponseWriter, r *http.Request) {
 		"enabled": true,
 		"trends":  trends,
 	})
+}
+
+func (s *Server) handleDBStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{"connected": false}
+	if s.edhProvider != nil {
+		allDecks := s.edhProvider()
+		totalPods := 0
+		for _, d := range allDecks {
+			totalPods += d.Games
+		}
+		resp["connected"] = true
+		resp["decks"] = len(allDecks)
+		resp["total_pods"] = totalPods
+	}
+	if s.cardLibrary != nil {
+		cards := s.cardLibrary()
+		resp["total_cards_tracked"] = len(cards)
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleCardImage(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+	var imageURL string
+	if lib := s.cardLibrary; lib != nil {
+		cards := lib()
+		if c, ok := cards[name]; ok && c.ImageURL != "" {
+			imageURL = c.ImageURL
+		}
+	}
+	if imageURL == "" && s.cardDB != nil {
+		if c, ok := s.cardDB.GetCardByName(name); ok && c.ImageURIs != nil {
+			imageURL = c.ImageURIs.Normal
+		}
+	}
+	if imageURL == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if s.scryfallClient != nil {
+		path, err := s.scryfallClient.DownloadAndCacheImage(imageURL)
+		if err == nil {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+	http.Redirect(w, r, imageURL, http.StatusFound)
 }
 
 // handleIndex returns the HTML dashboard.

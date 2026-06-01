@@ -298,3 +298,66 @@ func TestAnalyzeParserFailures(t *testing.T) {
 		t.Logf("  %s: %d", kcs[i].word, kcs[i].count)
 	}
 }
+
+func TestAllWinTheGameCards(t *testing.T) {
+	var dbPath string
+	paths := []string{".cache/cardDB.json", "../../.cache/cardDB.json"}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			dbPath = p
+			break
+		}
+	}
+	if dbPath == "" {
+		t.Skip("cardDB.json not present")
+	}
+
+	data, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatalf("read cardDB: %v", err)
+	}
+	var cards []card.Card
+	if err := json.Unmarshal(data, &cards); err != nil {
+		t.Fatalf("parse cardDB: %v", err)
+	}
+
+	failures := 0
+	winCards := 0
+	directWins := 0
+	for _, c := range cards {
+		oracle := strings.TrimSpace(c.OracleText)
+		if oracle == "" || isBasicLand(c.TypeLine) {
+			continue
+		}
+		lower := strings.ToLower(oracle)
+		if !strings.Contains(lower, "win the game") {
+			continue
+		}
+		winCards++
+		impl, reason := testCardImplementation(c)
+		if !impl {
+			failures++
+			t.Logf("UNIMPLEMENTED: %s — %s", c.Name, reason)
+			continue
+		}
+
+		// Check for a direct WinGame/LoseGame effect. Cards that
+		// *prevent* winning (e.g. Platinum Angel) use static restrictions
+		// rather than an explicit WinGame effect — those are fine.
+		abilities, _ := sharedParser.ParseAbilities(oracle, c)
+		for _, ab := range abilities {
+			for _, eff := range ab.Effects {
+				if eff.Type == WinGame || eff.Type == LoseGame {
+					directWins++
+				}
+			}
+		}
+	}
+
+	t.Logf("%d win-the-game cards: %d implemented, %d have direct WinGame/LoseGame effects",
+		winCards, winCards-failures, directWins)
+
+	if failures > 0 {
+		t.Errorf("%d/%d win-the-game cards are unimplemented", failures, winCards)
+	}
+}

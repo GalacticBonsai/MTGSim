@@ -24,7 +24,6 @@ services:
       - mtgsim-edh
       - -db=postgres://mtgsim:mtgsim@postgres:5432/mtgsim?sslmode=disable
       - -decks=/app/decks
-      - -games=1000
       - -pod=4
       - -max-turns=50
       - -port=8080
@@ -34,6 +33,7 @@ services:
     volumes:
       - ./decks:/app/decks:ro
       - ./.cache:/app/.cache
+      - mtgsim-data:/data
     deploy:
       resources:
         limits:
@@ -49,3 +49,4 @@ services:
 
 volumes:
   pg-data:
+  mtgsim-data:

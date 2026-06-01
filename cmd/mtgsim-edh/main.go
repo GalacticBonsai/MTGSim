@@ -55,6 +55,20 @@ func (gr *EDHGameRunner) SetSuggestedDeck(seat *simulation.EDHSeat) {
 	gr.suggestedDeckMu.Lock()
 	defer gr.suggestedDeckMu.Unlock()
 	gr.suggestedDeck = seat
+	if seat != nil && seat.DeckName != "" {
+		gr.uploadedMu.Lock()
+		found := false
+		for _, s := range gr.uploadedSeats {
+			if s.DeckName == seat.DeckName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			gr.uploadedSeats = append(gr.uploadedSeats, *seat)
+		}
+		gr.uploadedMu.Unlock()
+	}
 }
 
 // RunGames runs the specified number of EDH pods
@@ -69,89 +83,7 @@ func (gr *EDHGameRunner) RunGames(count int) {
 		gr.running = true
 		gr.mu.Unlock()
 
-		logger.LogMeta("Starting %d EDH pods...", count)
-
-		// Load uploaded deck names from DB
-		var uploadedNames []string
-		if gr.db != nil {
-			if names, err := gr.db.GetUploadedDeckNames(); err == nil {
-				uploadedNames = names
-			}
-		}
-		uploadedRRIdx := 0
-
-		numWorkers := (runtime.NumCPU() * 4) / 5
-		if numWorkers < 1 {
-			numWorkers = 1
-		}
-		if numWorkers > 4 {
-			numWorkers = 4
-		}
-		gamesChan := make(chan int, numWorkers)
-		var wg sync.WaitGroup
-
-		for w := 0; w < numWorkers; w++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for i := range gamesChan {
-					gr.mu.Lock()
-					gr.suggestedDeckMu.Lock()
-					sd := gr.suggestedDeck
-					gr.suggestedDeckMu.Unlock()
-					var chosen string
-					if sd != nil {
-						chosen = sd.DeckName
-					} else if len(uploadedNames) > 0 {
-						chosen = uploadedNames[uploadedRRIdx%len(uploadedNames)]
-						uploadedRRIdx++
-					}
-					pod := pickPodWithUploaded(gr.seats, gr.podSize, gr.rng, gr.mulligans, chosen)
-					gr.mu.Unlock()
-					
-					rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
-						Seats: pod, MaxTurns: gr.maxTurns, RNG: rand.New(rand.NewSource(gr.rng.Int63())),
-						RecordEvents: gr.replayDir != "",
-					})
-					if err != nil {
-						logger.LogMeta("Pod skipped: %v", err)
-						continue
-					}
-					// RecordGame and RecordCounts have their own internal locks;
-					// only hold gr.mu for the non-thread-safe legacyResults.
-					gr.mu.Lock()
-					recordLegacy(gr.legacyRes, rec)
-					gr.mu.Unlock()
-					gr.edhResults.RecordGame(rec)
-					for _, p := range rec.Players {
-						for cName, perf := range p.CardStats {
-							wins := 0
-							if p.DeckName == rec.Winner {
-								wins = perf.Casts
-							}
-							gr.cardLib.RecordCounts(cName, perf.Casts, wins)
-						}
-					}
-					if gr.replayDir != "" {
-						writeReplay(gr.replayDir, i+1, rec)
-					}
-					if (i+1)%10 == 0 {
-						logger.LogMeta("Completed %d/%d pods", i+1, count)
-					}
-					// Yield so the dashboard server goroutines don't starve
-					time.Sleep(1 * time.Millisecond)
-				}
-			}()
-		}
-
-		for i := 0; i < count; i++ {
-			gamesChan <- i
-		}
-		close(gamesChan)
-
-		wg.Wait()
-
-		logger.LogMeta("Batch of %d pods completed!", count)
+		gr.runBatch(count)
 
 		gr.mu.Lock()
 		gr.running = false
@@ -159,16 +91,108 @@ func (gr *EDHGameRunner) RunGames(count int) {
 	}()
 }
 
-// IsRunning returns whether games are currently running
-func (gr *EDHGameRunner) IsRunning() bool {
-	gr.mu.Lock()
-	defer gr.mu.Unlock()
-	return gr.running
+func (gr *EDHGameRunner) runBatch(count int) {
+	logger.LogMeta("Starting %d EDH pods...", count)
+
+	// Load uploaded deck names from DB
+	var uploadedNames []string
+	if gr.db != nil {
+		if names, err := gr.db.GetUploadedDeckNames(); err == nil {
+			uploadedNames = names
+		}
+	}
+	uploadedRRIdx := 0
+
+	// Merge uploaded seats with filesystem seats for pod picking
+	gr.uploadedMu.Lock()
+	allSeats := make([]simulation.EDHSeat, 0, len(gr.seats)+len(gr.uploadedSeats))
+	allSeats = append(allSeats, gr.seats...)
+	allSeats = append(allSeats, gr.uploadedSeats...)
+	gr.uploadedMu.Unlock()
+
+	numWorkers := (runtime.NumCPU()) / 2
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	gamesChan := make(chan int, numWorkers)
+	var wg sync.WaitGroup
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range gamesChan {
+				gr.suggestedDeckMu.Lock()
+				sd := gr.suggestedDeck
+				gr.suggestedDeckMu.Unlock()
+				var chosen string
+				if sd != nil {
+					chosen = sd.DeckName
+				} else if len(uploadedNames) > 0 {
+					chosen = uploadedNames[uploadedRRIdx%len(uploadedNames)]
+					uploadedRRIdx++
+				}
+				pod := gr.pickPodWithUploaded(allSeats, gr.podSize, gr.rng, gr.mulligans, chosen)
+
+				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
+					Seats: pod, MaxTurns: gr.maxTurns, RNG: rand.New(rand.NewSource(gr.rng.Int63())),
+					RecordEvents: gr.replayDir != "",
+				})
+				if err != nil {
+					logger.LogMeta("Pod skipped: %v", err)
+					continue
+				}
+				gr.mu.Lock()
+				recordLegacy(gr.legacyRes, rec)
+				gr.mu.Unlock()
+				gr.edhResults.RecordGame(rec)
+				for _, p := range rec.Players {
+					for cName, perf := range p.CardStats {
+						wins := 0
+						if p.DeckName == rec.Winner {
+							wins = perf.Casts
+						}
+						gr.cardLib.RecordCounts(cName, perf.Casts, wins)
+					}
+				}
+				if gr.db != nil {
+					persistEDHPod(gr.db, rec)
+				}
+				if gr.replayDir != "" {
+					writeReplay(gr.replayDir, i+1, rec)
+				}
+				if (i+1)%10 == 0 {
+					logger.LogMeta("Completed %d/%d pods", i+1, count)
+				}
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	for i := 0; i < count; i++ {
+		gamesChan <- i
+	}
+	close(gamesChan)
+	wg.Wait()
+
+	if gr.cardLib != nil {
+		_ = gr.cardLib.Save()
+	}
+
+	logger.LogMeta("Batch of %d pods completed!", count)
 }
 
 // pickPodWithUploaded picks n random seats, ensuring chosen (if non-empty)
 // is in the pod, then shuffles. Non-uploaded decks fill the remaining seats.
 func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
+	return pickPodFromPool(seats, n, rng, mulligans, chosen)
+}
+
+func (gr *EDHGameRunner) pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
+	return pickPodFromPool(seats, n, rng, mulligans, chosen)
+}
+
+func pickPodFromPool(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
 	pod := make([]simulation.EDHSeat, 0, n)
 	used := make(map[string]bool)
 
@@ -205,8 +229,15 @@ func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mull
 	return pod
 }
 
+// IsRunning returns whether games are currently running
+func (gr *EDHGameRunner) IsRunning() bool {
+	gr.mu.Lock()
+	defer gr.mu.Unlock()
+	return gr.running
+}
+
 func main() {
-	games := flag.Int("games", 50, "Number of pods to simulate")
+	games := flag.Int("games", 0, "Number of pods to simulate (0 = continuous mode)")
 	podSize := flag.Int("pod", 4, "Players per pod (2-6)")
 	decksDir := flag.String("decks", "decks", "Directory containing Commander deck files")
 	maxTurns := flag.Int("max-turns", 50, "Hard turn limit per pod")
@@ -353,10 +384,46 @@ func main() {
 		}
 	}
 
+	var gameRunner *EDHGameRunner
 	if *port > 0 {
-		startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport, seats, cardDB, *podSize, *maxTurns, *mulligans, *replayDir, rng, db)
+		gameRunner = startDashboard(legacyResults, edhResults, cardLib, &mu, *port, implReport, seats, cardDB, *podSize, *maxTurns, *mulligans, *replayDir, rng, db, scryfallClient)
 	}
-	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", *games, *podSize, rngSeed)
+	if gameRunner == nil {
+		gameRunner = &EDHGameRunner{
+			seats:      seats,
+			cardDB:     cardDB,
+			db:         db,
+			edhResults: edhResults,
+			legacyRes:  legacyResults,
+			cardLib:    cardLib,
+			mu:         &mu,
+			rng:        rng,
+			podSize:    *podSize,
+			maxTurns:   *maxTurns,
+			mulligans:  *mulligans,
+			replayDir:  *replayDir,
+		}
+	}
+	batchSize := *games
+	if batchSize <= 0 {
+		batchSize = 50
+	}
+
+	if db != nil {
+		if sum, err := db.GetEDHSummary(); err == nil {
+			logger.LogMeta("Database connected: %d existing pods persisted", sum.TotalGames)
+		}
+		if decks, err := db.GetEDHDeckStats(); err == nil {
+			totalCards := 0
+			for _, d := range decks {
+				totalCards += len(d.CardStats)
+			}
+			logger.LogMeta("Database: %d decks, %d card-stat entries", len(decks), totalCards)
+		}
+	} else {
+		logger.LogMeta("No database configured — results will NOT persist across restarts")
+	}
+	logger.LogMeta("Starting %d %d-player pods (seed=%d)...", batchSize, *podSize, rngSeed)
 	start := time.Now()
 
 	if *replayDir != "" {
@@ -366,86 +433,11 @@ func main() {
 		}
 	}
 
-	// Cap CPU at ~20% of available cores, max 4 workers
-	numWorkers := (runtime.NumCPU()) / 5
-	if numWorkers < 1 {
-		numWorkers = 1
+	gameRunner.RunGames(batchSize)
+	time.Sleep(100 * time.Millisecond)
+	for gameRunner.IsRunning() {
+		time.Sleep(200 * time.Millisecond)
 	}
-	if numWorkers > 4 {
-		numWorkers = 4
-	}
-	gamesChan := make(chan int, numWorkers)
-	var wg sync.WaitGroup
-
-	// Load uploaded deck names for the initial batch
-	var uploadedNames []string
-	if db != nil {
-		if names, err := db.GetUploadedDeckNames(); err == nil {
-			uploadedNames = names
-		}
-	}
-	uploadedRRIdx := 0
-
-	// Start worker goroutines
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range gamesChan {
-				mu.Lock()
-				var chosen string
-				if len(uploadedNames) > 0 {
-					chosen = uploadedNames[uploadedRRIdx%len(uploadedNames)]
-					uploadedRRIdx++
-				}
-				pod := pickPodWithUploaded(seats, *podSize, rng, *mulligans, chosen)
-				mu.Unlock()
-				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
-					Seats: pod, MaxTurns: *maxTurns, RNG: rand.New(rand.NewSource(rng.Int63())),
-					RecordEvents: *replayDir != "",
-				})
-				if err != nil {
-					logger.LogMeta("Pod %d skipped: %v", i+1, err)
-					continue
-				}
-				// RecordGame and RecordCounts have their own internal locks;
-				// only hold the external mu for the non-thread-safe legacyResults.
-				mu.Lock()
-				recordLegacy(legacyResults, rec)
-				mu.Unlock()
-				edhResults.RecordGame(rec)
-				for _, p := range rec.Players {
-					for cName, perf := range p.CardStats {
-						wins := 0
-						if p.DeckName == rec.Winner {
-							wins = perf.Casts
-						}
-						cardLib.RecordCounts(cName, perf.Casts, wins)
-					}
-				}
-				if db != nil {
-					persistEDHPod(db, rec)
-				}
-				if *replayDir != "" {
-					writeReplay(*replayDir, i+1, rec)
-				}
-				if (i+1)%10 == 0 {
-					logger.LogMeta("Completed %d/%d pods", i+1, *games)
-				}
-				// Brief yield so the dashboard (and other goroutines) get scheduling time
-				time.Sleep(1 * time.Millisecond)
-			}
-		}()
-	}
-
-	// Send game indices to workers
-	for i := 0; i < *games; i++ {
-		gamesChan <- i
-	}
-	close(gamesChan)
-
-	// Wait for all workers to complete
-	wg.Wait()
 
 	// Backfill image URLs for any newly recorded cards.
 	for name := range cardLib.Cards {
@@ -484,14 +476,22 @@ func main() {
 
 	elapsed := time.Since(start)
 	logger.LogMeta("Simulated %d pods in %.2fs (avg %.2f turns/pod)",
-		*games, elapsed.Seconds(), edhResults.AverageTurns())
+		batchSize, elapsed.Seconds(), edhResults.AverageTurns())
 
 	printSummary(edhResults, cardLib)
 
-	// Cooldown before exit so Docker's restart doesn't immediately respawn us
-	// and starve the dashboard of CPU time.
-	logger.LogMeta("Cooling down for 10s before next batch...")
-	time.Sleep(10 * time.Second)
+	if *games == 0 {
+		logger.LogMeta("Continuous mode: looping batches of %d pods", batchSize)
+		for {
+			time.Sleep(2 * time.Second)
+			logger.LogMeta("Starting continuous batch...")
+			gameRunner.RunGames(batchSize)
+			for gameRunner.IsRunning() {
+				time.Sleep(1 * time.Second)
+			}
+			logger.LogMeta("Continuous batch completed")
+		}
+	}
 
 	if *port > 0 && *keepAlive {
 		fmt.Printf("\nDashboard still running on http://localhost:%d (press Ctrl+C to exit)\n", *port)
@@ -681,7 +681,7 @@ func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
 	}
 }
 
-func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.RWMutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand, db *database.DB) {
+func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.RWMutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand, db *database.DB, scryfallClient *scryfall.Client) *EDHGameRunner {
 	server := dashboard.NewServer(func() []simulation.Result {
 		mu.RLock()
 		defer mu.RUnlock()
@@ -838,6 +838,7 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 		return implReport
 	})
 	server.SetCardDB(cardDB)
+	server.SetScryfallClient(scryfallClient)
 
 	// Wire upload/delete recorders to persist deck names to database
 	if db != nil {
@@ -881,4 +882,5 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 	}()
 	time.Sleep(100 * time.Millisecond)
 	fmt.Printf("\n🧙 MTGSim EDH Dashboard available at: http://localhost:%d\n\n", port)
+	return gameRunner
 }

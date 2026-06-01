@@ -47,13 +47,12 @@ func (p *Player) DrawOpeningHand() {
 
 // LondonMulligan implements CR 103.4 — the London Mulligan rule used in
 // Commander since 2019. The player shuffles their current hand into the
-// library, draws seven cards, then puts `mulligansTaken` cards on the
-// bottom of their library in any order. The automated player chooses to
-// bottom the cards with the highest converted mana cost first by sorting
-// by name as a stable proxy (CMC isn't tracked on SimpleCard yet).
+// library, draws seven cards, then puts cards on the bottom: the first
+// mulligan is free (Commander CR 103.4c), subsequent mulligans bottom
+// one additional card each (the second mulligan bottoms 1, third bottoms 2).
 //
-// Returns the number of cards put on the bottom; an error if more
-// mulligans are requested than the hand can accommodate.
+// mulligansTaken is the total mulligans this player has taken. A value
+// of 1 means one free mulligan (bottom 0), 2 means bottom 1, etc.
 func (p *Player) LondonMulligan(rng *rand.Rand, mulligansTaken int) (int, error) {
 	if p == nil {
 		return 0, errors.New("nil player")
@@ -61,28 +60,26 @@ func (p *Player) LondonMulligan(rng *rand.Rand, mulligansTaken int) (int, error)
 	if mulligansTaken < 0 {
 		return 0, errors.New("mulligansTaken must be non-negative")
 	}
-	// Step 1: return current hand to library
 	p.Library = append(p.Hand, p.Library...)
 	p.Hand = p.Hand[:0]
-	// Step 2: shuffle library
 	if rng != nil {
 		rng.Shuffle(len(p.Library), func(i, j int) {
 			p.Library[i], p.Library[j] = p.Library[j], p.Library[i]
 		})
 	}
-	// Step 3: draw 7
 	p.Draw(OpeningHandSize)
-	// Step 4: bottom `mulligansTaken` cards (the "tax" for each mulligan)
+	// CR 103.4c: first mulligan in multiplayer is free (bottom 0).
+	// Second mulligan bottoms 1, third bottoms 2, etc.
 	bottom := mulligansTaken
+	if bottom > 0 {
+		bottom--
+	}
 	if bottom > len(p.Hand) {
 		bottom = len(p.Hand)
 	}
 	if bottom == 0 {
 		return 0, nil
 	}
-	// Automated choice: bottom the last cards added to hand. With no CMC
-	// data this is deterministic and good enough for simulation; a smarter
-	// chooser can replace this without changing the API.
 	keep := len(p.Hand) - bottom
 	bottomed := make([]SimpleCard, bottom)
 	copy(bottomed, p.Hand[keep:])

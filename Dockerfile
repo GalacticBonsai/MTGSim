@@ -20,4 +20,4 @@ RUN mkdir -p /data /app/decks /app/.cache
 VOLUME ["/data", "/app/decks", "/app/.cache"]
 EXPOSE 8080
 
-# No default CMD — override per service in docker-compose
+CMD ["mtgsim-edh", "-port=8080"]

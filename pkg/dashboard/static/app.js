@@ -44,18 +44,11 @@
 
 	function goToRecommendations() {
 		const deckName = activeDeckName || (selectedDeck && selectedDeck.deck_name);
-		if (!deckName) {
-			alert('Select a deck in Test Results first');
-			return;
-		}
-		showTab('recommendations');
-		const recSelect = document.getElementById('recDeckSelect');
-		if (recSelect) {
-			ignoreRecSelectChange = true;
-			recSelect.value = deckName;
-			ignoreRecSelectChange = false;
-			loadRecommendations();
-		}
+		if (!deckName) { alert('Select a deck in Test Results first'); return; }
+		showTab('my-deck');
+		const nameInput = document.getElementById('deckName');
+		if (nameInput) nameInput.value = getDeckDisplayName(deckName);
+		goToMyDeck();
 	}
 
 	// Wire up the recommendations dropdown change handler programmatically
@@ -131,6 +124,8 @@
 	let allEDHDecksList = [];
 	let selectedDeckCardsSortKey = 'winRate';
 	let selectedDeckCardsSortAsc = false;
+	let cardDBMeta = {};
+	let myDeckGroupBy = '';
 	
 	// Track uploaded decks (persists across page reloads)
 	let uploadedDeckNames = new Set();
@@ -199,6 +194,7 @@
 				saveUploadedDecks();
 				renderUploadedDecks();
 				filterEDHDecks();
+				loadResults();
 			}
 		} catch (err) {
 			console.error('Failed to delete uploaded deck:', err);
@@ -236,12 +232,32 @@
 	}
 
 	async function loadResults() {
-		const edhURL = '/api/edh-results' + (document.getElementById('showOnlyUploaded').checked ? '?uploaded=1' : '');
-		const [resultsRes, edhRes, libRes] = await Promise.all([
-			fetchWithTimeout('/api/results', 10000).catch(() => null),
-			fetchWithTimeout(edhURL, 10000).catch(() => null),
-			fetchWithTimeout('/api/card-library', 10000).catch(() => null),
-		]);
+		const activeTab = document.querySelector('.tab-content.active');
+		const tabId = activeTab ? activeTab.id : '';
+		
+		const fetches = [];
+		if (tabId === 'overview' || tabId === 'card-analysis' || !tabId) {
+			const edhURL = '/api/edh-results?light=1' + (document.getElementById('showOnlyUploaded').checked ? '&uploaded=1' : '');
+			fetches.push(fetchWithTimeout(edhURL, 10000).catch(() => null));
+		} else {
+			fetches.push(Promise.resolve(null));
+		}
+		
+		if (tabId === 'card-analysis' || tabId === 'my-deck' || !tabId) {
+			fetches.push(fetchWithTimeout('/api/card-library', 10000).catch(() => null));
+		} else {
+			fetches.push(Promise.resolve(null));
+		}
+		
+		if (!tabId || tabId === 'overview') {
+			fetches.push(fetchWithTimeout('/api/results', 10000).catch(() => null));
+			fetches.push(fetchWithTimeout('/api/edh-games', 10000).catch(() => null));
+		} else {
+			fetches.push(Promise.resolve(null));
+			fetches.push(Promise.resolve(null));
+		}
+		
+		const [edhRes, libRes, resultsRes, gamesRes] = await Promise.all(fetches);
 
 		if (resultsRes && resultsRes.ok) {
 			try {
@@ -272,10 +288,19 @@
 			try {
 				const data = await libRes.json();
 				if (data.enabled) {
-					renderCardLibrary(data.cards || {});
+					renderCardLibrary(data);
 				}
 			} catch (err) {
 				console.error('Error parsing card library:', err);
+			}
+		}
+		
+		if (gamesRes && gamesRes.ok) {
+			try {
+				const data = await gamesRes.json();
+				if (data.enabled) renderEDHGames(data.games || []);
+			} catch (err) {
+				console.error('Error parsing EDH games:', err);
 			}
 		}
 	}
@@ -356,8 +381,12 @@
 			let tooltip = d.deck_name + ' (' + (d.commander_name || 'No Commander') + ') — ' + d.games + ' pods, ' + d.wins + 'W / ' + d.losses + 'L';
 			let selected = selectedDeck && selectedDeck.deck_name === d.deck_name ? ' style="background:#3a3a3a;"' : '';
 			let escapedDeckName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			let isUp = isUploadedDeck(d);
+			let tag = isUp ? ' <span style="color:#4ecdc4; font-size:0.75em;">★</span>' : '';
+			let safeName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			let delBtn = isUp ? '<button onclick="event.stopPropagation(); deleteUploadedDeck(\'' + safeName + '\')" style="padding:2px 8px;background:#e74c3c;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:0.75em;" title="Delete uploaded deck">✕</button>' : '';
 			html += '<tr title="' + tooltip + '" onclick="selectDeck(' + "'" + escapedDeckName + "'" + ')"' + selected + ' style="cursor:pointer;">'
-				+ '<td><span class="deck-name-truncate">' + escapeHtml(displayName) + '</span></td>'
+				+ '<td>' + delBtn + ' <span class="deck-name-truncate">' + escapeHtml(displayName) + '</span>' + tag + '</td>'
 				+ '<td>' + (d.commander_name || '-') + '</td>'
 				+ '<td>' + d.games + '</td>'
 				+ '<td>' + d.wins + '</td>'
@@ -382,7 +411,7 @@
 		document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20" style="color:#888;">No decks match the current filter. Upload a deck or uncheck "Show only my uploaded decks".</td></tr>';
 	}
 
-	function selectDeck(deckName) {
+	async function selectDeck(deckName) {
 		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
 		if (!deck) return;
 
@@ -391,7 +420,6 @@
 		document.getElementById('selectedDeckStats').style.display = '';
 		document.getElementById('clearDeckSelection').style.display = 'inline-block';
 
-		// Update stats
 		document.getElementById('selectedDeckName').textContent = getDeckDisplayName(deck.deck_name);
 		document.getElementById('selectedDeckCommander').textContent = deck.commander_name || 'Unknown';
 		document.getElementById('selectedDeckGames').textContent = deck.games;
@@ -399,11 +427,26 @@
 		document.getElementById('selectedDeckAvgLands').textContent = (deck.avg_lands_played || 0).toFixed(1);
 		document.getElementById('selectedDeckAvgCards').textContent = (deck.avg_cards_played || 0).toFixed(1);
 		document.getElementById('selectedDeckAvgManaProduced').textContent = (deck.avg_mana_produced || 0).toFixed(1);
+		document.getElementById('selectedDeckStorm').textContent = deck.max_storm_count || 0;
+		document.getElementById('selCombatWins').textContent = deck.combat_wins || 0;
+		document.getElementById('selEffectWins').textContent = deck.effect_wins || 0;
+		document.getElementById('selDeckoutWins').textContent = deck.deckout_wins || 0;
+		document.getElementById('selAvgManaSpent').textContent = (deck.avg_mana_spent || 0).toFixed(1) + '/turn';
+		document.getElementById('selAvgCreatures').textContent = (deck.avg_creatures_cast || 0).toFixed(1) + '/pod';
+		document.getElementById('selAvgCombat').textContent = (deck.avg_combat_damage || 0).toFixed(1) + '/pod';
 
-		// Show card stats
+		if (!deck.card_stats || Object.keys(deck.card_stats || {}).length === 0) {
+			try {
+				const res = await fetch('/api/edh-results?deck=' + encodeURIComponent(deckName));
+				const data = await res.json();
+				if (data.enabled && data.decks && data.decks.length > 0) {
+					selectedDeck.card_stats = data.decks[0].card_stats || {};
+				}
+			} catch (err) {
+				console.error('Error loading deck cards:', err);
+			}
+		}
 		renderSelectedDeckCards();
-
-		// Re-render deck list to highlight selection
 		filterEDHDecks();
 	}
 
@@ -431,46 +474,97 @@
 		let cards = [];
 		
 		for (let [name, stats] of Object.entries(cardStats)) {
-			if (stats.casts >= 3) {  // minimum 3 casts
+			if (stats.casts >= 3) {
+				const meta = cardDBMeta[name] || {};
 				cards.push({
 					name: name,
 					casts: stats.casts,
 					wins: stats.wins || 0,
-					winRate: stats.casts > 0 ? ((stats.wins || 0) / stats.casts * 100) : 0
+					winRate: stats.casts > 0 ? ((stats.wins || 0) / stats.casts * 100) : 0,
+					typeLine: meta.type_line || '',
+					cmc: meta.cmc || 0,
+					cardType: classifyCardType(meta.type_line || '')
 				});
 			}
 		}
 		
-		// Sort
 		cards.sort((a, b) => {
 			let av = a[selectedDeckCardsSortKey];
 			let bv = b[selectedDeckCardsSortKey];
-			
 			if (typeof av === 'string') av = av.toLowerCase();
 			if (typeof bv === 'string') bv = bv.toLowerCase();
-			
 			if (av < bv) return selectedDeckCardsSortAsc ? -1 : 1;
 			if (av > bv) return selectedDeckCardsSortAsc ? 1 : -1;
 			return 0;
 		});
 		
 		const deckWinRate = selectedDeck ? (selectedDeck.win_rate || 0) : 0;
-		let html = '';
-		for (let c of cards.slice(0, 100)) {
+		let currentGroup = '';
+		let html = '<div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">';
+		html += '<span style="color:#888; font-size:0.85em;">Sort: </span>';
+		const sortOpts = [
+			{key:'name', label:'Name'}, {key:'winRate', label:'Win Rate'},
+			{key:'casts', label:'Casts'}, {key:'wins', label:'Wins'},
+			{key:'cardType', label:'Type'}, {key:'cmc', label:'CMC'}
+		];
+		for (let opt of sortOpts) {
+			const active = selectedDeckCardsSortKey === opt.key ? ' style="background:#5a6dd8;color:#fff;"' : ' style="background:#2a2a2a;color:#ccc;"';
+			html += '<button onclick="sortSelectedDeckCards(\'' + opt.key + '\')" ' + active + '>' + opt.label + (selectedDeckCardsSortKey === opt.key ? (selectedDeckCardsSortAsc ? ' ↑' : ' ↓') : '') + '</button>';
+		}
+		html += '<span style="color:#888; font-size:0.85em; margin-left:12px;">Group: </span>';
+		const groupOpts = ['', 'cardType', 'cmc'];
+		const groupLabels = { '': 'None', 'cardType': 'Type', 'cmc': 'CMC' };
+		for (let g of groupOpts) {
+			const active = myDeckGroupBy === g ? ' style="background:#e67e22;color:#fff;"' : ' style="background:#2a2a2a;color:#ccc;"';
+			html += '<button onclick="setMyDeckGroup(\'' + g + '\')" ' + active + '>' + groupLabels[g] + '</button>';
+		}
+		html += '</div>';
+		html += '<table style="width:100%;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #333;">Card</th><th style="padding:6px;border-bottom:1px solid #333;">Type</th><th style="padding:6px;border-bottom:1px solid #333;">CMC</th><th style="padding:6px;border-bottom:1px solid #333;">Casts</th><th style="padding:6px;border-bottom:1px solid #333;">Wins</th><th style="padding:6px;border-bottom:1px solid #333;">Win Rate</th></tr></thead><tbody>';
+		
+		for (let c of cards.slice(0, 200)) {
 			const winRateDiff = c.winRate - deckWinRate;
 			let wrColor;
 			if (winRateDiff > 5) wrColor = '#2ecc71';
 			else if (winRateDiff < -10) wrColor = '#e74c3c';
 			else wrColor = '#f39c12';
-			html += '<tr title="' + c.name + ': ' + c.casts + ' casts, ' + c.wins + ' wins">'
-				+ '<td>' + c.name + '</td>'
+			const prevGroup = currentGroup;
+			if (myDeckGroupBy === 'cardType') currentGroup = c.cardType || 'Other';
+			else if (myDeckGroupBy === 'cmc') currentGroup = 'CMC ' + Math.floor(c.cmc);
+			if (myDeckGroupBy && currentGroup !== prevGroup) {
+				html += '<tr><td colspan="6" style="padding:6px;background:#1a1f3a;color:#5a6dd8;font-weight:bold;font-size:0.9em;">' + currentGroup + '</td></tr>';
+			}
+			html += '<tr>'
+				+ '<td>' + cardLink(c.name) + '</td>'
+				+ '<td style="color:#888;">' + (c.typeLine || '-') + '</td>'
+				+ '<td>' + (c.cmc || '-') + '</td>'
 				+ '<td>' + c.casts + '</td>'
 				+ '<td>' + c.wins + '</td>'
 				+ '<td style="color:' + wrColor + ';"><strong>' + c.winRate.toFixed(1) + '%</strong></td>'
 				+ '</tr>';
 		}
+		html += '</tbody></table>';
 
-		document.getElementById('selectedDeckCardsBody').innerHTML = html || '<tr><td colspan="4">No cards with 3+ casts</td></tr>';
+		document.getElementById('selectedDeckCardsBody').innerHTML = html || '<tr><td colspan="6">No cards with 3+ casts</td></tr>';
+	}
+	
+	function classifyCardType(typeLine) {
+		if (!typeLine) return 'Other';
+		const t = typeLine.toLowerCase();
+		if (t.includes('creature')) return 'Creature';
+		if (t.includes('instant') && !t.includes('sorcery')) return 'Instant';
+		if (t.includes('sorcery')) return 'Sorcery';
+		if (t.includes('artifact') && t.includes('creature')) return 'Artifact Creature';
+		if (t.includes('artifact')) return 'Artifact';
+		if (t.includes('enchantment') && t.includes('creature')) return 'Enchantment Creature';
+		if (t.includes('enchantment')) return 'Enchantment';
+		if (t.includes('planeswalker')) return 'Planeswalker';
+		if (t.includes('land')) return 'Land';
+		return 'Other';
+	}
+	
+	function setMyDeckGroup(group) {
+		myDeckGroupBy = group;
+		renderSelectedDeckCards();
 	}
 
 	function renderTopCardsForCommander() {
@@ -493,7 +587,8 @@
 				name,
 				casts: perf.casts,
 				wins: perf.wins,
-				winRate: (perf.wins / perf.casts) * 100
+				winRate: (perf.wins / perf.casts) * 100,
+				image_url: (globalCardLibraryMap[name.toLowerCase()] || {}).image_url || ''
 				});
 			}
 			}
@@ -517,7 +612,7 @@
 			html +=
 				'<tr title="' + tooltip + '">' +
 					'<td><span class="deck-name-truncate">' + escapeHtml(c.deck) + '</span></td>' +
-					'<td>' + img + c.name + '</td>' +
+					'<td>' + img + cardLink(c.name) + '</td>' +
 					'<td>' + c.casts + '</td>' +
 					'<td>' + c.wins + '</td>' +
 					'<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>' +
@@ -530,13 +625,15 @@
 	}
 		let allEDHDecks = [];
 
-		function renderTopCards(data) {
+	function renderTopCards(data) {
 		allEDHDecks = data.decks || [];
 		allEDHDecksList = data.decks || [];
 		populateCommanderDropdown(allEDHDecks);
 		populateRecommendationsDeckSelect();
-		renderTopCardsForCommander();
+		if (allEDHDecks.length > 0 && allEDHDecks[0].card_stats) {
+			renderTopCardsForCommander();
 		}
+	}
 		function populateCommanderDropdown(decks) {
 			const select = document.getElementById("commanderSelect");
 			if (!select) return;
@@ -580,7 +677,8 @@
 
 		let lastCardLibraryHash = '';
 
-		function renderCardLibrary(cards) {
+		function renderCardLibrary(data) {
+			const cards = data.cards || {};
 			const newHash = Object.keys(cards).sort().join('|') + '|' +
 				Object.values(cards).map(p => (p.casts || 0) + ':' + (p.wins || 0)).join('|');
 			if (newHash === lastCardLibraryHash && currentCardLibraryRows.length > 0) {
@@ -589,6 +687,14 @@
 			lastCardLibraryHash = newHash;
 			currentCardLibraryRows = [];
 			globalCardLibraryMap = {};
+			cardDBMeta = {};
+			const rawMeta = data.card_db || {};
+			for (let name of Object.keys(rawMeta)) {
+				const m = rawMeta[name];
+				const lib = globalCardLibraryMap[name.toLowerCase()];
+				if (lib && lib.image_url) m.image_url = lib.image_url;
+				cardDBMeta[name.toLowerCase()] = m;
+			}
 
 			for (let [name, perf] of Object.entries(cards)) {
 				const winRate = perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0;
@@ -792,17 +898,15 @@
 	function renderTopDecksChart(data) {
 		const decks = (data.decks || []).slice();
 		
-		// Sort by win rate and take top 8
 		decks.sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
 		const topDecks = decks.slice(0, 8);
 		
-		const labels = topDecks.map(d => d.name.replace(/\.deck$/, '').substring(0, 15));
+		const labels = topDecks.map(d => d.name.replace(/\.deck$/, '').substring(0, 18));
 		const winRates = topDecks.map(d => (d.win_rate || 0).toFixed(1));
 		
 		const ctx = document.getElementById('topDecksChart');
 		if (!ctx) return;
 		
-		// Destroy existing chart if it exists
 		if (topDecksChart) topDecksChart.destroy();
 		
 		topDecksChart = new Chart(ctx, {
@@ -827,34 +931,54 @@
 				indexAxis: 'y',
 				responsive: true,
 				maintainAspectRatio: false,
+				onClick: function(evt, elements) {
+					if (elements.length > 0) {
+						const idx = elements[0].index;
+						const deckName = topDecks[idx].name;
+						populateMyDeckFromResults(deckName);
+					}
+				},
 				plugins: {
-					legend: {
-						labels: {
-							color: '#ccc'
+					legend: { labels: { color: '#ccc' } },
+					tooltip: {
+						callbacks: {
+							label: function(ctx) { return 'WR ' + ctx.raw + '% — click to open in My Deck'; }
 						}
 					}
 				},
 				scales: {
-					x: {
-						max: 100,
-						ticks: {
-							color: '#888'
-						},
-						grid: {
-							color: '#333'
-						}
-					},
-					y: {
-						ticks: {
-							color: '#888'
-						},
-						grid: {
-							display: false
-						}
-					}
+					x: { max: 100, ticks: { color: '#888' }, grid: { color: '#333' } },
+					y: { ticks: { color: '#888' }, grid: { display: false } }
 				}
 			}
 		});
+	}
+	
+	async function populateMyDeckFromResults(deckName) {
+		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
+		if (!deck) return;
+		
+		setActiveDeck(deckName);
+		let cardList = [];
+		if (deck.card_stats && Object.keys(deck.card_stats).length > 0) {
+			cardList = Object.keys(deck.card_stats).map(name => '1 ' + name);
+		} else {
+			try {
+				const res = await fetch('/api/edh-results?deck=' + encodeURIComponent(deckName));
+				const data = await res.json();
+				if (data.enabled && data.decks && data.decks.length > 0 && data.decks[0].card_stats) {
+					cardList = Object.keys(data.decks[0].card_stats).map(name => '1 ' + name);
+				}
+			} catch (err) { console.error('Error loading deck cards:', err); }
+		}
+		
+		const nameInput = document.getElementById('deckName');
+		const listInput = document.getElementById('deckList');
+		if (nameInput) nameInput.value = getDeckDisplayName(deckName);
+		if (listInput) listInput.value = cardList.join('\n');
+		addCardToDeck();
+		saveDeckEditorState();
+		showTab('my-deck');
 	}
 
 	// Game control functions
@@ -874,20 +998,37 @@
 			const data = await res.json();
 			
 			if (res.ok) {
-				// Update status immediately after starting
-				await updateGameStatus();
+				btn.textContent = '🔄 Running...';
+				pollWhileRunning();
 			} else {
 				btn.textContent = '▶ Run Games';
 				btn.disabled = false;
 				const errorMsg = data.error || 'Unknown error';
 				alert('Error starting games: ' + errorMsg);
-				console.error('Server error:', data);
 			}
 		} catch (err) {
 			console.error('Error running games:', err);
 			btn.textContent = '▶ Run Games';
 			btn.disabled = false;
-			alert('Network error: ' + err.message);
+		}
+	}
+	
+	async function pollWhileRunning() {
+		const res = await fetch('/api/game-status');
+		const data = await res.json();
+		const indicator = document.getElementById('gameStatusIndicator');
+		const btn = document.getElementById('runGamesBtn');
+		if (data.running) {
+			indicator.textContent = '🔄 Games running...';
+			indicator.style.color = '#4ecdc4';
+			setTimeout(pollWhileRunning, 2000);
+		} else {
+			indicator.textContent = '✓ Ready';
+			indicator.style.color = '#888';
+			btn.disabled = false;
+			btn.textContent = '▶ Run Games';
+			loadResults();
+			loadEDHGames();
 		}
 	}
 
@@ -905,6 +1046,7 @@
 				indicator.style.color = '#4ecdc4';
 				btn.disabled = true;
 				btn.textContent = '🔄 Running...';
+				if (!previousRunning) pollWhileRunning();
 			} else {
 				indicator.textContent = '✓ Ready';
 				indicator.style.color = '#888';
@@ -912,8 +1054,6 @@
 				btn.textContent = '▶ Run Games';
 			}
 
-			// When a run completes (transition from running→ready),
-			// refresh results immediately to repopulate the server cache.
 			if (previousRunning && !data.running) {
 				console.log('[Polling] Run completed – refreshing results');
 				loadResults();
@@ -1264,7 +1404,6 @@
 		document.getElementById('deckLandCount').textContent = landCount;
 		document.getElementById('deckAvgMana').textContent = '~' + (totalCards > 0 ? (totalCards / uniqueCards.size).toFixed(1) : '0');
 
-		// Show win rate if this deck is known in simulation data
 		let winRateStr = '-';
 		const deckNameInput = document.getElementById('deckName').value.trim();
 		const lookupName = activeDeckName || deckNameInput;
@@ -1282,6 +1421,45 @@
 		if (wrEl) wrEl.textContent = winRateStr;
 
 		updateDeckEditorStats();
+		loadInlineRecommendations(lookupName);
+	}
+	
+	async function loadInlineRecommendations(deckName) {
+		const container = document.getElementById('inlineRecContent');
+		if (!container || !deckName) return;
+		try {
+			const res = await fetch('/api/card-recommendations?deck=' + encodeURIComponent(deckName));
+			const data = await res.json();
+			if (!data.enabled || !data.recommendations) {
+				container.innerHTML = '<div style="color:#666;">No recommendation data available</div>';
+				return;
+			}
+			const recs = data.recommendations;
+			let html = '';
+			if (recs.remove_candidates && recs.remove_candidates.length > 0) {
+				html += '<div style="margin-bottom:6px;"><strong style="color:#e74c3c;">🗑️ Cut:</strong></div>';
+				for (let c of recs.remove_candidates.slice(0, 5)) {
+					const escaped = c.card_name.replace(/'/g, "\\'");
+					html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#e74c3c;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' casts)</div>';
+				}
+			}
+			if (recs.add_candidates && recs.add_candidates.length > 0) {
+				html += '<div style="margin-bottom:6px; margin-top:6px;"><strong style="color:#2ecc71;">➕ Add:</strong></div>';
+				let shown = 0;
+				const deckCards = new Set(currentDeckList.map(c => c.name.toLowerCase()));
+				for (let c of recs.add_candidates) {
+					if (deckCards.has(c.card_name.toLowerCase())) continue;
+					if (shown >= 5) break;
+					shown++;
+					const escaped = c.card_name.replace(/'/g, "\\'");
+					html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#2ecc71;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' global)';
+					html += ' <button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:1px 6px;background:#4ecdc4;color:#000;border:none;border-radius:2px;cursor:pointer;font-size:0.75em;">+Add</button></div>';
+				}
+			}
+			container.innerHTML = html || '<div style="color:#666;">No recommendations — run more games first</div>';
+		} catch (err) {
+			container.innerHTML = '<div style="color:#666;">Loading...</div>';
+		}
 	}
 
 	async function loadImplementationStatus() {
@@ -1302,14 +1480,8 @@
 		return !unimplementedCards.has(cardName.toLowerCase());
 	}
 
-	function escapeHtml(value) {
-		return String(value)
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#39;');
-	}
+	let myDeckEditorSortKey = 'winRate';
+	let myDeckEditorSortAsc = false;
 
 	function updateDeckEditorStats() {
 		const container = document.getElementById('deckEditorCardStats');
@@ -1317,27 +1489,63 @@
 			if (container) container.innerHTML = '';
 			return;
 		}
-		let html = '<div style="font-size:0.9em; color:#888; margin-bottom:6px;">Card performance from global library:</div>';
-		let found = 0;
+		let items = [];
 		for (let card of currentDeckList) {
 			const lib = globalCardLibraryMap[card.name.toLowerCase()];
-			const safeCardName = escapeHtml(card.name);
-			const implWarning = isCardImplemented(card.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
-			if (lib) {
+			const meta = cardDBMeta[card.name.toLowerCase()] || {};
+			const wr = lib ? lib.winRate : 0;
+			const casts = lib ? lib.casts : 0;
+			items.push({
+				name: card.name,
+				count: card.count,
+				winRate: wr,
+				casts: casts,
+				hasData: !!lib,
+				typeLine: meta.type_line || '',
+				cmc: meta.cmc || 0,
+				cardType: classifyCardType(meta.type_line || '')
+			});
+		}
+		items.sort((a, b) => {
+			let av = a[myDeckEditorSortKey];
+			let bv = b[myDeckEditorSortKey];
+			if (typeof av === 'string') av = av.toLowerCase();
+			if (typeof bv === 'string') bv = bv.toLowerCase();
+			if (typeof av === 'number' && typeof bv === 'number') return myDeckEditorSortAsc ? av - bv : bv - av;
+			if (av < bv) return myDeckEditorSortAsc ? -1 : 1;
+			if (av > bv) return myDeckEditorSortAsc ? 1 : -1;
+			return 0;
+		});
+		let html = '<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">';
+		html += '<span style="color:#888; font-size:0.85em;">Sort:</span>';
+		const sortOpts = [
+			{key:'name', label:'Name'}, {key:'winRate', label:'Win Rate'},
+			{key:'casts', label:'Casts'}, {key:'cardType', label:'Type'}, {key:'cmc', label:'CMC'}
+		];
+		for (let opt of sortOpts) {
+			const active = myDeckEditorSortKey === opt.key ? ' style="background:#5a6dd8;color:#fff;"' : ' style="background:#2a2a2a;color:#ccc;"';
+			html += '<button onclick="sortMyDeckEditor(\'' + opt.key + '\')" ' + active + '>' + opt.label + (myDeckEditorSortKey === opt.key ? (myDeckEditorSortAsc ? ' ↑' : ' ↓') : '') + '</button>';
+		}
+		html += '</div>';
+		let found = 0;
+		for (let item of items) {
+			const implWarning = isCardImplemented(item.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
+			const typeInfo = item.typeLine ? ' <span style="color:#888;font-size:0.8em;">(' + item.typeLine + ')</span>' : '';
+			if (item.hasData) {
 				found++;
 				let deckWinRate = 50;
 				if (activeDeckName) {
 					const deck = allEDHDecksList.find(d => d.deck_name === activeDeckName);
 					if (deck) deckWinRate = deck.win_rate || 50;
 				}
-				const wrColor = lib.winRate >= deckWinRate + 5 ? '#2ecc71' : lib.winRate >= deckWinRate - 10 ? '#f39c12' : '#e74c3c';
+				const wrColor = item.winRate >= deckWinRate + 5 ? '#2ecc71' : item.winRate >= deckWinRate - 10 ? '#f39c12' : '#e74c3c';
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
-				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
-				html += '<span style="color:' + wrColor + ';">' + lib.winRate.toFixed(1) + '% WR (' + lib.casts + ' casts)</span>';
+				html += '<span>' + item.count + 'x ' + cardLink(item.name) + implWarning + typeInfo + '</span>';
+				html += '<span style="color:' + wrColor + ';">' + item.winRate.toFixed(1) + '% WR (' + item.casts + ' casts) CMC ' + item.cmc + '</span>';
 				html += '</div>';
 			} else {
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
-				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
+				html += '<span>' + item.count + 'x ' + cardLink(item.name) + implWarning + typeInfo + '</span>';
 				html += '<span style="color:#666;">no data</span>';
 				html += '</div>';
 			}
@@ -1346,6 +1554,16 @@
 			html += '<div style="color:#666; font-size:0.9em;">No performance data for these cards yet. Run more games or search in Card Analysis.</div>';
 		}
 		container.innerHTML = html;
+	}
+	
+	function sortMyDeckEditor(key) {
+		if (myDeckEditorSortKey === key) {
+			myDeckEditorSortAsc = !myDeckEditorSortAsc;
+		} else {
+			myDeckEditorSortKey = key;
+			myDeckEditorSortAsc = false;
+		}
+		updateDeckEditorStats();
 	}
 
 	function saveDeckEditorState() {
@@ -1417,6 +1635,68 @@
 			.replace(/"/g, '&quot;')
 			.replace(/'/g, '&#39;');
 	}
+
+	function showCardModal(cardName) {
+		const meta = cardDBMeta[cardName.toLowerCase()] || {};
+		const lib = globalCardLibraryMap[cardName.toLowerCase()];
+		const deckWR = selectedDeck ? (selectedDeck.win_rate || 50) : 50;
+		const imgUrl = lib ? lib.image_url : '';
+		
+		let html = '';
+		if (imgUrl) {
+			html += '<div style="text-align:center; margin-bottom:12px;"><img src="' + imgUrl + '" style="max-width:100%; max-height:300px; border-radius:8px;"></div>';
+		}
+		html += '<h3 style="margin:0 0 12px; color:#fff;">' + escapeHtml(cardName) + '</h3>';
+		if (meta.type_line) {
+			html += '<div style="color:#888; margin-bottom:8px;">' + escapeHtml(meta.type_line);
+			if (meta.mana_cost) html += ' — ' + escapeHtml(meta.mana_cost);
+			html += '</div>';
+		}
+		if (meta.cmc !== undefined && meta.cmc > 0) {
+			html += '<div style="margin-bottom:4px;">CMC: <strong>' + meta.cmc + '</strong></div>';
+		}
+		if (meta.colors && meta.colors.length > 0) {
+			html += '<div style="margin-bottom:4px;">Colors: <strong>' + meta.colors.join(', ') + '</strong></div>';
+		}
+		html += '<hr style="border-color:#333; margin:10px 0;">';
+		if (lib) {
+			const wrColor = lib.winRate >= deckWR + 5 ? '#2ecc71' : lib.winRate >= deckWR - 10 ? '#f39c12' : '#e74c3c';
+			html += '<div style="margin-bottom:4px;">Global Casts: <strong>' + lib.casts + '</strong></div>';
+			html += '<div style="margin-bottom:4px;">Global Wins: <strong>' + lib.wins + '</strong></div>';
+			html += '<div style="margin-bottom:4px; color:' + wrColor + ';">Win Rate: <strong>' + lib.winRate.toFixed(1) + '%</strong></div>';
+			if (lib.winRate < deckWR) {
+				html += '<div style="color:#e74c3c; font-size:0.85em;">' + (deckWR - lib.winRate).toFixed(1) + '% below deck avg</div>';
+			} else if (lib.winRate > deckWR) {
+				html += '<div style="color:#2ecc71; font-size:0.85em;">' + (lib.winRate - deckWR).toFixed(1) + '% above deck avg</div>';
+			}
+		} else {
+			html += '<div style="color:#666;">No performance data yet</div>';
+		}
+		html += '<hr style="border-color:#333; margin:10px 0;">';
+		html += '<button onclick="addCardToMyDeck(\'' + cardName.replace(/'/g, "\\'") + '\')" style="padding:6px 14px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">+ Add to My Deck</button>';
+		
+		document.getElementById('cardModalContent').innerHTML = html;
+		document.getElementById('cardModal').style.display = 'flex';
+	}
+
+	function closeCardModal() {
+		document.getElementById('cardModal').style.display = 'none';
+	}
+	
+	function cardLink(name) {
+		const escaped = escapeHtml(name);
+		const safe = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+		return '<a href="javascript:void(0)" onclick="showCardModal(\'' + safe + '\')" style="color:#4ecdc4; cursor:pointer; text-decoration:none;" title="Click for details">' + escaped + '</a>';
+	}
+
+	document.addEventListener('DOMContentLoaded', function() {
+		const modal = document.getElementById('cardModal');
+		if (modal) {
+			modal.addEventListener('click', function(e) {
+				if (e.target === modal) closeCardModal();
+			});
+		}
+	});
 
 	async function performCardSearch() {
 		const query = document.getElementById('cardSearchInput').value.trim();
@@ -1808,7 +2088,6 @@
 	// so not all requests fire in the same event-loop tick.
 
 	const POLL = {
-		gameStatus:   { fn: updateGameStatus,      ms: 2000, delay: 0    },
 		results:     { fn: loadResults,            ms: 5000, delay: 500 },
 		edhGames:    { fn: loadEDHGames,           ms: 8000, delay: 1500 },
 		matchupMatrix: { fn: loadMatchupMatrix,    ms: 10000, delay: 2500 },
@@ -1853,7 +2132,23 @@
 	loadResults();
 	loadEDHGames();
 	loadMatchupMatrix();
+	updateGameStatus();
 	startPolling();
+	
+	// Check DB connectivity
+	fetch('/api/db-status').then(r => r.json()).then(d => {
+		const indicator = document.getElementById('gameStatusIndicator');
+		if (d.connected && d.total_pods > 0) {
+			indicator.textContent = '💾 DB: ' + d.total_pods + ' pods, ' + (d.decks||0) + ' decks, ' + (d.total_cards_tracked||0) + ' cards';
+			indicator.style.color = '#2ecc71';
+		} else if (d.connected) {
+			indicator.textContent = '💾 DB connected (no data yet)';
+			indicator.style.color = '#f39c12';
+		} else {
+			indicator.textContent = '⚠️ No database — results will not persist';
+			indicator.style.color = '#e74c3c';
+		}
+	});
 
 	// After initial load, try to restore active deck selection across tabs
 	setTimeout(() => {

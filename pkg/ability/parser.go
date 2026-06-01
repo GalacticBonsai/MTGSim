@@ -592,6 +592,7 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `\{([WUBRG])\}:\s*(.*)`, AddMana, "Smart colored activated ability", ap.parseSmartActivated)
 	ap.addPattern(Activated, `\{(\d+)\}:\s*(.*)`, DrawCards, "Smart generic activated ability", ap.parseSmartActivated)
 	ap.addPattern(Activated, `\{(\d+)\},\s*\{T\}:\s*(.*)`, DrawCards, "Smart generic tap activated ability", ap.parseSmartActivated)
+	ap.addPattern(Activated, `\{T\}:\s*(.*)`, DrawCards, "Smart tap activated ability", ap.parseSmartActivated)
 	ap.addPattern(Activated, `\{T\},\s*[^:]+:\s*(.*)`, DrawCards, "Smart comma tap activated ability", ap.parseSmartActivated)
 	ap.addPattern(Activated, `Tap\s+an\s+untapped\s+[^:]+:\s*(.*)`, DrawCards, "Smart tap untapped activated", ap.parseSmartActivated)
 	ap.addPattern(Activated, `Tap\s+(?:\d+|X)\s+[^:]*:\s*(.*)`, DrawCards, "Smart tap multiple activated", ap.parseSmartActivated)
@@ -635,6 +636,7 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Static, `(?i)^Spells\s+(?:cost\s+\{?\d+\}?\s+(?:more|less)|can't\s+be\s+countered).*`, CantAttackBlock, "Smart spell restriction", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^(?:You|Each\s+player)\s+can't\s+cast.*`, CantAttackBlock, "Smart cast restriction", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^If\s+.*would.*instead.*`, KeywordAbility, "Smart replacement effect", ap.parseSmartStatic)
+	ap.addPattern(Static, `(?i)^If\s+.*(?:can't|can\s+not).*(?:win|lose).*`, WinGame, "Smart if can't win/lose", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^(?:You|Each\s+player)\s+may\s+(?:play|put|look).*`, LookAtLibraryTop, "Smart permission static", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^As\s+(?:an?\s+)?.*(?:enters|additional\s+cost).*`, PumpCreature, "Smart as enters static", ap.parseSmartStatic)
 	ap.addPattern(Static, `(?i)^Choose\s+(a|one\s+or\s+more|one\s+or\s+both|two|three|any\s+number).*`, ChooseMode, "Smart choose static", ap.parseSmartStatic)
@@ -642,6 +644,7 @@ func (ap *AbilityParser) initializePatterns() {
 	// Replacement/cant't restriction spell catch-alls
 	ap.addPattern(Activated, `(?i)^If\s+.*would.*instead.*`, KeywordAbility, "Smart replacement spell", ap.parseSmartSpell)
 	ap.addPattern(Activated, `(?i)^(?:Creatures|Players|Spells)\s+.*can't.*`, CantAttackBlock, "Smart restriction spell", ap.parseSmartSpell)
+	ap.addPattern(Activated, `(?i)^(?:Creatures|Players|Spells|All\s+creatures|Each\s+creature)\s+.*(?:can't|don't|doesn't).*`, CantAttackBlock, "Smart creatures restriction", ap.parseSmartSpell)
 	ap.addPattern(Activated, `(?i)^(?:You|Each\s+player)\s+can't.*`, CantAttackBlock, "Smart you can't spell", ap.parseSmartSpell)
 	ap.addPattern(Activated, `(?i)^(?:The\s+next\s+time|Until\s+end\s+of\s+turn).*`, DealDamage, "Smart timed spell", ap.parseSmartSpell)
 }
@@ -665,8 +668,15 @@ func (ap *AbilityParser) ParseAbilities(oracleText string, source interface{}) (
 
 	// Split oracle text by sentences/lines for better parsing
 	sentences := ap.splitOracleText(oracleText)
+	cleaned := make([]string, 0, len(sentences))
+	for _, s := range sentences {
+		stripped := ap.stripAbilityWords(s)
+		if stripped != "" && !isReminderOnly(stripped) {
+			cleaned = append(cleaned, stripped)
+		}
+	}
 
-	for _, sentence := range sentences {
+	for _, sentence := range cleaned {
 		matched := false
 		// Try ability type groups in deterministic precedence. Go map
 		// iteration is intentionally randomized; without this, broad spell
@@ -1717,6 +1727,24 @@ func (ap *AbilityParser) stripAbilityWords(text string) string {
 	return text
 }
 
+func isReminderOnly(text string) bool {
+	t := strings.TrimSpace(text)
+	if len(t) == 0 {
+		return true
+	}
+	if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
+		return true
+	}
+	lower := strings.ToLower(t)
+	reminderPrefixes := []string{"(as this saga", "(theme color:", "(as this creature enters", "(it's an artifact"}
+	for _, p := range reminderPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // Additional spell parsers
 func (ap *AbilityParser) parseSpellDrawWords(matches []string, fullText string) (*Ability, error) {
 	// Convert word numbers to integers
@@ -2142,6 +2170,9 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "counter") && strings.Contains(lower, "spell") {
 		return CounterSpell, 1, true
 	}
+	if strings.Contains(lower, "counter") && strings.Contains(lower, "abilit") {
+		return CounterSpell, 1, true
+	}
 	if strings.Contains(lower, "prevent") && strings.Contains(lower, "damage") {
 		return PreventDamage, 0, true
 	}
@@ -2223,10 +2254,36 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "venture") || strings.Contains(lower, "dungeon") || strings.Contains(lower, "initiative") {
 		return LookAtLibraryTop, 1, true
 	}
+	if strings.Contains(lower, "manifest") || strings.Contains(lower, "conjure") || strings.Contains(lower, "incubate") {
+		return CreateToken, 1, true
+	}
+	if strings.Contains(lower, "choose") && (strings.Contains(lower, "card name") || strings.Contains(lower, "a plane")) {
+		return RevealInformation, 0, true
+	}
+	if strings.Contains(lower, "get") && (strings.Contains(lower, "{") || strings.Contains(lower, "experience counter") || strings.Contains(lower, "energy") || strings.Contains(lower, "charge counter")) {
+		return AddCounters, 1, true
+	}
+	if strings.Contains(lower, "choose") && (strings.Contains(lower, "creature type") || strings.Contains(lower, "card name") || strings.Contains(lower, "a plane") || strings.Contains(lower, "a color")) {
+		return RevealInformation, 0, true
+	}
+	if strings.Contains(lower, "attacks") {
+		if strings.Contains(lower, "draw") { return DrawCards, ap.parseIntValueOrDefault(text, 1), true }
+		if strings.Contains(lower, "gets") || strings.Contains(lower, "get ") { return PumpCreature, 0, true }
+		return DealDamage, 1, true
+	}
+	if strings.Contains(lower, "dies") && strings.Contains(lower, "manifest") {
+		return CreateToken, 1, true
+	}
+	if strings.Contains(lower, "don't untap") || strings.Contains(lower, "doesn't untap") {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "you may pay") {
+		return AddMana, 0, true
+	}
 	if strings.Contains(lower, "damage") {
 		return DealDamage, ap.parseIntValueOrDefault(text, 1), true
 	}
-	if strings.Contains(lower, "gets") && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
+	if (strings.Contains(lower, "gets") || strings.Contains(lower, "get ")) && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
 		return PumpCreature, 0, true
 	}
 	if strings.Contains(lower, "gains") || strings.Contains(lower, "give") || strings.Contains(lower, "have") || strings.Contains(lower, "has") {
@@ -2248,6 +2305,30 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	}
 	if strings.Contains(lower, "copy") {
 		return CopySpell, 1, true
+	}
+	if strings.Contains(lower, "regenerate") {
+		return KeywordAbility, 1, true
+	}
+	if strings.Contains(lower, "becomes") || strings.Contains(lower, "lose") || strings.Contains(lower, "loses") {
+		return PumpCreature, 0, true
+	}
+	if strings.Contains(lower, "can't be blocked") || strings.Contains(lower, "unblockable") {
+		return KeywordAbility, 1, true
+	}
+	if strings.Contains(lower, "switch") && strings.Contains(lower, "power") && strings.Contains(lower, "toughness") {
+		return PumpCreature, 0, true
+	}
+	if strings.Contains(lower, "flip a coin") || strings.Contains(lower, "roll a d") {
+		return RevealInformation, 0, true
+	}
+	if strings.Contains(lower, "pay") && strings.Contains(lower, "life") {
+		return LoseLife, 1, true
+	}
+	if strings.Contains(lower, "put") && strings.Contains(lower, "graveyard") && strings.Contains(lower, "battlefield") {
+		return ReanimateCreature, 1, true
+	}
+	if strings.Contains(lower, "put") && strings.Contains(lower, "library") {
+		return SearchLibrary, 1, true
 	}
 	return 0, 0, false
 }
@@ -2349,7 +2430,7 @@ func (ap *AbilityParser) parseSmartStatic(matches []string, fullText string) (*A
 	var effectType EffectType
 	var value int
 
-	if strings.Contains(lower, "gets") && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
+	if (strings.Contains(lower, "gets") || strings.Contains(lower, "get ")) && (strings.Contains(lower, "+") || strings.Contains(lower, "-")) {
 		parts := strings.Split(fullText, " ")
 		for i, p := range parts {
 			if strings.Contains(p, "/") {

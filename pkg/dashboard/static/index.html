@@ -17,8 +17,7 @@
 		<div class="tabs">
 			<button class="tab-btn active" data-tab="overview" onclick="showTab('overview', this)" title="Game status, deck upload, and simulation charts">Overview</button>
 			<button class="tab-btn" data-tab="test-results" onclick="showTab('test-results', this)" title="EDH deck performance and recent game logs">Test Results</button>
-			<button class="tab-btn" data-tab="my-deck" onclick="showTab('my-deck', this)" title="Build and modify your decks">My Deck</button>
-			<button class="tab-btn" data-tab="recommendations" onclick="showTab('recommendations', this)" title="AI-suggested deck improvements">Recommendations</button>
+			<button class="tab-btn" data-tab="my-deck" onclick="showTab('my-deck', this)" title="Build, modify, and get recommendations for your decks">My Deck</button>
 			<button class="tab-btn" data-tab="card-analysis" onclick="showTab('card-analysis', this)" title="Analyze top cards and global statistics">Card Analysis</button>
 			<button class="tab-btn" data-tab="meta-trends" onclick="showTab('meta-trends', this)" title="Track meta evolution and matchups">Meta Trends</button>
 		</div>
@@ -95,6 +94,19 @@
 					<div class="card"><h2>Avg Lands</h2><div class="value" id="selectedDeckAvgLands"></div></div>
 					<div class="card"><h2>Avg Cards</h2><div class="value" id="selectedDeckAvgCards"></div></div>
 					<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgManaProduced"></div></div>
+					<div class="card"><h2>Storm Max</h2><div class="value" id="selectedDeckStorm"></div></div>
+				</div>
+				<div style="display:flex; gap:30px; flex-wrap:wrap; margin-top:10px;">
+					<div style="min-width:200px;"><h4 style="color:#2ecc71; margin-bottom:4px;">Wins</h4>
+						<div>Combat: <strong id="selCombatWins">0</strong></div>
+						<div>Effect: <strong id="selEffectWins">0</strong></div>
+						<div>Deckout: <strong id="selDeckoutWins">0</strong></div>
+					</div>
+					<div style="min-width:200px;"><h4 style="color:#e74c3c; margin-bottom:4px;">Kills Dealt</h4>
+						<div>Per Turn: <strong id="selAvgManaSpent">0</strong></div>
+						<div>Creatures: <strong id="selAvgCreatures">0</strong></div>
+						<div>Combat Dmg: <strong id="selAvgCombat">0</strong></div>
+					</div>
 				</div>
 				<div style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
 					<button onclick="goToRecommendations()" style="padding:8px 16px; background:#5a6dd8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🔮 View Recommendations</button>
@@ -203,8 +215,11 @@
 						<div><strong>Avg Mana Cost:</strong> <span id="deckAvgMana">0</span></div>
 						<div><strong>Land Count:</strong> <span id="deckLandCount">0</span></div>
 						<div><strong>Unique Cards:</strong> <span id="deckUniqueCount">0</span></div>
-						<div><strong>Mana Distribution:</strong></div>
-						<div id="manaCurve" style="margin-top:8px; font-size:0.9em; background:#0a0e27; padding:8px; border-radius:4px;"></div>
+					</div>
+					<hr style="border-color:#333; margin:12px 0;">
+					<h4 style="color:#5a6dd8;">Recommendations</h4>
+					<div id="inlineRecContent" style="font-size:0.9em;">
+						<div style="color:#666;">Select a deck above and click <b>Update Stats</b></div>
 					</div>
 				</div>
 			</div>
@@ -230,21 +245,6 @@
 
 			<div id="cardSearchResults" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap:15px;">
 				<div class="loading">Start searching for cards...</div>
-			</div>
-		</div>
-
-		<div id="recommendations" class="tab-content">
-			<h3>Deck Recommendations</h3>
-			<p style="color:#888; margin-bottom:15px;">AI-suggested improvements based on card performance data.</p>
-			
-			<div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-				<select id="recDeckSelect" style="padding:8px 12px; background:#1a1a1a; color:#fff; border:1px solid #444; border-radius:4px; flex:1; min-width:250px;">
-					<option value="">Select a deck...</option>
-				</select>
-			</div>
-
-			<div id="recContent">
-				<div class="loading">Select a deck to view recommendations</div>
 			</div>
 		</div>
 
@@ -359,6 +359,13 @@
 				<div class="loading">Select a comparison above</div>
 			</div>
 		
+	</div>
+
+	<div id="cardModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; justify-content:center; align-items:center;">
+		<div style="background:#1a1a1a; border-radius:8px; padding:24px; max-width:500px; width:90%; position:relative; border:1px solid #333;">
+			<button onclick="closeCardModal()" style="position:absolute; top:10px; right:14px; background:none; border:none; color:#888; font-size:1.5em; cursor:pointer;">&times;</button>
+			<div id="cardModalContent" style="color:#ccc;"></div>
+		</div>
 	</div>
 
 	<script src="/app.js"></script>

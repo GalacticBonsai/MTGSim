@@ -105,7 +105,9 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 }
 
 // setupEDHPlayers materializes Player objects, registers commanders, and
-// performs initial draws (including any requested mulligans).
+// performs initial draws (including mulligans). If a seat has Mulligans > 0
+// those mulligans are taken; otherwise each player independently rolls
+// 0-3 mulligans using weighted probabilities (40% keep, 30% free, 20% 1-card, 10% 2-card).
 func setupEDHPlayers(seats []EDHSeat, rng *rand.Rand) ([]*game.Player, []int) {
 	players := make([]*game.Player, len(seats))
 	casts := make([]int, len(seats))
@@ -116,8 +118,22 @@ func setupEDHPlayers(seats []EDHSeat, rng *rand.Rand) ([]*game.Player, []int) {
 		for _, commander := range seatCommanders(s) {
 			p.RegisterCommander(commander)
 		}
-		if s.Mulligans > 0 {
-			_, _ = p.LondonMulligan(rng, s.Mulligans)
+		taken := s.Mulligans
+		if taken <= 0 {
+			roll := rng.Intn(100)
+			switch {
+			case roll < 40:
+				taken = 0
+			case roll < 70:
+				taken = 1
+			case roll < 90:
+				taken = 2
+			default:
+				taken = 3
+			}
+		}
+		if taken > 0 {
+			_, _ = p.LondonMulligan(rng, taken)
 		} else {
 			p.DrawOpeningHand()
 		}

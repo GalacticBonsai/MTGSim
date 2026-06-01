@@ -166,6 +166,14 @@ func testCardImplementation(c card.Card) (bool, string) {
 	// A card with oracle text inherently has abilities. If the parser returns
 	// zero abilities, that is a parser failure, not a missing-ability card.
 	if len(abilities) == 0 {
+		trimmed := strings.TrimSpace(oracle)
+		// Silver-border reminder/flavor-only cards have no gameplay text
+		if strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")") {
+			return true, ""
+		}
+		if strings.Contains(strings.ToLower(trimmed), "theme color") {
+			return true, ""
+		}
 		return false, "parser failed to extract abilities from oracle text"
 	}
 

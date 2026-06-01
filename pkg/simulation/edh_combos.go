@@ -82,8 +82,25 @@ func tryOracleConsult(g *game.Game, p *game.Player, log *EDHEventLog, metrics *e
 			if !pieceAccessible(p, exiler) {
 				continue
 			}
+			if !canAffordNamedCard(p, payoff) || !canAffordNamedCard(p, exiler) {
+				continue
+			}
 			if ensurePiece(g, p, payoff, log, metrics) && castComboSpell(g, p, exiler, log, metrics) {
 				p.Library = nil
+				if permanentNamed(p, "Thassa's Oracle") && len(p.Library) == 0 {
+					comboWin(g, p, "Oracle/Consultation combo", log)
+					return true
+				}
+				if permanentNamed(p, "Laboratory Maniac") && len(p.Library) == 0 {
+					p.Draw(1)
+					comboWin(g, p, "Laboratory Maniac trigger", log)
+					return true
+				}
+				if permanentNamed(p, "Jace, Wielder of Mysteries") && len(p.Library) == 0 {
+					p.Draw(1)
+					comboWin(g, p, "Jace, Wielder of Mysteries", log)
+					return true
+				}
 				comboWin(g, p, "Oracle/Consultation combo", log)
 				return true
 			}
@@ -284,6 +301,18 @@ func availableManaSources(p *game.Player) int {
 		}
 	}
 	return count
+}
+
+func canAffordNamedCard(p *game.Player, name string) bool {
+	idx := findZoneCard(p.Hand, name)
+	if idx >= 0 {
+		return p.CanPayForCard(p.Hand[idx])
+	}
+	idx = findZoneCard(p.CommandZone, name)
+	if idx >= 0 {
+		return p.CanPayForCommander(p.CommandZone[idx])
+	}
+	return true
 }
 
 func permanentNamed(p *game.Player, name string) bool {
