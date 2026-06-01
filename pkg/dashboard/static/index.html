@@ -17,6 +17,7 @@
 		<div class="tabs">
 			<button class="tab-btn active" data-tab="overview" onclick="showTab('overview', this)" title="Game status, deck upload, and simulation charts">Overview</button>
 			<button class="tab-btn" data-tab="test-results" onclick="showTab('test-results', this)" title="EDH deck performance and recent game logs">Test Results</button>
+			<button class="tab-btn" data-tab="game-log" onclick="showTab('game-log', this)" title="View turn-by-turn event logs for recent games">Game Log</button>
 			<button class="tab-btn" data-tab="my-deck" onclick="showTab('my-deck', this)" title="Build, modify, and get recommendations for your decks">My Deck</button>
 			<button class="tab-btn" data-tab="card-analysis" onclick="showTab('card-analysis', this)" title="Analyze top cards and global statistics">Card Analysis</button>
 			<button class="tab-btn" data-tab="meta-trends" onclick="showTab('meta-trends', this)" title="Track meta evolution and matchups">Meta Trends</button>
@@ -179,6 +180,54 @@
 					<tr><td colspan="9" class="loading">Loading...</td></tr>
 				</tbody>
 			</table>
+		</div>
+
+		<div id="game-log" class="tab-content">
+			<h3>Game Log Viewer</h3>
+			<p style="color:#888; margin-bottom:15px;">View turn-by-turn event logs for recent games to verify game correctness.</p>
+			
+			<div style="display:flex; gap:15px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+				<select id="gameLogSelector" onchange="loadGameLog()" style="flex:1; min-width:300px; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px;">
+					<option value="">Select a game...</option>
+				</select>
+				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; white-space:nowrap;">
+					<input type="checkbox" id="gameLogShowAllEvents" onchange="renderGameLogEvents()" checked>
+					Show all events
+				</label>
+				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; white-space:nowrap;">
+					Filter:
+					<select id="gameLogEventFilter" onchange="renderGameLogEvents()" style="background:#0a0e27; color:#fff; border:1px solid #1a1f3a; padding:5px; border-radius:3px;">
+						<option value="">All</option>
+						<option value="game_start">Game Start</option>
+						<option value="turn_start">Turn Start</option>
+						<option value="land_play">Land Play</option>
+						<option value="creature_summon">Creature Summon</option>
+						<option value="permanent_cast">Permanent Cast</option>
+						<option value="commander_cast">Commander Cast</option>
+						<option value="fetch_activated">Fetch Activated</option>
+						<option value="spell_countered">Spell Countered</option>
+						<option value="attack_declared">Attack Declared</option>
+						<option value="combat_resolved">Combat Resolved</option>
+						<option value="player_eliminated">Player Eliminated</option>
+						<option value="game_end">Game End</option>
+					</select>
+				</label>
+			</div>
+
+			<div id="gameLogSummary" style="margin-bottom:15px; padding:12px; background:#1a1a1a; border-radius:6px; border-left:4px solid #4ecdc4; display:none;">
+				<div style="display:flex; gap:20px; flex-wrap:wrap;">
+					<span><strong>Winner:</strong> <span id="glWinner" style="color:#4ecdc4;"></span></span>
+					<span><strong>Turns:</strong> <span id="glTurns"></span></span>
+					<span><strong>Players:</strong> <span id="glPlayers"></span></span>
+					<span><strong>Total Mana:</strong> <span id="glMana"></span></span>
+					<span><strong>Total Cards:</strong> <span id="glCards"></span></span>
+					<span><strong>Combat Damage:</strong> <span id="glCombat"></span></span>
+				</div>
+			</div>
+
+			<div id="gameLogContent" style="max-height:600px; overflow-y:auto;">
+				<div class="loading">Select a game to view its event log</div>
+			</div>
 		</div>
 
 		<div id="my-deck" class="tab-content">

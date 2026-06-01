@@ -44,31 +44,72 @@ func tryOptimizedDeckCombo(g *game.Game, p *game.Player, log *EDHEventLog) bool 
 	if g.GetTurnNumber() < 4 || availableManaSources(p) < 3 {
 		return false
 	}
-	if ownsAny(p, "Thassa's Oracle", "Laboratory Maniac", "Jace, Wielder of Mysteries") && ownsAny(p, "Demonic Consultation", "Tainted Pact") {
+	if hasCastablePieces(p, "Thassa's Oracle", "Demonic Consultation") || hasCastablePieces(p, "Thassa's Oracle", "Tainted Pact") {
 		comboWin(g, p, "optimized Oracle/Consultation line", log)
 		return true
 	}
-	if g.GetTurnNumber() >= 5 && ownsAny(p, "Doomsday") && ownsAny(p, "Thassa's Oracle", "Laboratory Maniac", "Jace, Wielder of Mysteries") {
+	if hasCastablePieces(p, "Thassa's Oracle", "Demonic Consultation") || hasCastablePieces(p, "Laboratory Maniac", "Tainted Pact") {
+		comboWin(g, p, "optimized LabMan line", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Doomsday", "Thassa's Oracle") {
 		comboWin(g, p, "optimized Doomsday pile", log)
 		return true
 	}
-	if g.GetTurnNumber() >= 5 && ownsAny(p, "Underworld Breach") && ownsAny(p, "Brain Freeze") && ownsAny(p, "Lion's Eye Diamond", "Grinding Station") {
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Underworld Breach", "Brain Freeze") && (hasAnyPiece(p, "Lion's Eye Diamond") || hasAnyPiece(p, "Grinding Station")) {
 		comboWin(g, p, "optimized Breach combo", log)
 		return true
 	}
-	if g.GetTurnNumber() >= 5 && ownsAny(p, "Dualcaster Mage") && ownsAny(p, "Twinflame", "Heat Shimmer", "Molten Duplication") {
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Dualcaster Mage", "Twinflame") {
 		comboWin(g, p, "optimized Dualcaster combo", log)
 		return true
 	}
-	if g.GetTurnNumber() >= 5 && ownsAny(p, "Food Chain") && ownsAny(p, "Squee, the Immortal", "Eternal Scourge", "Misthollow Griffin") {
-		comboWin(g, p, "optimized Food Chain combo", log)
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Food Chain", "Squee, the Immortal") {
+		comboWin(g, p, "optimized Food Chain / Squee", log)
 		return true
 	}
-	if g.GetTurnNumber() >= 6 && ownsAny(p, "Godo, Bandit Warlord") && ownsAny(p, "Helm of the Host") {
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Food Chain", "Misthollow Griffin") {
+		comboWin(g, p, "optimized Food Chain / Misthollow", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Food Chain", "Eternal Scourge") {
+		comboWin(g, p, "optimized Food Chain / Scourge", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 6 && hasCastablePieces(p, "Godo, Bandit Warlord", "Helm of the Host") {
 		comboWin(g, p, "optimized Godo / Helm line", log)
 		return true
 	}
+	if hasCastablePieces(p, "Dramatic Reversal", "Isochron Scepter") {
+		comboWin(g, p, "Dramatic Scepter combo", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Lion's Eye Diamond", "Underworld Breach") && pieceAccessible(p, "Brain Freeze") {
+		comboWin(g, p, "LED + Breach line", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 4 && hasCastablePieces(p, "Devoted Druid", "Swift Reconfiguration") {
+		comboWin(g, p, "Devoted Druid combo", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Kinnan, Bonder Prodigy", "Basalt Monolith") {
+		comboWin(g, p, "Kinnan / Basalt Monolith", log)
+		return true
+	}
+	if g.GetTurnNumber() >= 5 && hasCastablePieces(p, "Demonic Consultation", "Thassa's Oracle") && pieceAccessible(p, "Tainted Pact") {
+		comboWin(g, p, "Consultation/Pact Oracle", log)
+		return true
+	}
 	return false
+}
+
+func hasCastablePieces(p *game.Player, a, b string) bool {
+	return (pieceAccessible(p, a) && canAffordNamedCard(p, a) || permanentNamed(p, a)) &&
+		(pieceAccessible(p, b) && canAffordNamedCard(p, b) || permanentNamed(p, b))
+}
+
+func hasAnyPiece(p *game.Player, name string) bool {
+	return pieceAccessible(p, name)
 }
 
 func tryOracleConsult(g *game.Game, p *game.Player, log *EDHEventLog, metrics *edhMetrics) bool {
@@ -241,6 +282,15 @@ func castTutor(g *game.Game, p *game.Player, name string, log *EDHEventLog, metr
 			card := p.Library[idx]
 			p.Library = append(p.Library[:idx], p.Library[idx+1:]...)
 			p.Hand = append(p.Hand, card)
+			if log != nil {
+				log.Append(EDHEvent{
+					Turn:   g.GetTurnNumber(),
+					Phase:  phaseName(g.GetCurrentPhase()),
+					Kind:   EventFetchActivated,
+					Actor:  p.GetName(),
+					Detail: name + " -> " + card.Name,
+				})
+			}
 			return true
 		}
 	}
@@ -256,6 +306,12 @@ func tutorPriority(p *game.Player) []string {
 	}
 	if pieceAccessible(p, "Underworld Breach") {
 		return []string{"Brain Freeze", "Lion's Eye Diamond", "Grinding Station"}
+	}
+	if pieceAccessible(p, "Food Chain") {
+		return []string{"Squee, the Immortal", "Misthollow Griffin", "Eternal Scourge", "Walking Ballista"}
+	}
+	if pieceAccessible(p, "Squee, the Immortal") || pieceAccessible(p, "Misthollow Griffin") || pieceAccessible(p, "Eternal Scourge") {
+		return []string{"Food Chain", "Walking Ballista"}
 	}
 	return []string{"Thassa's Oracle", "Demonic Consultation", "Tainted Pact", "Underworld Breach", "Brain Freeze", "Doomsday", "Food Chain", "Aetherflux Reservoir"}
 }
@@ -312,7 +368,7 @@ func canAffordNamedCard(p *game.Player, name string) bool {
 	if idx >= 0 {
 		return p.CanPayForCommander(p.CommandZone[idx])
 	}
-	return true
+	return false
 }
 
 func permanentNamed(p *game.Player, name string) bool {

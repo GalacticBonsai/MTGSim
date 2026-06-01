@@ -94,7 +94,7 @@ func (ap *AbilityParser) initializePatterns() {
 	ap.addPattern(Activated, `\{T\}:\s*Amass\s+(\d+)`, CreateToken, "Tap to amass", ap.activatedParserFactory(CreateToken, "Tap to Amass"))
 
 	// Fetchlands: sacrifice-to-search-and-put-onto-battlefield (must precede broad Sacrifice patterns)
-	ap.addPattern(Activated, `\{T\},\s*Pay\s*1\s*life,\s*Sacrifice\s+[^:]+:\s*Search\s+your\s+library\s+for\s+a\s+.*\s+card.*put\s+it\s+onto\s+the\s+battlefield.*`, SearchLibrary, "Fetchland search", ap.parseFetchland)
+	ap.addPattern(Activated, `\{T\},\s*Pay\s*1\s*life,\s*Sacrifice\s+[^:]+:\s*Search\s+your\s+library\s+for\s+an?\s+.*\s+card.*put\s+it\s+onto\s+the\s+battlefield.*`, SearchLibrary, "Fetchland search", ap.parseFetchland)
 
 	// Sacrifice activated abilities
 	ap.addPattern(Activated, `Sacrifice\s+[^,:]+:\s*Draw\s+(a|\d+)\s+cards?`, DrawCards, "Sacrifice to draw", ap.activatedParserFactory(DrawCards, "Sacrifice to Draw"))
@@ -3875,19 +3875,32 @@ func (ap *AbilityParser) parseEachPlayerMills(matches []string, fullText string)
 }
 
 func (ap *AbilityParser) parseFetchland(matches []string, fullText string) (*Ability, error) {
+	searchFor := "land"
+	lower := strings.ToLower(fullText)
+	for _, prefix := range []string{"search your library for a ", "search your library for an "} {
+		if idx := strings.Index(lower, prefix); idx >= 0 {
+			rest := fullText[idx+len(prefix):]
+			if end := strings.Index(strings.ToLower(rest), " card"); end >= 0 {
+				searchFor = strings.TrimSpace(rest[:end])
+			}
+			break
+		}
+	}
+	desc := "Search library for a " + searchFor + " card and put onto battlefield"
 	return &Ability{
 		Name: "Fetchland Search",
 		Type: Activated,
 		Cost: Cost{
-			TapCost:  true,
-			LifeCost: 1,
+			TapCost:       true,
+			LifeCost:      1,
+			SacrificeCost: true,
 		},
 		Effects: []Effect{
 			{
 				Type:        SearchLibrary,
 				Value:       1,
 				Duration:    Instant,
-				Description: "Search library and put onto battlefield",
+				Description: desc,
 			},
 		},
 		TimingRestriction: SorcerySpeed,

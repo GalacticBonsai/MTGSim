@@ -48,6 +48,8 @@ type EDHGameRunner struct {
 	replayDir      string
 	suggestedDeck   *simulation.EDHSeat
 	suggestedDeckMu sync.Mutex
+	gameLogBuffer   []simulation.EDHGameRecord
+	gameLogMu       sync.Mutex
 }
 
 // SetSuggestedDeck sets the suggested deck to use in every pod
@@ -134,18 +136,24 @@ func (gr *EDHGameRunner) runBatch(count int) {
 				}
 				pod := gr.pickPodWithUploaded(allSeats, gr.podSize, gr.rng, gr.mulligans, chosen)
 
-				rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
-					Seats: pod, MaxTurns: gr.maxTurns, RNG: rand.New(rand.NewSource(gr.rng.Int63())),
-					RecordEvents: gr.replayDir != "",
-				})
+			rec, err := simulation.SimulateEDHGame(simulation.EDHRunOptions{
+				Seats: pod, MaxTurns: gr.maxTurns, RNG: rand.New(rand.NewSource(gr.rng.Int63())),
+				RecordEvents: true,
+			})
 				if err != nil {
 					logger.LogMeta("Pod skipped: %v", err)
 					continue
 				}
-				gr.mu.Lock()
-				recordLegacy(gr.legacyRes, rec)
-				gr.mu.Unlock()
-				gr.edhResults.RecordGame(rec)
+			gr.mu.Lock()
+			recordLegacy(gr.legacyRes, rec)
+			gr.mu.Unlock()
+			gr.edhResults.RecordGame(rec)
+			gr.gameLogMu.Lock()
+			gr.gameLogBuffer = append(gr.gameLogBuffer, rec)
+			if len(gr.gameLogBuffer) > 100 {
+				gr.gameLogBuffer = gr.gameLogBuffer[len(gr.gameLogBuffer)-100:]
+			}
+			gr.gameLogMu.Unlock()
 				for _, p := range rec.Players {
 					for cName, perf := range p.CardStats {
 						wins := 0
@@ -874,6 +882,38 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 		replayDir:  replayDir,
 	}
 	server.SetGameRunner(gameRunner)
+
+	server.SetGameLogProvider(func() ([]dashboard.GameLogEntry, func(id int) *simulation.EDHGameRecord) {
+		gameRunner.gameLogMu.Lock()
+		defer gameRunner.gameLogMu.Unlock()
+		summaries := make([]dashboard.GameLogEntry, 0, len(gameRunner.gameLogBuffer))
+		for i, rec := range gameRunner.gameLogBuffer {
+			players := make([]string, len(rec.Players))
+			for j, p := range rec.Players {
+				players[j] = p.DeckName
+			}
+			summaries = append(summaries, dashboard.GameLogEntry{
+				ID:          i,
+				Winner:      rec.Winner,
+				Turns:       rec.Turns,
+				Players:     players,
+				EventCount:  len(rec.Events),
+				TotalMana:   rec.TotalManaSpent,
+				TotalCards:  rec.TotalCardsPlayed,
+				TotalCombat: rec.TotalCombatDamage,
+			})
+		}
+		getGame := func(id int) *simulation.EDHGameRecord {
+			gameRunner.gameLogMu.Lock()
+			defer gameRunner.gameLogMu.Unlock()
+			if id < 0 || id >= len(gameRunner.gameLogBuffer) {
+				return nil
+			}
+			r := gameRunner.gameLogBuffer[id]
+			return &r
+		}
+		return summaries, getGame
+	})
 
 	go func() {
 		if err := server.Start(); err != nil {

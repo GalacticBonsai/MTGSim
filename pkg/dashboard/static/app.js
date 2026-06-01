@@ -827,6 +827,128 @@
 			document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="9">No recent pods</td></tr>';
 		}
 
+		let currentGameLog = null;
+		let gameLogSummaries = [];
+		let lastGameLogHash = '';
+
+		async function loadGameLogList() {
+			try {
+				const res = await fetch('/api/game-log-list');
+				const data = await res.json();
+				if (!data.enabled) return;
+				const sums = data.games || [];
+				const newHash = sums.map(s => s.id + ':' + (s.winner||'') + ':' + s.event_count).join('|');
+				if (newHash === lastGameLogHash) return;
+				lastGameLogHash = newHash;
+				gameLogSummaries = sums;
+				populateGameLogSelector();
+			} catch (err) {
+				console.error('Error loading game log list:', err);
+			}
+		}
+
+		function populateGameLogSelector() {
+			const sel = document.getElementById('gameLogSelector');
+			if (!sel) return;
+			const prevVal = sel.value;
+			sel.innerHTML = '<option value="">Select a game...</option>';
+			for (let i = gameLogSummaries.length - 1; i >= 0; i--) {
+				const s = gameLogSummaries[i];
+				const players = (s.players || []).join(', ');
+				sel.innerHTML += '<option value="' + s.id + '">#' + (i + 1) + ' — ' + (s.winner || 'Draw') + ' — ' + s.turns + ' turns — ' + players + '</option>';
+			}
+			sel.value = prevVal;
+		}
+
+		async function loadGameLog() {
+			const sel = document.getElementById('gameLogSelector');
+			if (!sel || !sel.value) {
+				document.getElementById('gameLogSummary').style.display = 'none';
+				document.getElementById('gameLogContent').innerHTML = '<div class="loading">Select a game to view its event log</div>';
+				return;
+			}
+			const id = parseInt(sel.value);
+			document.getElementById('gameLogContent').innerHTML = '<div class="loading">Loading...</div>';
+			try {
+				const res = await fetch('/api/game-log?id=' + id);
+				const data = await res.json();
+				if (!data.enabled || !data.game) {
+					document.getElementById('gameLogContent').innerHTML = '<div class="error">Game not found</div>';
+					return;
+				}
+				currentGameLog = data.game;
+				const g = currentGameLog;
+				document.getElementById('gameLogSummary').style.display = '';
+				document.getElementById('glWinner').textContent = g.Winner || 'Draw';
+				document.getElementById('glTurns').textContent = g.Turns;
+				document.getElementById('glPlayers').textContent = (g.Players || []).map(p => p.DeckName).join(', ');
+				document.getElementById('glMana').textContent = g.TotalManaSpent || 0;
+				document.getElementById('glCards').textContent = g.TotalCardsPlayed || 0;
+				document.getElementById('glCombat').textContent = g.TotalCombatDamage || 0;
+				renderGameLogEvents();
+			} catch (err) {
+				console.error('Error loading game log:', err);
+				document.getElementById('gameLogContent').innerHTML = '<div class="error">Error loading game log</div>';
+			}
+		}
+
+		function renderGameLogEvents() {
+			if (!currentGameLog) return;
+			const events = currentGameLog.Events || [];
+			const filter = document.getElementById('gameLogEventFilter').value;
+			const showAll = document.getElementById('gameLogShowAllEvents').checked;
+
+			let filtered = events;
+			if (filter) {
+				filtered = events.filter(e => e.kind === filter);
+			}
+			if (!showAll) {
+				const importantKinds = ['game_start', 'turn_start', 'commander_cast', 'fetch_activated', 'spell_countered', 'attack_declared', 'combat_resolved', 'player_eliminated', 'game_end'];
+				filtered = filtered.filter(e => importantKinds.includes(e.kind));
+			}
+
+			const kindColors = {
+				'game_start': '#8e44ad',
+				'turn_start': '#3498db',
+				'land_play': '#2ecc71',
+				'creature_summon': '#27ae60',
+				'permanent_cast': '#f39c12',
+				'commander_cast': '#e67e22',
+				'fetch_activated': '#1abc9c',
+				'spell_countered': '#e74c3c',
+				'attack_declared': '#e74c3c',
+				'combat_resolved': '#c0392b',
+				'player_eliminated': '#e74c3c',
+				'game_end': '#9b59b6'
+			};
+
+			let html = '<table style="width:100%;border-collapse:collapse;font-size:0.9em;">';
+			html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:50px;">Turn</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:80px;">Phase</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:140px;">Event</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:120px;">Actor</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:120px;">Target</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;">Detail</th></tr></thead><tbody>';
+
+			for (let e of filtered) {
+				const color = kindColors[e.kind] || '#888';
+				const kindLabel = e.kind.replace(/_/g, ' ');
+				html += '<tr style="border-bottom:1px solid #1a1f3a;">';
+				html += '<td style="padding:4px 6px;">' + e.turn + '</td>';
+				html += '<td style="padding:4px 6px;color:#888;">' + (e.phase || '-') + '</td>';
+				html += '<td style="padding:4px 6px;color:' + color + ';font-weight:bold;">' + kindLabel + '</td>';
+				html += '<td style="padding:4px 6px;">' + (e.actor || '-') + '</td>';
+				html += '<td style="padding:4px 6px;">' + (e.target || '-') + '</td>';
+				html += '<td style="padding:4px 6px;color:#aaa;max-width:300px;word-break:break-word;">' + (e.detail || '') + '</td>';
+				html += '</tr>';
+			}
+
+			html += '</tbody></table>';
+
+			if (filtered.length === 0) {
+				html = '<div style="color:#888; padding:20px; text-align:center;">No events match the current filter</div>';
+			} else {
+				html += '<div style="color:#888; padding:8px; font-size:0.85em;">Showing ' + filtered.length + ' of ' + events.length + ' events</div>';
+			}
+
+			document.getElementById('gameLogContent').innerHTML = html;
+		}
+
 	// Chart.js instances
 	let winRateChart = null;
 	let topDecksChart = null;
@@ -2090,6 +2212,7 @@
 	const POLL = {
 		results:     { fn: loadResults,            ms: 5000, delay: 500 },
 		edhGames:    { fn: loadEDHGames,           ms: 8000, delay: 1500 },
+		gameLogList: { fn: loadGameLogList,        ms: 8000, delay: 2000 },
 		matchupMatrix: { fn: loadMatchupMatrix,    ms: 10000, delay: 2500 },
 		snapshots:   { fn: loadSnapshotsList,      ms: 15000, delay: 3500 },
 	};
@@ -2131,6 +2254,7 @@
 	loadSnapshotsList();
 	loadResults();
 	loadEDHGames();
+	loadGameLogList();
 	loadMatchupMatrix();
 	updateGameStatus();
 	startPolling();

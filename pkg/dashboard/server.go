@@ -42,6 +42,22 @@ type EDHGamesProvider func() []simulation.EDHGameRecord
 // EDHSummaryProvider returns global EDH telemetry for dashboard highlight cards.
 type EDHSummaryProvider func() simulation.EDHSummary
 
+// GameLogEntry is a lightweight summary used to populate the game selector.
+type GameLogEntry struct {
+	ID          int      `json:"id"`
+	Winner      string   `json:"winner"`
+	Turns       int      `json:"turns"`
+	Players     []string `json:"players"`
+	EventCount  int      `json:"event_count"`
+	TotalMana   int      `json:"total_mana"`
+	TotalCards  int      `json:"total_cards"`
+	TotalCombat int      `json:"total_combat"`
+}
+
+// GameLogProvider returns summaries for the game selector and full event
+// logs for a specific game so the front-end can render a replay view.
+type GameLogProvider func() (summaries []GameLogEntry, getGame func(id int) *simulation.EDHGameRecord)
+
 // CardLibraryProvider returns the persistent global card stats library.
 type CardLibraryProvider func() map[string]stats.GlobalCardStats
 
@@ -74,6 +90,7 @@ type Server struct {
 	uploadedDecks      func() []string
 	cardDB             *card.CardDB
 	scryfallClient     *scryfall.Client
+	gameLogProvider    GameLogProvider
 
 	// In-memory byte caches for uploaded-filtered EDH results
 	uploadedEdhCache      []byte
@@ -143,6 +160,9 @@ func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
 
 func (s *Server) SetScryfallClient(cl *scryfall.Client) { s.scryfallClient = cl }
 
+// SetGameLogProvider attaches a game log ring buffer for /api/game-log-list and /api/game-log.
+func (s *Server) SetGameLogProvider(p GameLogProvider) { s.gameLogProvider = p }
+
 // SetSnapshotManager attaches a snapshot manager for meta tracking.
 func (s *Server) SetSnapshotManager(sm *SnapshotManager) { s.snapshotManager = sm }
 
@@ -191,6 +211,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/snapshots", s.handleListSnapshots)
 	s.mux.HandleFunc("/api/snapshot-comparison", s.handleSnapshotComparison)
 	s.mux.HandleFunc("/api/meta-trends", s.handleMetaTrends)
+	s.mux.HandleFunc("/api/game-log-list", s.handleGameLogList)
+	s.mux.HandleFunc("/api/game-log", s.handleGameLog)
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -1105,6 +1127,49 @@ func (s *Server) handleCardImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.Redirect(w, r, imageURL, http.StatusFound)
+}
+
+// handleGameLogList returns a list of recent game summaries for the log viewer.
+func (s *Server) handleGameLogList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.gameLogProvider == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false, "games": []any{}})
+		return
+	}
+	summaries, _ := s.gameLogProvider()
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"games":   summaries,
+	})
+}
+
+// handleGameLog returns the full event log for a specific game.
+func (s *Server) handleGameLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.gameLogProvider == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		return
+	}
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	_, getGame := s.gameLogProvider()
+	rec := getGame(id)
+	if rec == nil {
+		http.Error(w, "game not found", http.StatusNotFound)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"game":    rec,
+	})
 }
 
 // handleIndex returns the HTML dashboard.

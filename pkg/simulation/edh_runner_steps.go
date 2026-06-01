@@ -164,16 +164,17 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 		}
 	}
 	ap.ResetLandPlays()
+
+	activateSearchAbilities(g, ap, log)
+
 	tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 
 	if idx >= 0 && len(ap.CommandZone) > 0 {
 		name := ap.CommandZone[0].Name
-		var cmdrCard game.SimpleCard
-		for _, c := range ap.CommandZone {
-			if c.Name == name {
-				cmdrCard = c
-				break
-			}
+		cmdrCard := ap.CommandZone[0]
+		cost := cmdrCard.GetManaCost()
+		if cost.Total() == 0 && cmdrCard.ManaCost == "" {
+			goto skipCommander
 		}
 		if ap.CanPayForCommander(cmdrCard) {
 			if ap.PayForCommander(cmdrCard) {
@@ -194,6 +195,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			}
 		}
 	}
+skipCommander:
 	if attemptCEDHComboFinish(g, ap, log, metrics) {
 		return
 	}
@@ -203,7 +205,10 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 		again = false
 		tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 		for _, c := range ap.Hand {
-			if !isCastableSpell(c) || !ap.CanPayForCard(c) {
+			if !isCastableSpell(c) || c.IsCounterspell() || !ap.CanPayForCard(c) {
+				continue
+			}
+			if c.GetManaCost().Total() == 0 && c.ManaCost == "" {
 				continue
 			}
 			if !ap.PayForCard(c) {
@@ -217,7 +222,10 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
 				}
 				if log != nil && resolved {
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventPermanentCast, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+					countered := manaSpent == 0 && checkVexingBauble(g, ap, c, log)
+					if !countered {
+						log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventPermanentCast, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+					}
 				}
 				if resolved {
 					again = true
@@ -225,28 +233,38 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 				}
 				continue
 			}
+			if manaSpent == 0 && checkVexingBauble(g, ap, c, log) {
+				again = true
+				break
+			}
 			perm, err := castPermanentCard(g, ap, c)
 			if err != nil || perm == nil {
 				continue
 			}
-			perm.SetEnteredTurn(g.GetTurnNumber())
-			storm := 0
-			if metrics != nil {
-				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
+		perm.SetEnteredTurn(g.GetTurnNumber())
+		storm := 0
+		if metrics != nil {
+			storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
+		}
+		if log != nil {
+			kind := EventPermanentCast
+			if c.IsCreature() {
+				kind = EventCreatureSummon
 			}
-			if log != nil {
-				kind := EventPermanentCast
-				if c.IsCreature() {
-					kind = EventCreatureSummon
-				}
-				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
-			}
-			again = true
-			break
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+		}
+		again = true
+		break
 		}
 	}
 
-	bridge.AutoActivateMainPhaseAbilities(g)
+	activateSearchAbilities(g, ap, log)
+	bridge.AutoActivateMainPhaseAbilitiesWithLog(g, func(cardName, detail string) {
+		if log != nil {
+			actor := ap.GetName()
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventFetchActivated, Actor: actor, Detail: cardName + " -> " + detail})
+		}
+	})
 	attemptCEDHComboFinish(g, ap, log, metrics)
 }
 
@@ -308,6 +326,90 @@ func castNonPermanentSpell(g *game.Game, ap *game.Player, c game.SimpleCard, log
 
 func eventDetail(name string, manaSpent, storm int) string {
 	return name + " | mana=" + intString(manaSpent) + " storm=" + intString(storm)
+}
+
+func isValidSpellCost(c game.SimpleCard) bool {
+	if c.IsLand() {
+		return false
+	}
+	if cost := c.GetManaCost(); cost.Total() == 0 && c.ManaCost == "" {
+		return false
+	}
+	return true
+}
+
+func activateSearchAbilities(g *game.Game, ap *game.Player, log *EDHEventLog) {
+	gs := bridge.NewAbilityGameState(g)
+	engine := abil.NewExecutionEngine(gs)
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		return
+	}
+	var foundCard string
+	gs.OnSearchResult = func(name string) {
+		foundCard = name
+	}
+	abilities := engine.GetActivatableAbilities(playerAdapter)
+	for _, ability := range abilities {
+		if ability.Type != abil.Activated {
+			continue
+		}
+		hasSearch := false
+		for _, effect := range ability.Effects {
+			if effect.Type == abil.SearchLibrary {
+				hasSearch = true
+				break
+			}
+		}
+		if !hasSearch || !ability.Cost.SacrificeCost {
+			continue
+		}
+		foundCard = ""
+		if err := engine.ExecuteAbility(ability, playerAdapter, nil); err != nil {
+			continue
+		}
+		srcName := "unknown"
+		if src, ok := ability.Source.(game.SimpleCard); ok {
+			srcName = src.Name
+		}
+		detail := "searched"
+		if foundCard != "" {
+			detail = foundCard
+		}
+		if log != nil {
+			log.Append(EDHEvent{
+				Turn:   g.GetTurnNumber(),
+				Phase:  phaseName(game.PhaseMain1),
+				Kind:   EventFetchActivated,
+				Actor:  ap.GetName(),
+				Detail: srcName + " -> " + detail,
+			})
+		}
+	}
+}
+
+func checkVexingBauble(g *game.Game, caster *game.Player, c game.SimpleCard, log *EDHEventLog) bool {
+	for _, opp := range g.GetPlayersRaw() {
+		if opp == caster || opp.HasLost() {
+			continue
+		}
+		for _, perm := range opp.Battlefield {
+			if strings.EqualFold(perm.GetName(), "Vexing Bauble") {
+				if log != nil {
+					log.Append(EDHEvent{
+						Turn:   g.GetTurnNumber(),
+						Phase:  phaseName(g.GetCurrentPhase()),
+						Kind:   EventSpellCountered,
+						Actor:  caster.GetName(),
+						Target: opp.GetName(),
+						Detail: c.Name + " (countered by Vexing Bauble)",
+					})
+				}
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func intString(v int) string {

@@ -107,28 +107,19 @@ type BoardState struct {
 
 // ShouldActivateAbilities determines if the AI should look for abilities to activate.
 func (ai *AIDecisionMaker) ShouldActivateAbilities(context DecisionContext) bool {
-	// Always activate mana abilities when needed
 	if context.CanCastMoreSpells && context.AvailableMana < 3 {
 		return true
 	}
-
-	// Activate abilities when we have excess mana
 	if context.AvailableMana > 5 {
 		return true
 	}
-
-	// Activate abilities when under threat
 	if context.ThreatLevel > 3 {
 		return true
 	}
-
-	// Activate abilities when we have few cards in hand
 	if context.HandSize < 3 {
 		return true
 	}
-
-	// Random chance to activate abilities for variety
-	return ai.rng.Float32() < 0.3
+	return ai.rng.Float32() < 0.5
 }
 
 // ChooseAbilitiesToActivate selects which abilities to activate based on the current context.
@@ -518,7 +509,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		HandSize:          len(player.GetHand()),
 		BoardState:        boardState,
 		ThreatLevel:       threatLevel,
-		CanCastMoreSpells: availableMana >= 2 && len(player.GetHand()) > 0,
+		CanCastMoreSpells: availableMana >= 1 && len(player.GetHand()) > 0,
 	}
 }
 

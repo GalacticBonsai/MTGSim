@@ -187,14 +187,16 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 
 // payCosts pays the costs for an ability.
 func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, source any) error {
-	// Handle tap costs by tapping the source permanent
 	if ability.Cost.TapCost {
 		if tapper, ok := source.(interface{ Tap() }); ok {
 			tapper.Tap()
 		}
 	}
-
-	// Handle mana costs
+	if ability.Cost.SacrificeCost && source != nil {
+		if s, ok := ee.gameState.(interface{ SacrificeSource(object any) }); ok {
+			s.SacrificeSource(source)
+		}
+	}
 	return controller.PayCost(ability.Cost)
 }
 
@@ -410,8 +412,12 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		}
 
 	case SearchLibrary:
-		ee.gameState.SearchLibrary(controller, effect.Value)
-		logger.LogCard("%s searches library for %d cards", controller.GetName(), effect.Value)
+		if adv, ok := ee.gameState.(interface{ SearchLibraryAdvanced(AbilityPlayer, int, string) }); ok {
+			adv.SearchLibraryAdvanced(controller, effect.Value, effect.Description)
+		} else {
+			ee.gameState.SearchLibrary(controller, effect.Value)
+		}
+		logger.LogCard("%s searches library: %s", controller.GetName(), effect.Description)
 
 	case CreateToken:
 		tokenSpec := effectTokenSpec(effect)
