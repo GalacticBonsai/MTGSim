@@ -6,11 +6,27 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
+
+// globalAbilityPatterns are compiled once and shared across all parser instances
+// to avoid recompiling ~250 regex patterns on every NewExecutionEngine call.
+var (
+	globalAbilityPatterns     map[AbilityType][]*AbilityPattern
+	globalAbilityPatternsOnce sync.Once
+)
+
+func initAbilityPatterns() {
+	ap := &AbilityParser{
+		patterns: make(map[AbilityType][]*AbilityPattern),
+	}
+	ap.initializePatterns()
+	globalAbilityPatterns = ap.patterns
+}
 
 // AbilityParser parses oracle text to extract abilities.
 type AbilityParser struct {
@@ -27,12 +43,10 @@ type AbilityPattern struct {
 }
 
 // NewAbilityParser creates a new ability parser with predefined patterns.
+// Patterns are compiled once globally via sync.Once and shared across all instances.
 func NewAbilityParser() *AbilityParser {
-	parser := &AbilityParser{
-		patterns: make(map[AbilityType][]*AbilityPattern),
-	}
-	parser.initializePatterns()
-	return parser
+	globalAbilityPatternsOnce.Do(initAbilityPatterns)
+	return &AbilityParser{patterns: globalAbilityPatterns}
 }
 
 // initializePatterns sets up all the regex patterns for ability parsing.
