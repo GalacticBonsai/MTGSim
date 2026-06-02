@@ -93,7 +93,6 @@ func (h *StackAwareHandler) OnOpponentPriority(g *game.Game, active *game.Player
 // have priority. It uses the AIDecisionMaker to decide whether to
 // activate abilities or cast instants.
 func (h *StackAwareHandler) aiDecision(player abil.AbilityPlayer) *abil.PriorityDecision {
-	// Build decision context for this player
 	opponents := h.getOpponents(player)
 	context := h.ai.BuildDecisionContext(player, opponents, h.spellCasting.GetPriorityManager().GetPhase())
 
@@ -132,9 +131,6 @@ func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, contex
 		if !ok || !card.IsInstant() || card.OracleText == "" {
 			continue
 		}
-		// Find the underlying game.Player to check and pay costs. The
-		// ability package's PayCost expects an ability.Cost, not a
-		// SimpleCard, so we go directly to game.Player.PayForCard.
 		var gp *game.Player
 		for _, p := range h.g.GetPlayersRaw() {
 			if p.GetName() == player.GetName() && !p.HasLost() {
@@ -211,5 +207,3 @@ func phaseLabel(p game.Phase) string {
 		return "Main Phase"
 	}
 }
-
-
