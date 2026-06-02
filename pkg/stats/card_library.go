@@ -91,6 +91,16 @@ func (cl *CardLibrary) SetImageURL(cardName, url string) {
 	cl.Cards[cardName] = s
 }
 
+// Reset clears all card stats and removes the persistent file from disk.
+func (cl *CardLibrary) Reset() {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	cl.Cards = make(map[string]GlobalCardStats)
+	if cl.path != "" {
+		_ = os.Remove(cl.path)
+	}
+}
+
 // Snapshot returns a shallow copy of the underlying card map. The copy is safe
 // to iterate concurrently with further mutations to the library.
 func (cl *CardLibrary) Snapshot() map[string]GlobalCardStats {

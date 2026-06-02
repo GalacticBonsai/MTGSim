@@ -1200,21 +1200,21 @@ func main() {
 
 	// Warn about unimplemented cards in discovered decks
 	implTracker := abil.NewImplementationTracker()
-	warnedDecks := map[string]bool{}
-	for _, dPath := range deckFiles {
-		if warnedDecks[dPath] {
-			continue
-		}
-		warnedDecks[dPath] = true
-		m, _, err := deck.ImportDeckfile(dPath, cardDB)
-		if err != nil {
-			continue
-		}
-		unimpl := implTracker.CheckDeck(m.Cards, cardDB)
-		for _, name := range unimpl {
-			logger.LogMeta("Warning: unimplemented card in %s: %s", dPath, name)
-		}
-	}
+	// warnedDecks := map[string]bool{}
+	// for _, dPath := range deckFiles {
+	// 	if warnedDecks[dPath] {
+	// 		continue
+	// 	}
+	// 	warnedDecks[dPath] = true
+	// 	m, _, err := deck.ImportDeckfile(dPath, cardDB)
+	// 	if err != nil {
+	// 		continue
+	// 	}
+	// 	unimpl := implTracker.CheckDeck(m.Cards, cardDB)
+	// 	for _, name := range unimpl {
+	// 		logger.LogMeta("Warning: unimplemented card in %s: %s", dPath, name)
+	// 	}
+	// }
 	if report, err := card.ComputeImplementationStatus(cardDB, implTracker); err == nil {
 		logger.LogMeta("Implementation status: %d/%d cards (%.1f%%)", report.ImplementedCount, report.TotalCards, report.Percentage)
 		_ = implTracker.Save()

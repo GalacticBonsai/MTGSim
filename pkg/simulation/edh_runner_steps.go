@@ -3,6 +3,7 @@ package simulation
 import (
 	"strings"
 
+	abil "github.com/mtgsim/mtgsim/pkg/ability"
 	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/game"
@@ -144,8 +145,12 @@ func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player, metrics
 // records every public action so a replay can be reproduced.
 func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics) {
 	idx := indexOfPlayer(g, ap)
+	landsPlayed := 0
 	for _, c := range ap.Hand {
 		if c.IsLand() {
+			if landsPlayed >= ap.LandPlaysAvailable() {
+				break
+			}
 			if _, err := g.PlayLand(ap, c.Name); err != nil {
 				continue
 			}
@@ -155,19 +160,21 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			if metrics != nil {
 				metrics.recordLand(idx, c.Name)
 			}
-			break
+			landsPlayed++
 		}
 	}
-	tapManaSourcesForMainPhaseMana(g, ap)
+	ap.ResetLandPlays()
+
+	activateSearchAbilities(g, ap, log)
+
+	tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 
 	if idx >= 0 && len(ap.CommandZone) > 0 {
 		name := ap.CommandZone[0].Name
-		var cmdrCard game.SimpleCard
-		for _, c := range ap.CommandZone {
-			if c.Name == name {
-				cmdrCard = c
-				break
-			}
+		cmdrCard := ap.CommandZone[0]
+		cost := cmdrCard.GetManaCost()
+		if cost.Total() == 0 && cmdrCard.ManaCost == "" {
+			goto skipCommander
 		}
 		if ap.CanPayForCommander(cmdrCard) {
 			if ap.PayForCommander(cmdrCard) {
@@ -188,6 +195,7 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 			}
 		}
 	}
+skipCommander:
 	if attemptCEDHComboFinish(g, ap, log, metrics) {
 		return
 	}
@@ -195,42 +203,74 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 	again := true
 	for again {
 		again = false
-		tapManaSourcesForMainPhaseMana(g, ap)
+		tapManaSourcesForMainPhaseMana(g, ap, idx, metrics)
 		for _, c := range ap.Hand {
-			if !isCastablePermanent(c) || !ap.CanPayForCard(c) {
+			if !isCastableSpell(c) || c.IsCounterspell() || !ap.CanPayForCard(c) {
+				continue
+			}
+			if c.GetManaCost().Total() == 0 && c.ManaCost == "" {
 				continue
 			}
 			if !ap.PayForCard(c) {
 				continue
 			}
 			manaSpent := manaSpentForCard(c)
+			if c.IsInstant() || c.IsSorcery() {
+				resolved := castNonPermanentSpell(g, ap, c, log, metrics)
+				storm := 0
+				if metrics != nil && resolved {
+					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
+				}
+				if log != nil && resolved {
+					countered := manaSpent == 0 && checkVexingBauble(g, ap, c, log)
+					if !countered {
+						log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventPermanentCast, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+					}
+				}
+				if resolved {
+					again = true
+					break
+				}
+				continue
+			}
+			if manaSpent == 0 && checkVexingBauble(g, ap, c, log) {
+				again = true
+				break
+			}
 			perm, err := castPermanentCard(g, ap, c)
 			if err != nil || perm == nil {
 				continue
 			}
-			perm.SetEnteredTurn(g.GetTurnNumber())
-			storm := 0
-			if metrics != nil {
-				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
+		perm.SetEnteredTurn(g.GetTurnNumber())
+		resolvePermanentETB(g, perm, ap, log)
+		storm := 0
+		if metrics != nil {
+			storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
+		}
+		if log != nil {
+			kind := EventPermanentCast
+			if c.IsCreature() {
+				kind = EventCreatureSummon
 			}
-			if log != nil {
-				kind := EventPermanentCast
-				if c.IsCreature() {
-					kind = EventCreatureSummon
-				}
-				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
-			}
-			again = true
-			break
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+		}
+		again = true
+		break
 		}
 	}
 
-	bridge.AutoActivateMainPhaseAbilities(g)
+	activateSearchAbilities(g, ap, log)
+	bridge.AutoActivateMainPhaseAbilitiesWithLog(g, func(cardName, detail string) {
+		if log != nil {
+			actor := ap.GetName()
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventFetchActivated, Actor: actor, Detail: cardName + " -> " + detail})
+		}
+	})
 	attemptCEDHComboFinish(g, ap, log, metrics)
 }
 
-func isCastablePermanent(c game.SimpleCard) bool {
-	return !c.IsLand() && (c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker())
+func isCastableSpell(c game.SimpleCard) bool {
+	return !c.IsLand() && (c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker() || c.IsInstant() || c.IsSorcery())
 }
 
 func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.Permanent, error) {
@@ -240,8 +280,172 @@ func castPermanentCard(g *game.Game, ap *game.Player, c game.SimpleCard) (*game.
 	return g.CastPermanent(ap, c.Name)
 }
 
+func castNonPermanentSpell(g *game.Game, ap *game.Player, c game.SimpleCard, log *EDHEventLog, metrics *edhMetrics) bool {
+	if c.OracleText == "" {
+		return false
+	}
+	idx := -1
+	for i, cc := range ap.Hand {
+		if cc.Name == c.Name {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false
+	}
+	ap.Hand = append(ap.Hand[:idx], ap.Hand[idx+1:]...)
+	gs := bridge.NewAbilityGameState(g)
+	engine := abil.NewExecutionEngine(gs)
+	abilities, err := engine.ParseAndRegisterAbilities(c.OracleText, c)
+	if err != nil || len(abilities) == 0 {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return true
+	}
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return true
+	}
+	for _, ab := range abilities {
+		var targets []any
+		for _, eff := range ab.Effects {
+			for _, tgt := range eff.Targets {
+				if tgt.Required {
+					potentials := engine.GetPotentialTargets(tgt.Type, nil)
+					if len(potentials) > 0 {
+						targets = append(targets, potentials[0])
+					}
+				}
+			}
+		}
+		_ = engine.ExecuteAbility(ab, playerAdapter, targets)
+	}
+	ap.Graveyard = append(ap.Graveyard, c)
+	return true
+}
+
+func resolvePermanentETB(g *game.Game, perm *game.Permanent, ap *game.Player, log *EDHEventLog) {
+	gs := bridge.NewAbilityGameState(g)
+	engine := abil.NewExecutionEngine(gs)
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		return
+	}
+	src := perm.GetSource()
+	if src.OracleText == "" {
+		return
+	}
+	abilities, err := engine.ParseAndRegisterAbilities(src.OracleText, src)
+	if err != nil || len(abilities) == 0 {
+		return
+	}
+	for _, ab := range abilities {
+		if ab.Type != abil.Triggered || ab.TriggerCondition != abil.EntersTheBattlefield {
+			continue
+		}
+		var targets []any
+		for _, eff := range ab.Effects {
+			for _, tgt := range eff.Targets {
+				if tgt.Required {
+					potentials := engine.GetPotentialTargets(tgt.Type, nil)
+					if len(potentials) > 0 {
+						targets = append(targets, potentials[0])
+					}
+				}
+			}
+		}
+		_ = engine.ExecuteAbility(ab, playerAdapter, targets)
+	}
+}
+
 func eventDetail(name string, manaSpent, storm int) string {
 	return name + " | mana=" + intString(manaSpent) + " storm=" + intString(storm)
+}
+
+//nolint:unused
+func isValidSpellCost(c game.SimpleCard) bool {
+	if c.IsLand() {
+		return false
+	}
+	if cost := c.GetManaCost(); cost.Total() == 0 && c.ManaCost == "" {
+		return false
+	}
+	return true
+}
+
+func activateSearchAbilities(g *game.Game, ap *game.Player, log *EDHEventLog) {
+	gs := bridge.NewAbilityGameState(g)
+	engine := abil.NewExecutionEngine(gs)
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		return
+	}
+	var foundCard string
+	gs.OnSearchResult = func(name string) {
+		foundCard = name
+	}
+	abilities := engine.GetActivatableAbilities(playerAdapter)
+	for _, ability := range abilities {
+		if ability.Type != abil.Activated {
+			continue
+		}
+		hasSearch := false
+		for _, effect := range ability.Effects {
+			if effect.Type == abil.SearchLibrary {
+				hasSearch = true
+				break
+			}
+		}
+		if !hasSearch || !ability.Cost.SacrificeCost {
+			continue
+		}
+		foundCard = ""
+		if err := engine.ExecuteAbility(ability, playerAdapter, nil); err != nil {
+			continue
+		}
+		srcName := "unknown"
+		if src, ok := ability.Source.(game.SimpleCard); ok {
+			srcName = src.Name
+		}
+		detail := "searched"
+		if foundCard != "" {
+			detail = foundCard
+		}
+		if log != nil {
+			log.Append(EDHEvent{
+				Turn:   g.GetTurnNumber(),
+				Phase:  phaseName(game.PhaseMain1),
+				Kind:   EventFetchActivated,
+				Actor:  ap.GetName(),
+				Detail: srcName + " -> " + detail,
+			})
+		}
+	}
+}
+
+func checkVexingBauble(g *game.Game, caster *game.Player, c game.SimpleCard, log *EDHEventLog) bool {
+	for _, opp := range g.GetPlayersRaw() {
+		if opp == caster || opp.HasLost() {
+			continue
+		}
+		for _, perm := range opp.Battlefield {
+			if strings.EqualFold(perm.GetName(), "Vexing Bauble") {
+				if log != nil {
+					log.Append(EDHEvent{
+						Turn:   g.GetTurnNumber(),
+						Phase:  phaseName(g.GetCurrentPhase()),
+						Kind:   EventSpellCountered,
+						Actor:  caster.GetName(),
+						Target: opp.GetName(),
+						Detail: c.Name + " (countered by Vexing Bauble)",
+					})
+				}
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func intString(v int) string {
@@ -258,8 +462,11 @@ func intString(v int) string {
 	return string(buf[i:])
 }
 
-func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player) {
+func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player, idx int, metrics *edhMetrics) {
 	demand := aggregateMainPhaseManaDemand(ap)
+	totalProduced := 0
+	hasUrborg := permanentOnBattlefield(ap, "Urborg, Tomb of Yawgmoth")
+	hasYavimaya := permanentOnBattlefield(ap, "Yavimaya, Cradle of Growth")
 	for _, perm := range ap.Battlefield {
 		if perm.IsTapped() {
 			continue
@@ -271,11 +478,38 @@ func tapManaSourcesForMainPhaseMana(g *game.Game, ap *game.Player) {
 		if perm.IsCreature() && perm.GetEnteredTurn() == g.GetTurnNumber() && !perm.HasKeyword(game.KWHaste) {
 			continue
 		}
+		if hasUrborg && perm.GetSource().IsLand() {
+			hasBlack := false
+			for mt := range produced {
+				if mt == game.Black { hasBlack = true; break }
+			}
+			if !hasBlack { produced[game.Black] = produced[game.Black] + 1 }
+		}
+		if hasYavimaya && perm.GetSource().IsLand() {
+			hasGreen := false
+			for mt := range produced {
+				if mt == game.Green { hasGreen = true; break }
+			}
+			if !hasGreen { produced[game.Green] = produced[game.Green] + 1 }
+		}
 		perm.Tap()
 		for mt, n := range produced {
 			ap.AddManaToPool(mt, n)
+			totalProduced += n
 		}
 	}
+	if metrics != nil && idx >= 0 {
+		metrics.recordManaProduced(idx, totalProduced)
+	}
+}
+
+func permanentOnBattlefield(ap *game.Player, name string) bool {
+	for _, perm := range ap.Battlefield {
+		if strings.EqualFold(perm.GetName(), name) {
+			return true
+		}
+	}
+	return false
 }
 
 func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
@@ -287,7 +521,7 @@ func aggregateMainPhaseManaDemand(ap *game.Player) game.Mana {
 		demand.Add(game.Any, ap.CommanderTax(c.Name))
 	}
 	for _, c := range ap.Hand {
-		if !isCastablePermanent(c) {
+		if !isCastableSpell(c) {
 			continue
 		}
 		for mt, n := range c.GetManaCost() {
@@ -378,7 +612,18 @@ func manaProductionOptions(c game.SimpleCard) []game.Mana {
 			}
 		}
 	}
-	if strings.Contains(text, "one mana of any color") || strings.Contains(text, "one mana of any type") {
+	// Chrome Mox-style: "any of the exiled card's colors"
+	if strings.Contains(text, "one mana of any color") || strings.Contains(text, "one mana of any type") ||
+		strings.Contains(text, "any of the exiled card") {
+		return []game.Mana{{game.White: 1}, {game.Blue: 1}, {game.Black: 1}, {game.Red: 1}, {game.Green: 1}}
+	}
+	// Bloom Tender-style: produce one mana of each color among permanents (approximate as all 5)
+	if strings.Contains(text, "for each color among permanents you control") {
+		return []game.Mana{{game.White: 1, game.Blue: 1, game.Black: 1, game.Red: 1, game.Green: 1}}
+	}
+	// Mox-style: "Mox" cards that produce any color
+	name := strings.ToLower(c.Name)
+	if strings.Contains(name, "mox") && !strings.Contains(name, "moxfield") {
 		return []game.Mana{{game.White: 1}, {game.Blue: 1}, {game.Black: 1}, {game.Red: 1}, {game.Green: 1}}
 	}
 	if strings.Contains(text, "{c}{c}") {

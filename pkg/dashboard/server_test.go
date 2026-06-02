@@ -2,13 +2,18 @@ package dashboard
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mtgsim/mtgsim/pkg/simulation"
+	"github.com/mtgsim/mtgsim/pkg/stats"
 )
 
 func snapshotFromResults(r *simulation.Results) ResultsProvider {
@@ -203,3 +208,337 @@ func TestNewServer(t *testing.T) {
 		t.Error("expected provider to be set")
 	}
 }
+
+// ============================================================================
+// Endpoint Timing Tests - Ensure responses complete within 1.5s timeout
+// ============================================================================
+
+// TestGameStatus_ResponseTime verifies /api/game-status completes quickly
+func TestGameStatus_ResponseTime(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	
+	req := httptest.NewRequest("GET", "/api/game-status", nil)
+	w := httptest.NewRecorder()
+	
+	start := time.Now()
+	server.handleGameStatus(w, req)
+	elapsed := time.Since(start)
+	
+	maxLatency := 100 * time.Millisecond
+	if elapsed > maxLatency {
+		t.Errorf("gameStatus took %v (max %v)", elapsed, maxLatency)
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if _, ok := result["running"]; !ok {
+		t.Error("expected 'running' field in response")
+	}
+}
+
+// TestMatchupMatrix_ResponseTime verifies /api/matchup-matrix completes within timeout
+func TestMatchupMatrix_ResponseTime(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	
+	// Set up EDH provider with sample decks
+	server.SetEDHProvider(func() []simulation.EDHDeckStats {
+		decks := make([]simulation.EDHDeckStats, 10)
+		for i := 0; i < 10; i++ {
+			decks[i] = simulation.EDHDeckStats{
+				DeckName:      "Deck " + string(rune(i)),
+				CommanderName: "Commander " + string(rune(i)),
+				Games:         5 + i,
+				Wins:          2,
+				Losses:        3 + i,
+				WinRate:       33.3,
+			}
+		}
+		return decks
+	})
+	
+	req := httptest.NewRequest("GET", "/api/matchup-matrix", nil)
+	w := httptest.NewRecorder()
+	
+	start := time.Now()
+	server.handleMatchupMatrix(w, req)
+	elapsed := time.Since(start)
+	
+	maxLatency := 200 * time.Millisecond
+	if elapsed > maxLatency {
+		t.Errorf("matchupMatrix took %v (max %v)", elapsed, maxLatency)
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if enabled, ok := result["enabled"].(bool); !ok || !enabled {
+		t.Error("expected 'enabled'=true in response")
+	}
+}
+
+// TestEDHResults_ResponseTime verifies /api/edh-results responds within 1.5s timeout
+func TestEDHResults_ResponseTime(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	
+	// Set provider that returns 50 decks (realistic load)
+	server.SetEDHProvider(func() []simulation.EDHDeckStats {
+		decks := make([]simulation.EDHDeckStats, 50)
+		for i := 0; i < 50; i++ {
+			decks[i] = simulation.EDHDeckStats{
+				DeckName:      "Deck " + string(rune(i%26 + 'A')),
+				CommanderName: "Commander " + string(rune(i%26 + 'A')),
+				Games:         10,
+				Wins:          5,
+				Losses:        5,
+				WinRate:       50.0,
+			}
+		}
+		return decks
+	})
+	
+	server.SetEDHSummaryProvider(func() simulation.EDHSummary {
+		return simulation.EDHSummary{
+			TotalGames:       500,
+			HighestStormCount: 10,
+			TotalManaSpent:    5000,
+		}
+	})
+	
+	req := httptest.NewRequest("GET", "/api/edh-results", nil)
+	w := httptest.NewRecorder()
+	
+	start := time.Now()
+	server.handleEDHResults(w, req)
+	elapsed := time.Since(start)
+	
+	maxLatency := 300 * time.Millisecond
+	if elapsed > maxLatency {
+		t.Errorf("edhResults took %v (max %v)", elapsed, maxLatency)
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	
+	var result edhResultsResponse
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if !result.Enabled || len(result.Decks) != 50 {
+		t.Errorf("expected 50 enabled decks, got %d enabled=%v", len(result.Decks), result.Enabled)
+	}
+}
+
+// TestCardLibrary_ResponseTime verifies /api/card-library responds quickly
+func TestCardLibrary_ResponseTime(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	
+	// Set up card library provider with sample data
+	server.SetCardLibraryProvider(func() map[string]stats.GlobalCardStats {
+		cards := make(map[string]stats.GlobalCardStats)
+		for i := 0; i < 100; i++ {
+			cards["Card "+string(rune(i))] = stats.GlobalCardStats{
+				Casts:             5,
+				Wins:              2,
+				WinRate:           40.0,
+				TotalGamesTracked: 100,
+			}
+		}
+		return cards
+	})
+	
+	req := httptest.NewRequest("GET", "/api/card-library", nil)
+	w := httptest.NewRecorder()
+	
+	start := time.Now()
+	server.handleCardLibrary(w, req)
+	elapsed := time.Since(start)
+	
+	maxLatency := 200 * time.Millisecond
+	if elapsed > maxLatency {
+		t.Errorf("cardLibrary took %v (max %v)", elapsed, maxLatency)
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+// TestConcurrentEndpointCalls verifies endpoints don't block each other
+func TestConcurrentEndpointCalls(t *testing.T) {
+	r := simulation.NewResults()
+	server := NewServer(snapshotFromResults(r), 0)
+	
+	server.SetEDHProvider(func() []simulation.EDHDeckStats {
+		decks := make([]simulation.EDHDeckStats, 30)
+		for i := 0; i < 30; i++ {
+			decks[i] = simulation.EDHDeckStats{
+				DeckName:      "Deck " + string(rune(i)),
+				CommanderName: "Cmd " + string(rune(i)),
+				Games:         5,
+				Wins:          2,
+				Losses:        3,
+				WinRate:       40.0,
+			}
+		}
+		return decks
+	})
+	
+	// Simulate concurrent polling (like the dashboard does every 2-5 seconds)
+	done := make(chan time.Duration, 3)
+	
+	// Game status (2s poll interval)
+	go func() {
+		start := time.Now()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/game-status", nil)
+		server.handleGameStatus(w, req)
+		done <- time.Since(start)
+	}()
+	
+	// Matchup matrix (5s poll interval)
+	go func() {
+		start := time.Now()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/matchup-matrix", nil)
+		server.handleMatchupMatrix(w, req)
+		done <- time.Since(start)
+	}()
+	
+	// EDH results (5s poll interval)
+	go func() {
+		start := time.Now()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/edh-results", nil)
+		server.handleEDHResults(w, req)
+		done <- time.Since(start)
+	}()
+	
+	// Collect results
+	maxConcurrentLatency := 500 * time.Millisecond
+	for i := 0; i < 3; i++ {
+		elapsed := <-done
+		if elapsed > maxConcurrentLatency {
+			t.Errorf("concurrent call %d took %v (max %v)", i, elapsed, maxConcurrentLatency)
+		}
+	}
+}
+
+// ============================================================================
+// handleResults Benchmarks – measure the uncached (cold) path at scale
+// ============================================================================
+
+func benchHandleResults(b *testing.B, n int) {
+	// Build N results with realistic win/loss distributions.
+	results := make([]simulation.Result, n)
+	for i := range results {
+		results[i] = simulation.Result{
+			Name:   fmt.Sprintf("Deck-%06d", i),
+			Wins:   rand.Intn(50),
+			Losses: rand.Intn(50),
+		}
+	}
+
+	provider := func() []simulation.Result { return results }
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Create a fresh server each iteration so the cache is always cold.
+		s := NewServer(provider, 0)
+		req := httptest.NewRequest("GET", "/api/results", nil)
+		w := httptest.NewRecorder()
+		s.handleResults(w, req)
+	}
+}
+
+func BenchmarkHandleResults_100(b *testing.B)    { benchHandleResults(b, 100) }
+func BenchmarkHandleResults_1k(b *testing.B)     { benchHandleResults(b, 1000) }
+func BenchmarkHandleResults_10k(b *testing.B)    { benchHandleResults(b, 10000) }
+func BenchmarkHandleResults_50k(b *testing.B)    { benchHandleResults(b, 50000) }
+func BenchmarkHandleResults_100k(b *testing.B)   { benchHandleResults(b, 100000) }
+
+// Sub-benchmarks that measure the individual phases of handleResults so we
+// can pinpoint where the time goes.
+
+func benchHandleResultsPhases(b *testing.B, n int) {
+	results := make([]simulation.Result, n)
+	for i := range results {
+		results[i] = simulation.Result{
+			Name:   fmt.Sprintf("Deck-%06d", i),
+			Wins:   rand.Intn(50),
+			Losses: rand.Intn(50),
+		}
+	}
+
+	server := NewServer(func() []simulation.Result { return results }, 0)
+	snapshot := server.provider()
+
+	b.Run("iterate", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			rows := make([]deckRow, 0, len(snapshot))
+			totalRecords := 0
+			for _, res := range snapshot {
+				rows = append(rows, deckRow{
+					Name:    res.Name,
+					Wins:    res.Wins,
+					Losses:  res.Losses,
+					WinRate: res.WinPercentage(),
+				})
+				totalRecords += res.Wins + res.Losses
+			}
+			_ = rows
+			_ = totalRecords
+		}
+	})
+
+	rows := make([]deckRow, len(snapshot))
+	for i, res := range snapshot {
+		rows[i] = deckRow{
+			Name:    res.Name,
+			Wins:    res.Wins,
+			Losses:  res.Losses,
+			WinRate: res.WinPercentage(),
+		}
+	}
+
+	b.Run("sort", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cp := make([]deckRow, len(rows))
+			copy(cp, rows)
+			sort.Slice(cp, func(i, j int) bool {
+				return cp[i].WinRate > cp[j].WinRate
+			})
+		}
+	})
+
+	b.Run("marshal", func(b *testing.B) {
+		resp := resultsResponse{
+			TotalGames:  n,
+			UniqueDecks: n,
+			Decks:       rows,
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			data, _ := json.Marshal(resp)
+			_ = data
+		}
+	})
+}
+
+func BenchmarkHandleResultsPhases_1k(b *testing.B)   { benchHandleResultsPhases(b, 1000) }
+func BenchmarkHandleResultsPhases_10k(b *testing.B)  { benchHandleResultsPhases(b, 10000) }
+func BenchmarkHandleResultsPhases_100k(b *testing.B) { benchHandleResultsPhases(b, 100000) }

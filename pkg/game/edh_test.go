@@ -33,27 +33,41 @@ func makeLibrary(n int) []SimpleCard {
 	return out
 }
 
-func TestLondonMulligan_FirstMulliganDraws7Bottoms1(t *testing.T) {
+func TestLondonMulligan_FirstMulliganDraws7Bottoms0(t *testing.T) {
 	p := NewEDHPlayer("P")
 	p.Library = makeLibrary(60)
-	p.Draw(OpeningHandSize) // initial 7
+	p.Draw(OpeningHandSize)
 	rng := rand.New(rand.NewSource(42))
 	bottomed, err := p.LondonMulligan(rng, 1)
 	if err != nil {
 		t.Fatalf("mulligan err: %v", err)
 	}
-	if bottomed != 1 {
-		t.Fatalf("expected 1 bottomed, got %d", bottomed)
+	if bottomed != 0 {
+		t.Fatalf("first mulligan is free, expected 0 bottomed, got %d", bottomed)
 	}
-	if p.HandSize() != 6 {
-		t.Fatalf("expected 6 in hand after first mulligan, got %d", p.HandSize())
-	}
-	if p.LibrarySize() != 60-6 {
-		t.Fatalf("expected library 54, got %d", p.LibrarySize())
+	if p.HandSize() != 7 {
+		t.Fatalf("expected 7 in hand after free first mulligan, got %d", p.HandSize())
 	}
 }
 
-func TestLondonMulligan_TripleMulliganBottomsThree(t *testing.T) {
+func TestLondonMulligan_SecondMulliganBottomsOne(t *testing.T) {
+	p := NewEDHPlayer("P")
+	p.Library = makeLibrary(60)
+	p.Draw(OpeningHandSize)
+	rng := rand.New(rand.NewSource(42))
+	bottomed, err := p.LondonMulligan(rng, 2)
+	if err != nil {
+		t.Fatalf("mulligan err: %v", err)
+	}
+	if bottomed != 1 {
+		t.Fatalf("second mulligan bottoms 1, got %d", bottomed)
+	}
+	if p.HandSize() != 6 {
+		t.Fatalf("expected 6 in hand, got %d", p.HandSize())
+	}
+}
+
+func TestLondonMulligan_TripleMulliganBottomsTwo(t *testing.T) {
 	p := NewEDHPlayer("P")
 	p.Library = makeLibrary(60)
 	p.Draw(OpeningHandSize)
@@ -64,12 +78,8 @@ func TestLondonMulligan_TripleMulliganBottomsThree(t *testing.T) {
 			t.Fatalf("mull #%d err: %v", i, err)
 		}
 	}
-	// After taking 3 mulligans the player has drawn 7 then bottomed 3.
-	if p.HandSize() != 4 {
-		t.Fatalf("expected 4 in hand after 3 mulligans, got %d", p.HandSize())
-	}
-	if p.LibrarySize() != 60-4 {
-		t.Fatalf("expected library 56, got %d", p.LibrarySize())
+	if p.HandSize() != 5 {
+		t.Fatalf("expected 5 in hand after 3 mulligans (free + bottom 1 + bottom 2 = keep 5), got %d", p.HandSize())
 	}
 }
 

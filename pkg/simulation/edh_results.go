@@ -51,6 +51,7 @@ type EDHPlayerRecord struct {
 	SpellsCast     int
 	CreaturesCast  int
 	ManaSpent      int
+	ManaProduced   int
 	MaxStormCount  int
 	CombatDamage   int
 	Eliminations   int
@@ -67,6 +68,7 @@ type EDHGameRecord struct {
 	WinnerCondition   WinCondition // how the winner won (combat, effect, etc.)
 	MaxStormCount     int
 	TotalManaSpent    int
+	TotalManaProduced int
 	TotalCardsPlayed  int
 	TotalCombatDamage int
 	TotalEliminations int
@@ -81,6 +83,8 @@ type EDHSummary struct {
 	AverageTurns        float64 `json:"average_turns"`
 	TotalManaSpent      int     `json:"total_mana_spent"`
 	AverageManaSpent    float64 `json:"average_mana_spent"`
+	TotalManaProduced   int     `json:"total_mana_produced"`
+	AverageManaProduced float64 `json:"average_mana_produced"`
 	TotalCardsPlayed    int     `json:"total_cards_played"`
 	AverageCardsPlayed  float64 `json:"average_cards_played"`
 	HighestStormCount   int     `json:"highest_storm_count"`
@@ -110,6 +114,7 @@ type EDHDeckStats struct {
 	DeckoutWins        int                           `json:"deckout_wins"`
 	AvgCommanderCasts  float64                       `json:"avg_commander_casts"`
 	AvgManaSpent       float64                       `json:"avg_mana_spent"`
+	AvgManaProduced    float64                       `json:"avg_mana_produced"`
 	AvgCardsPlayed     float64                       `json:"avg_cards_played"`
 	AvgLandsPlayed     float64                       `json:"avg_lands_played"`
 	AvgSpellsCast      float64                       `json:"avg_spells_cast"`
@@ -117,6 +122,7 @@ type EDHDeckStats struct {
 	AvgCombatDamage    float64                       `json:"avg_combat_damage"`
 	MaxStormCount      int                           `json:"max_storm_count"`
 	TotalManaSpent     int                           `json:"total_mana_spent"`
+	TotalManaProduced  int                           `json:"total_mana_produced"`
 	TotalCardsPlayed   int                           `json:"total_cards_played"`
 	TotalCombatDamage  int                           `json:"total_combat_damage"`
 	Eliminations       int                           `json:"eliminations"`
@@ -152,10 +158,12 @@ type deckAccumulator struct {
 	combatWins       int
 	effectWins       int
 	deckoutWins      int
-	commanderCastSum int
-	manaSpentSum     int
-	cardsPlayedSum   int
-	landsPlayedSum   int
+	commanderCastSum  int
+	manaSpentSum      int
+	manaProducedSum   int
+	manaProducedGames int
+	cardsPlayedSum    int
+	landsPlayedSum    int
 	spellsCastSum    int
 	creaturesCastSum int
 	combatDamageSum  int
@@ -169,6 +177,15 @@ func NewEDHResults() *EDHResults {
 	return &EDHResults{byDeck: map[string]*deckAccumulator{}}
 }
 
+// Clear resets all EDH results back to an empty state.
+func (r *EDHResults) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.games = nil
+	r.byDeck = make(map[string]*deckAccumulator)
+	r.summary = EDHSummary{}
+}
+
 // RecordGame appends a completed pod and updates per-deck aggregates.
 func (r *EDHResults) RecordGame(rec EDHGameRecord) {
 	r.mu.Lock()
@@ -176,6 +193,7 @@ func (r *EDHResults) RecordGame(rec EDHGameRecord) {
 	r.games = append(r.games, rec)
 	r.summary.TotalGames++
 	r.summary.TotalManaSpent += rec.TotalManaSpent
+	r.summary.TotalManaProduced += rec.TotalManaProduced
 	r.summary.TotalCardsPlayed += rec.TotalCardsPlayed
 	r.summary.TotalCombatDamage += rec.TotalCombatDamage
 	r.summary.TotalEliminations += rec.TotalEliminations
@@ -193,6 +211,10 @@ func (r *EDHResults) RecordGame(rec EDHGameRecord) {
 		acc.mulligansSum += p.Mulligans
 		acc.commanderCastSum += p.CommanderCasts
 		acc.manaSpentSum += p.ManaSpent
+		acc.manaProducedSum += p.ManaProduced
+		if p.ManaProduced > 0 {
+			acc.manaProducedGames++
+		}
 		acc.cardsPlayedSum += p.CardsPlayed
 		acc.landsPlayedSum += p.LandsPlayed
 		acc.spellsCastSum += p.SpellsCast
@@ -279,6 +301,7 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 			DeckoutWins:        acc.deckoutWins,
 			MaxStormCount:      acc.maxStormCount,
 			TotalManaSpent:     acc.manaSpentSum,
+			TotalManaProduced:  acc.manaProducedSum,
 			TotalCardsPlayed:   acc.cardsPlayedSum,
 			TotalCombatDamage:  acc.combatDamageSum,
 			Eliminations:       acc.eliminations,
@@ -290,6 +313,9 @@ func (r *EDHResults) DeckStats() []EDHDeckStats {
 			row.AvgMulligans = float64(acc.mulligansSum) / float64(games)
 			row.AvgCommanderCasts = float64(acc.commanderCastSum) / float64(games)
 			row.AvgManaSpent = float64(acc.manaSpentSum) / float64(games)
+			if acc.manaProducedGames > 0 {
+				row.AvgManaProduced = float64(acc.manaProducedSum) / float64(acc.manaProducedGames)
+			}
 			row.AvgCardsPlayed = float64(acc.cardsPlayedSum) / float64(games)
 			row.AvgLandsPlayed = float64(acc.landsPlayedSum) / float64(games)
 			row.AvgSpellsCast = float64(acc.spellsCastSum) / float64(games)
@@ -336,6 +362,7 @@ func (r *EDHResults) Summary() EDHSummary {
 	out.TotalGames = len(r.games)
 	out.AverageTurns = float64(turns) / games
 	out.AverageManaSpent = float64(out.TotalManaSpent) / games
+	out.AverageManaProduced = float64(out.TotalManaProduced) / games
 	out.AverageCardsPlayed = float64(out.TotalCardsPlayed) / games
 	out.AverageEliminations = float64(out.TotalEliminations) / games
 	out.AverageCombatDamage = float64(out.TotalCombatDamage) / games

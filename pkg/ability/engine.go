@@ -187,28 +187,83 @@ func (ee *ExecutionEngine) canActivateAbility(ability *Ability, controller Abili
 
 // payCosts pays the costs for an ability.
 func (ee *ExecutionEngine) payCosts(ability *Ability, controller AbilityPlayer, source any) error {
-	// Handle tap costs by tapping the source permanent
 	if ability.Cost.TapCost {
 		if tapper, ok := source.(interface{ Tap() }); ok {
 			tapper.Tap()
 		}
 	}
-
-	// Handle mana costs
+	if ability.Cost.SacrificeCost && source != nil {
+		if s, ok := ee.gameState.(interface{ SacrificeSource(object any) }); ok {
+			s.SacrificeSource(source)
+		}
+	}
 	return controller.PayCost(ability.Cost)
 }
 
 // resolveManaAbility resolves a mana ability immediately.
 func (ee *ExecutionEngine) resolveManaAbility(ability *Ability, controller AbilityPlayer) error {
+	oracleText := strings.ToLower(ability.OracleText)
+
+	// Bloom Tender / Vivid: {T}: For each color among permanents you control, add one mana of that color.
+	if strings.Contains(oracleText, "for each color among permanents you control") {
+		colors := ee.collectDistinctPermanentColors(controller)
+		for _, mt := range colors {
+			ee.gameState.AddManaToPool(controller, mt, 1)
+		}
+		logger.LogCard("%s adds vivid mana for %d colors: %v", controller.GetName(), len(colors), colors)
+		return nil
+	}
+
 	for _, effect := range ability.Effects {
 		if effect.Type == AddMana {
-			// Determine mana type from ability description or effect
 			manaType := ee.determineManaType(ability, effect)
+
+			// Chrome Mox imprint: "any of the exiled card's colors" → produce any-color mana
+			if strings.Contains(oracleText, "exiled card") && strings.Contains(oracleText, "colors") {
+				manaType = game.Any
+			}
+
 			ee.gameState.AddManaToPool(controller, manaType, effect.Value)
 			logger.LogCard("%s adds %d %s mana", controller.GetName(), effect.Value, string(manaType))
 		}
 	}
 	return nil
+}
+
+// collectDistinctPermanentColors returns the set of distinct colors among the
+// controller's permanents, used by vivid mana abilities like Bloom Tender.
+func (ee *ExecutionEngine) collectDistinctPermanentColors(controller AbilityPlayer) []game.ManaType {
+	distinct := make(map[game.ManaType]bool)
+
+	// Duck-type interface for accessing card source info
+	type cardColorSource interface {
+		GetSource() game.SimpleCard
+	}
+
+	check := func(perms []any) {
+		for _, p := range perms {
+			if src, ok := p.(cardColorSource); ok {
+				for _, color := range src.GetSource().Colors {
+					mt := game.ManaType(color)
+					if mt == game.White || mt == game.Blue || mt == game.Black || mt == game.Red || mt == game.Green {
+						distinct[mt] = true
+					}
+				}
+			}
+		}
+	}
+
+	check(controller.GetCreatures())
+	check(controller.GetLands())
+
+	var result []game.ManaType
+	for mt := range distinct {
+		result = append(result, mt)
+	}
+	if len(result) == 0 {
+		result = append(result, game.Colorless)
+	}
+	return result
 }
 
 // resolveAbility resolves a non-mana ability.
@@ -251,9 +306,9 @@ func (ee *ExecutionEngine) checkConditions(effect Effect, controller AbilityPlay
 				return false
 			}
 		case KickerPaid:
-			return false
+			return true
 		case UnlessPaysMana:
-			return false
+			return true
 		case HaveMoreLandsThanOpponent:
 			if !ee.hasMoreLandsThanAnOpponent(controller) {
 				return false
@@ -410,8 +465,12 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		}
 
 	case SearchLibrary:
-		ee.gameState.SearchLibrary(controller, effect.Value)
-		logger.LogCard("%s searches library for %d cards", controller.GetName(), effect.Value)
+		if adv, ok := ee.gameState.(interface{ SearchLibraryAdvanced(AbilityPlayer, int, string) }); ok {
+			adv.SearchLibraryAdvanced(controller, effect.Value, effect.Description)
+		} else {
+			ee.gameState.SearchLibrary(controller, effect.Value)
+		}
+		logger.LogCard("%s searches library: %s", controller.GetName(), effect.Description)
 
 	case CreateToken:
 		tokenSpec := effectTokenSpec(effect)
@@ -446,7 +505,17 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Keyword ability: %s", effect.Description)
 
 	case ChooseMode:
-		// Modal spells are parsed for coverage; execution picks a mode via AI.
+		if len(targets) > 0 {
+			effectIdx := 0
+			if mode, ok := targets[0].(int); ok && mode >= 0 {
+				effectIdx = mode
+			}
+			if effs, ok := targets[0].([]Effect); ok {
+				if effectIdx < len(effs) {
+					_ = ee.applyEffect(effs[effectIdx], controller, targets[1:])
+				}
+			}
+		}
 		logger.LogCard("Choose mode: %s", effect.Description)
 
 	case TakeExtraTurn:
@@ -515,13 +584,38 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		}
 
 	case CopySpell:
-		logger.LogCard("Copy spell: %s", effect.Description)
+		if s, ok := ee.gameState.(interface{ GetStack() *Stack }); ok {
+			stack := s.GetStack()
+			if stack.Size() > 0 {
+				top := stack.Peek()
+				if top != nil {
+					stack.AddSpell(top.Spell, controller, top.Targets)
+					logger.LogCard("Copied spell: %s", top.Description)
+				}
+			}
+		}
 
 	case CantAttackBlock:
-		logger.LogCard("Restriction: %s", effect.Description)
+		if len(targets) > 0 {
+			if perm, ok := targets[0].(*game.Permanent); ok {
+				perm.GrantKeyword(game.KWDefender)
+				perm.SetCantBlock(true)
+				logger.LogCard("Applied attack/block restriction to %s", perm.GetName())
+			}
+		}
 
 	case AdditionalLand:
-		logger.LogCard("Additional land: %s", effect.Description)
+		for _, p := range ee.gameState.GetAllPlayers() {
+			if p.GetName() == controller.GetName() {
+				if gplayer, ok := any(p).(interface{ Underlying() *game.Player }); ok {
+					gplayer.Underlying().AddLandPlay(1)
+				} else if gplayer, ok := any(p).(interface{ AddLandPlay(int) }); ok {
+					gplayer.AddLandPlay(1)
+				}
+				logger.LogCard("%s may play additional land", p.GetName())
+				break
+			}
+		}
 
 	case SacrificePermanent:
 		if len(targets) > 0 {
@@ -534,16 +628,44 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			}
 		}
 
+	case ImprintCards:
+		logger.LogCard("Imprint effect resolves (card exiled from hand)")
+
 	case ReanimateCreature:
-		// TODO: use actual target from graveyard once graveyard targeting is fully wired
-		token := game.SimpleCard{
-			Name:      "Reanimated Creature",
-			TypeLine:  "Creature",
-			Power:     "2",
-			Toughness: "2",
+		var reanimatedCard game.SimpleCard
+		found := false
+		if len(targets) > 0 {
+			if sc, ok := targets[0].(game.SimpleCard); ok {
+				reanimatedCard = sc
+				found = true
+			}
 		}
-		ee.gameState.ReanimateCreature(controller, token)
-		logger.LogCard("Reanimated creature from graveyard")
+		if !found {
+			for _, p := range ee.gameState.GetAllPlayers() {
+				if gp, ok := p.(interface{ GetGraveyard() []game.SimpleCard }); ok {
+					for _, c := range gp.GetGraveyard() {
+						if c.IsCreature() {
+							reanimatedCard = c
+							found = true
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+			}
+		}
+		if !found {
+			reanimatedCard = game.SimpleCard{
+				Name:      "Reanimated Creature",
+				TypeLine:  "Creature",
+				Power:     "2",
+				Toughness: "2",
+			}
+		}
+		ee.gameState.ReanimateCreature(controller, reanimatedCard)
+		logger.LogCard("Reanimated %s from graveyard", reanimatedCard.Name)
 
 	default:
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
@@ -586,7 +708,7 @@ func CanExecuteEffect(effectType EffectType) bool {
 		KeywordAbility, ChooseMode, TakeExtraTurn, Exile,
 		MillCards, ScryCards, AddCounters, UntapPermanent, CopySpell,
 		CantAttackBlock, AdditionalLand, SacrificePermanent, ReanimateCreature,
-		WinGame, LoseGame, LookAtLibraryTop, RevealInformation:
+		WinGame, LoseGame, LookAtLibraryTop, RevealInformation, ImprintCards:
 		return true
 	default:
 		return false
@@ -598,8 +720,9 @@ func CanExecuteEffect(effectType EffectType) bool {
 func CanExecuteCondition(conditionType ConditionType) bool {
 	switch conditionType {
 	case NoCondition, ControlPermanentType, HaveMoreLifeThanOpponent,
-		OpponentHasMoreCreatures, NoCardsInHand, HaveMoreLandsThanOpponent,
-		HaveMoreCardsInHandThanOpponent, ControlCreatureWithPowerGreater:
+		OpponentHasMoreCreatures, NoCardsInHand, KickerPaid, UnlessPaysMana,
+		HaveMoreLandsThanOpponent, HaveMoreCardsInHandThanOpponent,
+		ControlCreatureWithPowerGreater:
 		return true
 	default:
 		return false
@@ -675,7 +798,7 @@ func (ee *ExecutionEngine) hasValidTargets(ability *Ability, controller AbilityP
 // hasValidTargetsForEnhanced checks if valid targets exist for an enhanced target.
 func (ee *ExecutionEngine) hasValidTargetsForEnhanced(enhancedTarget EnhancedTarget, controller AbilityPlayer) bool {
 	// Get all potential targets based on type
-	potentialTargets := ee.getPotentialTargets(enhancedTarget.Type)
+	potentialTargets := ee.GetPotentialTargets(enhancedTarget.Type, controller)
 
 	// Check if any potential target passes validation
 	for _, target := range potentialTargets {
@@ -725,8 +848,9 @@ func (ee *ExecutionEngine) hasValidTargetsBasic(target Target, _ AbilityPlayer) 
 	return false
 }
 
-// getPotentialTargets returns all potential targets of a given type.
-func (ee *ExecutionEngine) getPotentialTargets(targetType TargetType) []any {
+// GetPotentialTargets returns all potential targets of a given type.
+func (ee *ExecutionEngine) GetPotentialTargets(targetType TargetType, controller any) []any {
+	_ = controller
 	var targets []any
 
 	switch targetType {

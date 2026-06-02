@@ -44,18 +44,11 @@
 
 	function goToRecommendations() {
 		const deckName = activeDeckName || (selectedDeck && selectedDeck.deck_name);
-		if (!deckName) {
-			alert('Select a deck in Test Results first');
-			return;
-		}
-		showTab('recommendations');
-		const recSelect = document.getElementById('recDeckSelect');
-		if (recSelect) {
-			ignoreRecSelectChange = true;
-			recSelect.value = deckName;
-			ignoreRecSelectChange = false;
-			loadRecommendations();
-		}
+		if (!deckName) { alert('Select a deck in Test Results first'); return; }
+		showTab('my-deck');
+		const nameInput = document.getElementById('deckName');
+		if (nameInput) nameInput.value = getDeckDisplayName(deckName);
+		goToMyDeck();
 	}
 
 	// Wire up the recommendations dropdown change handler programmatically
@@ -131,6 +124,8 @@
 	let allEDHDecksList = [];
 	let selectedDeckCardsSortKey = 'winRate';
 	let selectedDeckCardsSortAsc = false;
+	let cardDBMeta = {};
+	let myDeckGroupBy = '';
 	
 	// Track uploaded decks (persists across page reloads)
 	let uploadedDeckNames = new Set();
@@ -169,6 +164,34 @@
 		});
 	}
 
+	function renderUploadedDecks() {
+		const container = document.getElementById('uploadedDecksList');
+		const section = document.getElementById('uploadedDecksManager');
+		if (!container || !section) return;
+		const names = Array.from(uploadedDeckNames);
+		if (names.length === 0) {
+			section.style.display = 'none';
+			return;
+		}
+		section.style.display = '';
+		let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
+		for (let name of names) {
+			const escaped = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+	async function deleteUploadedDeck(name) {
+		try {
+			const res = await fetch('/api/uploaded-decks?name=' + encodeURIComponent(name), { method: 'DELETE' });
+			if (res.ok) {
+				uploadedDeckNames.delete(name);
+				saveUploadedDecks();
+				renderUploadedDecks();
+				filterEDHDecks();
+				loadResults();
+			}
+		} catch (err) {
+			console.error('Failed to delete uploaded deck:', err);
+		}
+	}
+
 	function sortEDH(key) {
 		if (!currentEDHData || !currentEDHData.decks) return;
 		if (edhSortState.key === key) {
@@ -186,38 +209,91 @@
 		renderEDH(currentEDHData);
 	}
 
+	// Helper: fetch with an AbortController timeout so a stuck request
+	// doesn't block polls forever.  Returns null on error / timeout.
+	async function fetchWithTimeout(url, ms) {
+		const ctrl = new AbortController();
+		const id = setTimeout(() => ctrl.abort(), ms);
+		try {
+			const res = await fetch(url, { signal: ctrl.signal });
+			return res;
+		} finally {
+			clearTimeout(id);
+		}
+	}
+
 	async function loadResults() {
-		try {
-			const res = await fetch('/api/results');
-			const data = await res.json();
-			renderSummary(data);
-			renderWinRateChart(data);
-			renderTopDecksChart(data);
-		} catch (err) {
-			console.error('Error loading results:', err);
+		const activeTab = document.querySelector('.tab-content.active');
+		const tabId = activeTab ? activeTab.id : '';
+		
+		const fetches = [];
+		if (tabId === 'overview' || tabId === 'card-analysis' || !tabId) {
+			const edhURL = '/api/edh-results?light=1' + (document.getElementById('showOnlyUploaded').checked ? '&uploaded=1' : '');
+			fetches.push(fetchWithTimeout(edhURL, 10000).catch(() => null));
+		} else {
+			fetches.push(Promise.resolve(null));
 		}
-		try {
-			const res = await fetch('/api/edh-results');
-			const data = await res.json();
-			if (data.enabled) {
-				document.getElementById('edhSummarySection').style.display = '';
-				renderEDHSummary(data.summary || {});
-				renderEDH(data);
-				renderTopCards(data);
-			}
-		} catch (err) {
-			console.error('Error loading EDH results:', err);
+		
+		if (tabId === 'card-analysis' || tabId === 'my-deck' || !tabId) {
+			fetches.push(fetchWithTimeout('/api/card-library', 10000).catch(() => null));
+		} else {
+			fetches.push(Promise.resolve(null));
 		}
-		try {
-			const res = await fetch('/api/card-library');
-			const data = await res.json();
-			if (data.enabled) {
-				renderCardLibrary(data.cards || {});
+		
+		if (!tabId || tabId === 'overview') {
+			fetches.push(fetchWithTimeout('/api/results', 10000).catch(() => null));
+			fetches.push(fetchWithTimeout('/api/edh-games', 10000).catch(() => null));
+		} else {
+			fetches.push(Promise.resolve(null));
+			fetches.push(Promise.resolve(null));
+		}
+		
+		const [edhRes, libRes, resultsRes, gamesRes] = await Promise.all(fetches);
+
+		if (resultsRes && resultsRes.ok) {
+			try {
+				const data = await resultsRes.json();
+				renderSummary(data);
+				renderWinRateChart(data);
+				renderTopDecksChart(data);
+			} catch (err) {
+				console.error('Error parsing results:', err);
 			}
-		} catch (err) {
-			console.error('Error loading card library:', err);
 		}
 
+		if (edhRes && edhRes.ok) {
+			try {
+				const data = await edhRes.json();
+				if (data.enabled) {
+					document.getElementById('edhSummarySection').style.display = '';
+					renderEDHSummary(data.summary || {});
+					renderEDH(data);
+					renderTopCards(data);
+				}
+			} catch (err) {
+				console.error('Error parsing EDH results:', err);
+			}
+		}
+
+		if (libRes && libRes.ok) {
+			try {
+				const data = await libRes.json();
+				if (data.enabled) {
+					renderCardLibrary(data);
+				}
+			} catch (err) {
+				console.error('Error parsing card library:', err);
+			}
+		}
+		
+		if (gamesRes && gamesRes.ok) {
+			try {
+				const data = await gamesRes.json();
+				if (data.enabled) renderEDHGames(data.games || []);
+			} catch (err) {
+				console.error('Error parsing EDH games:', err);
+			}
+		}
 	}
 
 	function renderSummary(data) {
@@ -243,7 +319,7 @@
 		}
 
 		for (let d of decks) {
-			html += '<tr title="' + d.name + ': ' + d.wins + 'W / ' + d.losses + 'L (' + (d.win_rate || 0).toFixed(1) + '% win rate)"><td>' + d.name + '</td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
+			html += '<tr title="' + d.name + ': ' + d.wins + 'W / ' + d.losses + 'L (' + (d.win_rate || 0).toFixed(1) + '% win rate)"><td><span class="deck-name-truncate">' + escapeHtml(d.name) + '</span></td><td>' + d.wins + '</td><td>' + d.losses + '</td><td><strong>' + (d.win_rate || 0).toFixed(1) + '%</strong></td></tr>';
 		}
 
 		document.getElementById('decksBody').innerHTML =
@@ -259,14 +335,8 @@
 	function filterEDHDecks() {
 		let decks = (allEDHDecksList || []).slice();
 		const search = (document.getElementById('deckSearch') ? document.getElementById('deckSearch').value : '').toLowerCase();
-		const onlyUploaded = document.getElementById('showOnlyUploaded') ? document.getElementById('showOnlyUploaded').checked : false;
 
-		// Filter to uploaded decks only
-		if (onlyUploaded) {
-			decks = decks.filter(d => isUploadedDeck(d));
-		}
-
-		// Filter by search term
+		// Filter by search term only (uploaded filter is server-side now)
 		if (search) {
 			decks = decks.filter(d =>
 				(d.deck_name || '').toLowerCase().includes(search) ||
@@ -302,8 +372,12 @@
 			let tooltip = d.deck_name + ' (' + (d.commander_name || 'No Commander') + ') — ' + d.games + ' pods, ' + d.wins + 'W / ' + d.losses + 'L';
 			let selected = selectedDeck && selectedDeck.deck_name === d.deck_name ? ' style="background:#3a3a3a;"' : '';
 			let escapedDeckName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			let isUp = isUploadedDeck(d);
+			let tag = isUp ? ' <span style="color:#4ecdc4; font-size:0.75em;">★</span>' : '';
+			let safeName = d.deck_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			let delBtn = isUp ? '<button onclick="event.stopPropagation(); deleteUploadedDeck(\'' + safeName + '\')" style="padding:2px 8px;background:#e74c3c;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:0.75em;" title="Delete uploaded deck">✕</button>' : '';
 			html += '<tr title="' + tooltip + '" onclick="selectDeck(' + "'" + escapedDeckName + "'" + ')"' + selected + ' style="cursor:pointer;">'
-				+ '<td>' + displayName + '</td>'
+				+ '<td>' + delBtn + ' <span class="deck-name-truncate">' + escapeHtml(displayName) + '</span>' + tag + '</td>'
 				+ '<td>' + (d.commander_name || '-') + '</td>'
 				+ '<td>' + d.games + '</td>'
 				+ '<td>' + d.wins + '</td>'
@@ -328,7 +402,7 @@
 		document.getElementById('edhDecksBody').innerHTML = html || '<tr><td colspan="20" style="color:#888;">No decks match the current filter. Upload a deck or uncheck "Show only my uploaded decks".</td></tr>';
 	}
 
-	function selectDeck(deckName) {
+	async function selectDeck(deckName) {
 		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
 		if (!deck) return;
 
@@ -337,17 +411,33 @@
 		document.getElementById('selectedDeckStats').style.display = '';
 		document.getElementById('clearDeckSelection').style.display = 'inline-block';
 
-		// Update stats
 		document.getElementById('selectedDeckName').textContent = getDeckDisplayName(deck.deck_name);
 		document.getElementById('selectedDeckCommander').textContent = deck.commander_name || 'Unknown';
 		document.getElementById('selectedDeckGames').textContent = deck.games;
 		document.getElementById('selectedDeckWinRate').textContent = (deck.win_rate || 0).toFixed(1) + '%';
-		document.getElementById('selectedDeckAvgMana').textContent = (deck.avg_mana_spent || 0).toFixed(1);
+		document.getElementById('selectedDeckAvgLands').textContent = (deck.avg_lands_played || 0).toFixed(1);
+		document.getElementById('selectedDeckAvgCards').textContent = (deck.avg_cards_played || 0).toFixed(1);
+		document.getElementById('selectedDeckAvgManaProduced').textContent = (deck.avg_mana_produced || 0).toFixed(1);
+		document.getElementById('selectedDeckStorm').textContent = deck.max_storm_count || 0;
+		document.getElementById('selCombatWins').textContent = deck.combat_wins || 0;
+		document.getElementById('selEffectWins').textContent = deck.effect_wins || 0;
+		document.getElementById('selDeckoutWins').textContent = deck.deckout_wins || 0;
+		document.getElementById('selAvgManaSpent').textContent = (deck.avg_mana_spent || 0).toFixed(1) + '/turn';
+		document.getElementById('selAvgCreatures').textContent = (deck.avg_creatures_cast || 0).toFixed(1) + '/pod';
+		document.getElementById('selAvgCombat').textContent = (deck.avg_combat_damage || 0).toFixed(1) + '/pod';
 
-		// Show card stats
+		if (!deck.card_stats || Object.keys(deck.card_stats || {}).length === 0) {
+			try {
+				const res = await fetch('/api/edh-results?deck=' + encodeURIComponent(deckName));
+				const data = await res.json();
+				if (data.enabled && data.decks && data.decks.length > 0) {
+					selectedDeck.card_stats = data.decks[0].card_stats || {};
+				}
+			} catch (err) {
+				console.error('Error loading deck cards:', err);
+			}
+		}
 		renderSelectedDeckCards();
-
-		// Re-render deck list to highlight selection
 		filterEDHDecks();
 	}
 
@@ -375,40 +465,97 @@
 		let cards = [];
 		
 		for (let [name, stats] of Object.entries(cardStats)) {
-			if (stats.casts >= 3) {  // minimum 3 casts
+			if (stats.casts >= 3) {
+				const meta = cardDBMeta[name] || {};
 				cards.push({
 					name: name,
 					casts: stats.casts,
 					wins: stats.wins || 0,
-					winRate: stats.casts > 0 ? ((stats.wins || 0) / stats.casts * 100) : 0
+					winRate: stats.casts > 0 ? ((stats.wins || 0) / stats.casts * 100) : 0,
+					typeLine: meta.type_line || '',
+					cmc: meta.cmc || 0,
+					cardType: classifyCardType(meta.type_line || '')
 				});
 			}
 		}
 		
-		// Sort
 		cards.sort((a, b) => {
 			let av = a[selectedDeckCardsSortKey];
 			let bv = b[selectedDeckCardsSortKey];
-			
 			if (typeof av === 'string') av = av.toLowerCase();
 			if (typeof bv === 'string') bv = bv.toLowerCase();
-			
 			if (av < bv) return selectedDeckCardsSortAsc ? -1 : 1;
 			if (av > bv) return selectedDeckCardsSortAsc ? 1 : -1;
 			return 0;
 		});
 		
-		let html = '';
-		for (let c of cards.slice(0, 100)) {
-			html += '<tr title="' + c.name + ': ' + c.casts + ' casts, ' + c.wins + ' wins">'
-				+ '<td>' + c.name + '</td>'
+		const deckWinRate = selectedDeck ? (selectedDeck.win_rate || 0) : 0;
+		let currentGroup = '';
+		let html = '<div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">';
+		html += '<span style="color:#888; font-size:0.85em;">Sort: </span>';
+		const sortOpts = [
+			{key:'name', label:'Name'}, {key:'winRate', label:'Win Rate'},
+			{key:'casts', label:'Casts'}, {key:'wins', label:'Wins'},
+			{key:'cardType', label:'Type'}, {key:'cmc', label:'CMC'}
+		];
+		for (let opt of sortOpts) {
+			const active = selectedDeckCardsSortKey === opt.key ? ' style="background:#5a6dd8;color:#fff;"' : ' style="background:#2a2a2a;color:#ccc;"';
+			html += '<button onclick="sortSelectedDeckCards(\'' + opt.key + '\')" ' + active + '>' + opt.label + (selectedDeckCardsSortKey === opt.key ? (selectedDeckCardsSortAsc ? ' ↑' : ' ↓') : '') + '</button>';
+		}
+		html += '<span style="color:#888; font-size:0.85em; margin-left:12px;">Group: </span>';
+		const groupOpts = ['', 'cardType', 'cmc'];
+		const groupLabels = { '': 'None', 'cardType': 'Type', 'cmc': 'CMC' };
+		for (let g of groupOpts) {
+			const active = myDeckGroupBy === g ? ' style="background:#e67e22;color:#fff;"' : ' style="background:#2a2a2a;color:#ccc;"';
+			html += '<button onclick="setMyDeckGroup(\'' + g + '\')" ' + active + '>' + groupLabels[g] + '</button>';
+		}
+		html += '</div>';
+		html += '<table style="width:100%;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #333;">Card</th><th style="padding:6px;border-bottom:1px solid #333;">Type</th><th style="padding:6px;border-bottom:1px solid #333;">CMC</th><th style="padding:6px;border-bottom:1px solid #333;">Casts</th><th style="padding:6px;border-bottom:1px solid #333;">Wins</th><th style="padding:6px;border-bottom:1px solid #333;">Win Rate</th></tr></thead><tbody>';
+		
+		for (let c of cards.slice(0, 200)) {
+			const winRateDiff = c.winRate - deckWinRate;
+			let wrColor;
+			if (winRateDiff > 5) wrColor = '#2ecc71';
+			else if (winRateDiff < -10) wrColor = '#e74c3c';
+			else wrColor = '#f39c12';
+			const prevGroup = currentGroup;
+			if (myDeckGroupBy === 'cardType') currentGroup = c.cardType || 'Other';
+			else if (myDeckGroupBy === 'cmc') currentGroup = 'CMC ' + Math.floor(c.cmc);
+			if (myDeckGroupBy && currentGroup !== prevGroup) {
+				html += '<tr><td colspan="6" style="padding:6px;background:#1a1f3a;color:#5a6dd8;font-weight:bold;font-size:0.9em;">' + currentGroup + '</td></tr>';
+			}
+			html += '<tr>'
+				+ '<td>' + cardLink(c.name) + '</td>'
+				+ '<td style="color:#888;">' + (c.typeLine || '-') + '</td>'
+				+ '<td>' + (c.cmc || '-') + '</td>'
 				+ '<td>' + c.casts + '</td>'
 				+ '<td>' + c.wins + '</td>'
-				+ '<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>'
+				+ '<td style="color:' + wrColor + ';"><strong>' + c.winRate.toFixed(1) + '%</strong></td>'
 				+ '</tr>';
 		}
-		
-		document.getElementById('selectedDeckCardsBody').innerHTML = html || '<tr><td colspan="4">No cards with 3+ casts</td></tr>';
+		html += '</tbody></table>';
+
+		document.getElementById('selectedDeckCardsBody').innerHTML = html || '<tr><td colspan="6">No cards with 3+ casts</td></tr>';
+	}
+	
+	function classifyCardType(typeLine) {
+		if (!typeLine) return 'Other';
+		const t = typeLine.toLowerCase();
+		if (t.includes('creature')) return 'Creature';
+		if (t.includes('instant') && !t.includes('sorcery')) return 'Instant';
+		if (t.includes('sorcery')) return 'Sorcery';
+		if (t.includes('artifact') && t.includes('creature')) return 'Artifact Creature';
+		if (t.includes('artifact')) return 'Artifact';
+		if (t.includes('enchantment') && t.includes('creature')) return 'Enchantment Creature';
+		if (t.includes('enchantment')) return 'Enchantment';
+		if (t.includes('planeswalker')) return 'Planeswalker';
+		if (t.includes('land')) return 'Land';
+		return 'Other';
+	}
+	
+	function setMyDeckGroup(group) {
+		myDeckGroupBy = group;
+		renderSelectedDeckCards();
 	}
 
 	function renderTopCardsForCommander() {
@@ -431,7 +578,8 @@
 				name,
 				casts: perf.casts,
 				wins: perf.wins,
-				winRate: (perf.wins / perf.casts) * 100
+				winRate: (perf.wins / perf.casts) * 100,
+				image_url: (globalCardLibraryMap[name.toLowerCase()] || {}).image_url || ''
 				});
 			}
 			}
@@ -454,8 +602,8 @@
 
 			html +=
 				'<tr title="' + tooltip + '">' +
-					'<td>' + c.deck + '</td>' +
-					'<td>' + img + c.name + '</td>' +
+					'<td><span class="deck-name-truncate">' + escapeHtml(c.deck) + '</span></td>' +
+					'<td>' + img + cardLink(c.name) + '</td>' +
 					'<td>' + c.casts + '</td>' +
 					'<td>' + c.wins + '</td>' +
 					'<td><strong>' + c.winRate.toFixed(1) + '%</strong></td>' +
@@ -468,15 +616,20 @@
 	}
 		let allEDHDecks = [];
 
-		function renderTopCards(data) {
+	function renderTopCards(data) {
 		allEDHDecks = data.decks || [];
 		allEDHDecksList = data.decks || [];
 		populateCommanderDropdown(allEDHDecks);
 		populateRecommendationsDeckSelect();
-		renderTopCardsForCommander();
+		if (allEDHDecks.length > 0 && allEDHDecks[0].card_stats) {
+			renderTopCardsForCommander();
 		}
+	}
 		function populateCommanderDropdown(decks) {
 			const select = document.getElementById("commanderSelect");
+			if (!select) return;
+
+			const previousValue = select.value;
 
 			const commanders = [...new Set(
 				decks.map(d => d.commander_name).filter(Boolean)
@@ -484,6 +637,11 @@
 
 			select.innerHTML = '<option value="">All Commanders</option>' +
 				commanders.map(c => '<option value="' + c + '">' + c + '</option>').join("");
+
+			// Restore previous selection if that commander still exists
+			if (previousValue && commanders.includes(previousValue)) {
+				select.value = previousValue;
+			}
 		}
 		function filterCommanders() {
 			const q = document.getElementById("commanderSearch").value.toLowerCase();
@@ -508,9 +666,26 @@
 			document.getElementById('edhSummary').innerHTML = html;
 		}
 
-		function renderCardLibrary(cards) {
+		let lastCardLibraryHash = '';
+
+		function renderCardLibrary(data) {
+			const cards = data.cards || {};
+			const newHash = Object.keys(cards).sort().join('|') + '|' +
+				Object.values(cards).map(p => (p.casts || 0) + ':' + (p.wins || 0)).join('|');
+			if (newHash === lastCardLibraryHash && currentCardLibraryRows.length > 0) {
+				return;
+			}
+			lastCardLibraryHash = newHash;
 			currentCardLibraryRows = [];
 			globalCardLibraryMap = {};
+			cardDBMeta = {};
+			const rawMeta = data.card_db || {};
+			for (let name of Object.keys(rawMeta)) {
+				const m = rawMeta[name];
+				const lib = globalCardLibraryMap[name.toLowerCase()];
+				if (lib && lib.image_url) m.image_url = lib.image_url;
+				cardDBMeta[name.toLowerCase()] = m;
+			}
 
 			for (let [name, perf] of Object.entries(cards)) {
 				const winRate = perf.casts > 0 ? (perf.wins / perf.casts * 100) : 0;
@@ -643,27 +818,156 @@
 			document.getElementById('edhGamesBody').innerHTML = html || '<tr><td colspan="9">No recent pods</td></tr>';
 		}
 
+		let currentGameLog = null;
+		let gameLogSummaries = [];
+		let lastGameLogHash = '';
+
+		async function loadGameLogList() {
+			try {
+				const res = await fetch('/api/game-log-list');
+				const data = await res.json();
+				if (!data.enabled) return;
+				const sums = data.games || [];
+				const newHash = sums.map(s => s.id + ':' + (s.winner||'') + ':' + s.event_count).join('|');
+				if (newHash === lastGameLogHash) return;
+				lastGameLogHash = newHash;
+				gameLogSummaries = sums;
+				populateGameLogSelector();
+			} catch (err) {
+				console.error('Error loading game log list:', err);
+			}
+		}
+
+		function populateGameLogSelector() {
+			const sel = document.getElementById('gameLogSelector');
+			if (!sel) return;
+			const prevVal = sel.value;
+			sel.innerHTML = '<option value="">Select a game...</option>';
+			for (let i = gameLogSummaries.length - 1; i >= 0; i--) {
+				const s = gameLogSummaries[i];
+				const players = (s.players || []).join(', ');
+				sel.innerHTML += '<option value="' + s.id + '">#' + (i + 1) + ' — ' + (s.winner || 'Draw') + ' — ' + s.turns + ' turns — ' + players + '</option>';
+			}
+			sel.value = prevVal;
+		}
+
+		async function loadGameLog() {
+			const sel = document.getElementById('gameLogSelector');
+			if (!sel || !sel.value) {
+				document.getElementById('gameLogSummary').style.display = 'none';
+				document.getElementById('gameLogContent').innerHTML = '<div class="loading">Select a game to view its event log</div>';
+				return;
+			}
+			const id = parseInt(sel.value);
+			document.getElementById('gameLogContent').innerHTML = '<div class="loading">Loading...</div>';
+			try {
+				const res = await fetch('/api/game-log?id=' + id);
+				const data = await res.json();
+				if (!data.enabled || !data.game) {
+					document.getElementById('gameLogContent').innerHTML = '<div class="error">Game not found</div>';
+					return;
+				}
+				currentGameLog = data.game;
+				const g = currentGameLog;
+				document.getElementById('gameLogSummary').style.display = '';
+				document.getElementById('glWinner').textContent = g.Winner || 'Draw';
+				document.getElementById('glTurns').textContent = g.Turns;
+				document.getElementById('glPlayers').textContent = (g.Players || []).map(p => p.DeckName).join(', ');
+				document.getElementById('glMana').textContent = g.TotalManaSpent || 0;
+				document.getElementById('glCards').textContent = g.TotalCardsPlayed || 0;
+				document.getElementById('glCombat').textContent = g.TotalCombatDamage || 0;
+				renderGameLogEvents();
+			} catch (err) {
+				console.error('Error loading game log:', err);
+				document.getElementById('gameLogContent').innerHTML = '<div class="error">Error loading game log</div>';
+			}
+		}
+
+		function renderGameLogEvents() {
+			if (!currentGameLog) return;
+			const events = currentGameLog.Events || [];
+			const filter = document.getElementById('gameLogEventFilter').value;
+			const showAll = document.getElementById('gameLogShowAllEvents').checked;
+
+			let filtered = events;
+			if (filter) {
+				filtered = events.filter(e => e.kind === filter);
+			}
+			if (!showAll) {
+				const importantKinds = ['game_start', 'turn_start', 'commander_cast', 'fetch_activated', 'spell_countered', 'attack_declared', 'combat_resolved', 'player_eliminated', 'game_end'];
+				filtered = filtered.filter(e => importantKinds.includes(e.kind));
+			}
+
+			const kindColors = {
+				'game_start': '#8e44ad',
+				'turn_start': '#3498db',
+				'land_play': '#2ecc71',
+				'creature_summon': '#27ae60',
+				'permanent_cast': '#f39c12',
+				'commander_cast': '#e67e22',
+				'fetch_activated': '#1abc9c',
+				'spell_countered': '#e74c3c',
+				'attack_declared': '#e74c3c',
+				'combat_resolved': '#c0392b',
+				'player_eliminated': '#e74c3c',
+				'game_end': '#9b59b6'
+			};
+
+			let html = '<table style="width:100%;border-collapse:collapse;font-size:0.9em;">';
+			html += '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:50px;">Turn</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:80px;">Phase</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:140px;">Event</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:120px;">Actor</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;width:120px;">Target</th><th style="text-align:left;padding:6px;border-bottom:1px solid #333;">Detail</th></tr></thead><tbody>';
+
+			for (let e of filtered) {
+				const color = kindColors[e.kind] || '#888';
+				const kindLabel = e.kind.replace(/_/g, ' ');
+				html += '<tr style="border-bottom:1px solid #1a1f3a;">';
+				html += '<td style="padding:4px 6px;">' + e.turn + '</td>';
+				html += '<td style="padding:4px 6px;color:#888;">' + (e.phase || '-') + '</td>';
+				html += '<td style="padding:4px 6px;color:' + color + ';font-weight:bold;">' + kindLabel + '</td>';
+				html += '<td style="padding:4px 6px;">' + (e.actor || '-') + '</td>';
+				html += '<td style="padding:4px 6px;">' + (e.target || '-') + '</td>';
+				html += '<td style="padding:4px 6px;color:#aaa;max-width:300px;word-break:break-word;">' + (e.detail || '') + '</td>';
+				html += '</tr>';
+			}
+
+			html += '</tbody></table>';
+
+			if (filtered.length === 0) {
+				html = '<div style="color:#888; padding:20px; text-align:center;">No events match the current filter</div>';
+			} else {
+				html += '<div style="color:#888; padding:8px; font-size:0.85em;">Showing ' + filtered.length + ' of ' + events.length + ' events</div>';
+			}
+
+			document.getElementById('gameLogContent').innerHTML = html;
+		}
+
 	// Chart.js instances
 	let winRateChart = null;
 	let topDecksChart = null;
 
 	function renderWinRateChart(data) {
-		const decks = data.decks || [];
-		
-		// Group decks by win rate ranges
-		const ranges = {
+		let ranges = {
 			'0-25%': 0,
 			'25-50%': 0,
 			'50-75%': 0,
 			'75-100%': 0
 		};
-		
-		for (let d of decks) {
-			const wr = d.win_rate || 0;
-			if (wr < 25) ranges['0-25%']++;
-			else if (wr < 50) ranges['25-50%']++;
-			else if (wr < 75) ranges['50-75%']++;
-			else ranges['75-100%']++;
+
+		// Use server-computed histogram when available (avoids iterating
+		// thousands of deck entries shipped only for this chart).
+		if (data.win_rate_buckets) {
+			for (let b of data.win_rate_buckets) {
+				ranges[b.label] = b.count;
+			}
+		} else {
+			// Fallback for older server versions.
+			const decks = data.decks || [];
+			for (let d of decks) {
+				const wr = d.win_rate || 0;
+				if (wr < 25) ranges['0-25%']++;
+				else if (wr < 50) ranges['25-50%']++;
+				else if (wr < 75) ranges['50-75%']++;
+				else ranges['75-100%']++;
+			}
 		}
 		
 		const ctx = document.getElementById('winRateChart');
@@ -707,17 +1011,15 @@
 	function renderTopDecksChart(data) {
 		const decks = (data.decks || []).slice();
 		
-		// Sort by win rate and take top 8
 		decks.sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
 		const topDecks = decks.slice(0, 8);
 		
-		const labels = topDecks.map(d => d.name.replace(/\.deck$/, '').substring(0, 15));
+		const labels = topDecks.map(d => d.name.replace(/\.deck$/, '').substring(0, 18));
 		const winRates = topDecks.map(d => (d.win_rate || 0).toFixed(1));
 		
 		const ctx = document.getElementById('topDecksChart');
 		if (!ctx) return;
 		
-		// Destroy existing chart if it exists
 		if (topDecksChart) topDecksChart.destroy();
 		
 		topDecksChart = new Chart(ctx, {
@@ -742,34 +1044,54 @@
 				indexAxis: 'y',
 				responsive: true,
 				maintainAspectRatio: false,
+				onClick: function(evt, elements) {
+					if (elements.length > 0) {
+						const idx = elements[0].index;
+						const deckName = topDecks[idx].name;
+						populateMyDeckFromResults(deckName);
+					}
+				},
 				plugins: {
-					legend: {
-						labels: {
-							color: '#ccc'
+					legend: { labels: { color: '#ccc' } },
+					tooltip: {
+						callbacks: {
+							label: function(ctx) { return 'WR ' + ctx.raw + '% — click to open in My Deck'; }
 						}
 					}
 				},
 				scales: {
-					x: {
-						max: 100,
-						ticks: {
-							color: '#888'
-						},
-						grid: {
-							color: '#333'
-						}
-					},
-					y: {
-						ticks: {
-							color: '#888'
-						},
-						grid: {
-							display: false
-						}
-					}
+					x: { max: 100, ticks: { color: '#888' }, grid: { color: '#333' } },
+					y: { ticks: { color: '#888' }, grid: { display: false } }
 				}
 			}
 		});
+	}
+	
+	async function populateMyDeckFromResults(deckName) {
+		const deck = allEDHDecksList.find(d => d.deck_name === deckName);
+		if (!deck) return;
+		
+		setActiveDeck(deckName);
+		let cardList = [];
+		if (deck.card_stats && Object.keys(deck.card_stats).length > 0) {
+			cardList = Object.keys(deck.card_stats).map(name => '1 ' + name);
+		} else {
+			try {
+				const res = await fetch('/api/edh-results?deck=' + encodeURIComponent(deckName));
+				const data = await res.json();
+				if (data.enabled && data.decks && data.decks.length > 0 && data.decks[0].card_stats) {
+					cardList = Object.keys(data.decks[0].card_stats).map(name => '1 ' + name);
+				}
+			} catch (err) { console.error('Error loading deck cards:', err); }
+		}
+		
+		const nameInput = document.getElementById('deckName');
+		const listInput = document.getElementById('deckList');
+		if (nameInput) nameInput.value = getDeckDisplayName(deckName);
+		if (listInput) listInput.value = cardList.join('\n');
+		addCardToDeck();
+		saveDeckEditorState();
+		showTab('my-deck');
 	}
 
 	// Game control functions
@@ -789,22 +1111,85 @@
 			const data = await res.json();
 			
 			if (res.ok) {
-				// Update status immediately after starting
-				await updateGameStatus();
+				btn.textContent = '🔄 Running...';
+				pollWhileRunning();
 			} else {
 				btn.textContent = '▶ Run Games';
 				btn.disabled = false;
 				const errorMsg = data.error || 'Unknown error';
 				alert('Error starting games: ' + errorMsg);
-				console.error('Server error:', data);
 			}
 		} catch (err) {
 			console.error('Error running games:', err);
 			btn.textContent = '▶ Run Games';
 			btn.disabled = false;
-			alert('Network error: ' + err.message);
 		}
 	}
+	
+	async function pollWhileRunning() {
+		const res = await fetch('/api/game-status');
+		const data = await res.json();
+		const indicator = document.getElementById('gameStatusIndicator');
+		const btn = document.getElementById('runGamesBtn');
+		if (data.running) {
+			indicator.textContent = '🔄 Games running...';
+			indicator.style.color = '#4ecdc4';
+			setTimeout(pollWhileRunning, 2000);
+		} else {
+			indicator.textContent = '✓ Ready';
+			indicator.style.color = '#888';
+			btn.disabled = false;
+			btn.textContent = '▶ Run Games';
+			loadResults();
+			loadEDHGames();
+		}
+	}
+
+	async function resetCardLibrary() {
+		const status = document.getElementById('resetStatus');
+		status.textContent = 'Resetting...';
+		status.style.color = '#e74c3c';
+		try {
+			const res = await fetch('/api/reset-card-library', { method: 'POST' });
+			const data = await res.json();
+			if (res.ok) {
+				status.textContent = '✓ Card library reset';
+				status.style.color = '#2ecc71';
+				loadResults();
+			} else {
+				status.textContent = '✗ ' + (data.error || 'Error');
+				status.style.color = '#e74c3c';
+			}
+		} catch (err) {
+			status.textContent = '✗ Request failed';
+			status.style.color = '#e74c3c';
+		}
+		setTimeout(() => { status.textContent = ''; }, 5000);
+	}
+
+	async function resetGameLogs() {
+		const status = document.getElementById('resetStatus');
+		status.textContent = 'Resetting...';
+		status.style.color = '#e67e22';
+		try {
+			const res = await fetch('/api/reset-game-logs', { method: 'POST' });
+			const data = await res.json();
+			if (res.ok) {
+				status.textContent = '✓ Game logs cleared';
+				status.style.color = '#2ecc71';
+				loadResults();
+			} else {
+				status.textContent = '✗ ' + (data.error || 'Error');
+				status.style.color = '#e74c3c';
+			}
+		} catch (err) {
+			status.textContent = '✗ Request failed';
+			status.style.color = '#e74c3c';
+		}
+		setTimeout(() => { status.textContent = ''; }, 5000);
+	}
+
+	let previousRunning = false;
 
 	async function updateGameStatus() {
 		try {
@@ -818,12 +1203,21 @@
 				indicator.style.color = '#4ecdc4';
 				btn.disabled = true;
 				btn.textContent = '🔄 Running...';
+				if (!previousRunning) pollWhileRunning();
 			} else {
 				indicator.textContent = '✓ Ready';
 				indicator.style.color = '#888';
 				btn.disabled = false;
 				btn.textContent = '▶ Run Games';
 			}
+
+			if (previousRunning && !data.running) {
+				console.log('[Polling] Run completed – refreshing results');
+				loadResults();
+				loadEDHGames();
+				loadMatchupMatrix();
+			}
+			previousRunning = data.running;
 		} catch (err) {
 			console.error('Error checking game status:', err);
 		}
@@ -871,6 +1265,7 @@
 				// Track this deck as user-uploaded (normalized name without extension)
 				uploadedDeckNames.add(normalizeUploadedName(file.name));
 				saveUploadedDecks(); // Persist to localStorage
+				renderUploadedDecks();
 
 				status.textContent = '✓ ' + file.name + ' uploaded';
 				status.style.color = '#4ecdc4';
@@ -932,6 +1327,7 @@
 			if (res.ok) {
 				uploadedDeckNames.add(normalizeUploadedName(file.name));
 				saveUploadedDecks();
+				renderUploadedDecks();
 				status.textContent = '✓ ' + file.name + ' uploaded';
 				status.style.color = '#4ecdc4';
 				fileInput.value = '';
@@ -973,6 +1369,24 @@
 			const recs = data.recommendations;
 			let html = '';
 
+			// Build a set of cards already known to be in this deck so we don't suggest them again
+			const excludedCards = new Set();
+			if (selectedDeck && selectedDeck.card_stats) {
+				for (let name of Object.keys(selectedDeck.card_stats)) {
+					excludedCards.add(name.toLowerCase());
+				}
+			}
+			if (recs.remove_candidates) {
+				for (let c of recs.remove_candidates) {
+					excludedCards.add(c.card_name.toLowerCase());
+				}
+			}
+			for (let card of currentDeckList) {
+				if (card && card.name) {
+					excludedCards.add(card.name.toLowerCase());
+				}
+			}
+
 			// Header with deck info and quick actions
 			const deck = allEDHDecksList.find(d => d.deck_name === deckName);
 			if (deck) {
@@ -1005,7 +1419,11 @@
 				html += '<h4 style="margin-top:0; color:#2ecc71;">➕ Cards to Test</h4>';
 				html += '<p style="color:#888; margin:10px 0;">These cards perform well globally and might improve this deck:</p>';
 				html += '<div>';
-				for (let c of recs.add_candidates.slice(0, 10)) {
+				let shown = 0;
+				for (let c of recs.add_candidates) {
+					if (excludedCards.has(c.card_name.toLowerCase())) continue;
+					if (shown >= 10) break;
+					shown++;
 					const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 					html += '<div style="margin-bottom:8px; padding:8px; background:#0a0e27; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
 					html += '<div><strong>' + c.card_name + '</strong> ';
@@ -1036,7 +1454,8 @@
 		return _originalLoadRecommendations();
 	}
 
-	// Populate recommendations deck select - show all available EDH decks
+	// Populate recommendations deck select - show all available EDH decks,
+	// deduplicated by display name. Uploaded decks are highlighted with a star.
 	async function populateRecommendationsDeckSelect() {
 		const select = document.getElementById('recDeckSelect');
 		if (!select) return;
@@ -1058,17 +1477,33 @@
 			return; // Wait for data to load
 		}
 
-		// Filter to only uploaded decks
-		let uploadedDecks = allEDHDecksList.filter(d => isUploadedDeck(d)
-		).sort((a, b) =>
+		// Deduplicate by display name, preferring uploaded decks when a name collides.
+		const seen = new Map();
+		for (let d of allEDHDecksList) {
+			const displayName = getDeckDisplayName(d.deck_name);
+			if (seen.has(displayName)) {
+				if (isUploadedDeck(d)) {
+					seen.set(displayName, d);
+				}
+				continue;
+			}
+			seen.set(displayName, d);
+		}
+
+		let allDecks = Array.from(seen.values()).sort((a, b) =>
 			(getDeckDisplayName(a.deck_name) || '').localeCompare(getDeckDisplayName(b.deck_name) || '')
 		);
 
-		// Add uploaded decks to dropdown (display by filename only)
-		for (let d of uploadedDecks) {
+		// Add all decks to dropdown (display by filename only)
+		for (let d of allDecks) {
 			const opt = document.createElement('option');
 			opt.value = d.deck_name;
-			opt.textContent = getDeckDisplayName(d.deck_name);
+			const isUploaded = isUploadedDeck(d);
+			opt.textContent = (isUploaded ? '★ ' : '') + getDeckDisplayName(d.deck_name);
+			if (isUploaded) {
+				opt.style.color = '#4ecdc4';
+				opt.style.fontWeight = 'bold';
+			}
 			select.appendChild(opt);
 		}
 
@@ -1076,7 +1511,7 @@
 		// otherwise fall back to the active deck
 		if (previousValue && Array.from(select.options).some(o => o.value === previousValue)) {
 			select.value = previousValue;
-		} else if (activeDeckName) {
+		} else if (activeDeckName && Array.from(select.options).some(o => o.value === activeDeckName)) {
 			select.value = activeDeckName;
 		}
 
@@ -1125,7 +1560,62 @@
 		document.getElementById('deckUniqueCount').textContent = uniqueCards.size;
 		document.getElementById('deckLandCount').textContent = landCount;
 		document.getElementById('deckAvgMana').textContent = '~' + (totalCards > 0 ? (totalCards / uniqueCards.size).toFixed(1) : '0');
+
+		let winRateStr = '-';
+		const deckNameInput = document.getElementById('deckName').value.trim();
+		const lookupName = activeDeckName || deckNameInput;
+		if (lookupName) {
+			const deck = allEDHDecksList.find(d =>
+				d.deck_name === lookupName ||
+				getDeckDisplayName(d.deck_name) === lookupName ||
+				getDeckDisplayName(d.deck_name) === deckNameInput
+			);
+			if (deck && deck.win_rate !== undefined) {
+				winRateStr = (deck.win_rate || 0).toFixed(1) + '%';
+			}
+		}
+		const wrEl = document.getElementById('myDeckWinRate');
+		if (wrEl) wrEl.textContent = winRateStr;
+
 		updateDeckEditorStats();
+		loadInlineRecommendations(lookupName);
+	}
+	
+	async function loadInlineRecommendations(deckName) {
+		const container = document.getElementById('inlineRecContent');
+		if (!container || !deckName) return;
+		try {
+			const res = await fetch('/api/card-recommendations?deck=' + encodeURIComponent(deckName));
+			const data = await res.json();
+			if (!data.enabled || !data.recommendations) {
+				container.innerHTML = '<div style="color:#666;">No recommendation data available</div>';
+				return;
+			}
+			const recs = data.recommendations;
+			let html = '';
+			if (recs.remove_candidates && recs.remove_candidates.length > 0) {
+				html += '<div style="margin-bottom:6px;"><strong style="color:#e74c3c;">🗑️ Cut:</strong></div>';
+				for (let c of recs.remove_candidates.slice(0, 5)) {
+				const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+				html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#e74c3c;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' casts)</div>';
+			}
+		}
+		if (recs.add_candidates && recs.add_candidates.length > 0) {
+			html += '<div style="margin-top:6px;"><strong style="color:#2ecc71;">✅ Add:</strong></div>';
+			for (let c of recs.add_candidates) {
+				// Check if already in deck
+				if (deckCards.has(c.card_name.toLowerCase())) continue;
+				if (shown >= 5) break;
+				shown++;
+				const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+					html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#2ecc71;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' global)';
+					html += ' <button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:1px 6px;background:#4ecdc4;color:#000;border:none;border-radius:2px;cursor:pointer;font-size:0.75em;">+Add</button></div>';
+				}
+			}
+			container.innerHTML = html || '<div style="color:#666;">No recommendations — run more games first</div>';
+		} catch (err) {
+			container.innerHTML = '<div style="color:#666;">Loading...</div>';
+		}
 	}
 
 	async function loadImplementationStatus() {
@@ -1146,14 +1636,8 @@
 		return !unimplementedCards.has(cardName.toLowerCase());
 	}
 
-	function escapeHtml(value) {
-		return String(value)
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#39;');
-	}
+	let myDeckEditorSortKey = 'winRate';
+	let myDeckEditorSortAsc = false;
 
 	function updateDeckEditorStats() {
 		const container = document.getElementById('deckEditorCardStats');
@@ -1161,22 +1645,63 @@
 			if (container) container.innerHTML = '';
 			return;
 		}
-		let html = '<div style="font-size:0.9em; color:#888; margin-bottom:6px;">Card performance from global library:</div>';
-		let found = 0;
+		let items = [];
 		for (let card of currentDeckList) {
 			const lib = globalCardLibraryMap[card.name.toLowerCase()];
-			const safeCardName = escapeHtml(card.name);
-			const implWarning = isCardImplemented(card.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
-			if (lib) {
+			const meta = cardDBMeta[card.name.toLowerCase()] || {};
+			const wr = lib ? lib.winRate : 0;
+			const casts = lib ? lib.casts : 0;
+			items.push({
+				name: card.name,
+				count: card.count,
+				winRate: wr,
+				casts: casts,
+				hasData: !!lib,
+				typeLine: meta.type_line || '',
+				cmc: meta.cmc || 0,
+				cardType: classifyCardType(meta.type_line || '')
+			});
+		}
+		items.sort((a, b) => {
+			let av = a[myDeckEditorSortKey];
+			let bv = b[myDeckEditorSortKey];
+			if (typeof av === 'string') av = av.toLowerCase();
+			if (typeof bv === 'string') bv = bv.toLowerCase();
+			if (typeof av === 'number' && typeof bv === 'number') return myDeckEditorSortAsc ? av - bv : bv - av;
+			if (av < bv) return myDeckEditorSortAsc ? -1 : 1;
+			if (av > bv) return myDeckEditorSortAsc ? 1 : -1;
+			return 0;
+		});
+		let html = '<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">';
+		html += '<span style="color:#888; font-size:0.85em;">Sort:</span>';
+		const sortOpts = [
+			{key:'name', label:'Name'}, {key:'winRate', label:'Win Rate'},
+			{key:'casts', label:'Casts'}, {key:'cardType', label:'Type'}, {key:'cmc', label:'CMC'}
+		];
+		for (let opt of sortOpts) {
+			const active = myDeckEditorSortKey === opt.key ? ' style="background:#5a6dd8;color:#fff;"' : ' style="background:#2a2a2a;color:#ccc;"';
+			html += '<button onclick="sortMyDeckEditor(\'' + opt.key + '\')" ' + active + '>' + opt.label + (myDeckEditorSortKey === opt.key ? (myDeckEditorSortAsc ? ' ↑' : ' ↓') : '') + '</button>';
+		}
+		html += '</div>';
+		let found = 0;
+		for (let item of items) {
+			const implWarning = isCardImplemented(item.name) ? '' : ' <span style="color:#e74c3c; font-weight:bold;" title="This card is not fully implemented in the simulator">⚠️</span>';
+			const typeInfo = item.typeLine ? ' <span style="color:#888;font-size:0.8em;">(' + item.typeLine + ')</span>' : '';
+			if (item.hasData) {
 				found++;
-				const wrColor = lib.winRate >= 55 ? '#2ecc71' : lib.winRate >= 45 ? '#f39c12' : '#e74c3c';
+				let deckWinRate = 50;
+				if (activeDeckName) {
+					const deck = allEDHDecksList.find(d => d.deck_name === activeDeckName);
+					if (deck) deckWinRate = deck.win_rate || 50;
+				}
+				const wrColor = item.winRate >= deckWinRate + 5 ? '#2ecc71' : item.winRate >= deckWinRate - 10 ? '#f39c12' : '#e74c3c';
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
-				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
-				html += '<span style="color:' + wrColor + ';">' + lib.winRate.toFixed(1) + '% WR (' + lib.casts + ' casts)</span>';
+				html += '<span>' + item.count + 'x ' + cardLink(item.name) + implWarning + typeInfo + '</span>';
+				html += '<span style="color:' + wrColor + ';">' + item.winRate.toFixed(1) + '% WR (' + item.casts + ' casts) CMC ' + item.cmc + '</span>';
 				html += '</div>';
 			} else {
 				html += '<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1a1f3a;">';
-				html += '<span>' + card.count + 'x ' + safeCardName + implWarning + '</span>';
+				html += '<span>' + item.count + 'x ' + cardLink(item.name) + implWarning + typeInfo + '</span>';
 				html += '<span style="color:#666;">no data</span>';
 				html += '</div>';
 			}
@@ -1185,6 +1710,16 @@
 			html += '<div style="color:#666; font-size:0.9em;">No performance data for these cards yet. Run more games or search in Card Analysis.</div>';
 		}
 		container.innerHTML = html;
+	}
+	
+	function sortMyDeckEditor(key) {
+		if (myDeckEditorSortKey === key) {
+			myDeckEditorSortAsc = !myDeckEditorSortAsc;
+		} else {
+			myDeckEditorSortKey = key;
+			myDeckEditorSortAsc = false;
+		}
+		updateDeckEditorStats();
 	}
 
 	function saveDeckEditorState() {
@@ -1233,6 +1768,7 @@
 			if (res.ok) {
 				uploadedDeckNames.add(normalizeUploadedName(filename));
 				saveUploadedDecks();
+				renderUploadedDecks();
 				saveDeckEditorState();
 				alert('✓ ' + filename + ' uploaded. Go to Overview to run games with it.');
 				populateRecommendationsDeckSelect();
@@ -1255,6 +1791,68 @@
 			.replace(/"/g, '&quot;')
 			.replace(/'/g, '&#39;');
 	}
+
+	function showCardModal(cardName) {
+		const meta = cardDBMeta[cardName.toLowerCase()] || {};
+		const lib = globalCardLibraryMap[cardName.toLowerCase()];
+		const deckWR = selectedDeck ? (selectedDeck.win_rate || 50) : 50;
+		const imgUrl = lib ? lib.image_url : '';
+		
+		let html = '';
+		if (imgUrl) {
+			html += '<div style="text-align:center; margin-bottom:12px;"><img src="' + imgUrl + '" style="max-width:100%; max-height:300px; border-radius:8px;"></div>';
+		}
+		html += '<h3 style="margin:0 0 12px; color:#fff;">' + escapeHtml(cardName) + '</h3>';
+		if (meta.type_line) {
+			html += '<div style="color:#888; margin-bottom:8px;">' + escapeHtml(meta.type_line);
+			if (meta.mana_cost) html += ' — ' + escapeHtml(meta.mana_cost);
+			html += '</div>';
+		}
+		if (meta.cmc !== undefined && meta.cmc > 0) {
+			html += '<div style="margin-bottom:4px;">CMC: <strong>' + meta.cmc + '</strong></div>';
+		}
+		if (meta.colors && meta.colors.length > 0) {
+			html += '<div style="margin-bottom:4px;">Colors: <strong>' + meta.colors.join(', ') + '</strong></div>';
+		}
+		html += '<hr style="border-color:#333; margin:10px 0;">';
+		if (lib) {
+			const wrColor = lib.winRate >= deckWR + 5 ? '#2ecc71' : lib.winRate >= deckWR - 10 ? '#f39c12' : '#e74c3c';
+			html += '<div style="margin-bottom:4px;">Global Casts: <strong>' + lib.casts + '</strong></div>';
+			html += '<div style="margin-bottom:4px;">Global Wins: <strong>' + lib.wins + '</strong></div>';
+			html += '<div style="margin-bottom:4px; color:' + wrColor + ';">Win Rate: <strong>' + lib.winRate.toFixed(1) + '%</strong></div>';
+			if (lib.winRate < deckWR) {
+				html += '<div style="color:#e74c3c; font-size:0.85em;">' + (deckWR - lib.winRate).toFixed(1) + '% below deck avg</div>';
+			} else if (lib.winRate > deckWR) {
+				html += '<div style="color:#2ecc71; font-size:0.85em;">' + (lib.winRate - deckWR).toFixed(1) + '% above deck avg</div>';
+			}
+		} else {
+			html += '<div style="color:#666;">No performance data yet</div>';
+		}
+		html += '<hr style="border-color:#333; margin:10px 0;">';
+		html += '<button onclick="addCardToMyDeck(\'' + cardName.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\')" style="padding:6px 14px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">+ Add to My Deck</button>';
+		
+		document.getElementById('cardModalContent').innerHTML = html;
+		document.getElementById('cardModal').style.display = 'flex';
+	}
+
+	function closeCardModal() {
+		document.getElementById('cardModal').style.display = 'none';
+	}
+	
+	function cardLink(name) {
+		const escaped = escapeHtml(name);
+		const safe = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+		return '<a href="javascript:void(0)" onclick="showCardModal(\'' + safe + '\')" style="color:#4ecdc4; cursor:pointer; text-decoration:none;" title="Click for details">' + escaped + '</a>';
+	}
+
+	document.addEventListener('DOMContentLoaded', function() {
+		const modal = document.getElementById('cardModal');
+		if (modal) {
+			modal.addEventListener('click', function(e) {
+				if (e.target === modal) closeCardModal();
+			});
+		}
+	});
 
 	async function performCardSearch() {
 		const query = document.getElementById('cardSearchInput').value.trim();
@@ -1324,27 +1922,53 @@
 
 	// Matchup Matrix
 	let matchupMatrixData = [];
+	let lastMatchupHash = '';
 
 	async function loadMatchupMatrix() {
 		const bodyEl = document.getElementById('matchupBody');
 		if (!bodyEl) return;
 
-		bodyEl.innerHTML = '<tr><td colspan="7" class="loading">Loading...</td></tr>';
+		// Only show loading spinner on first load; subsequent refreshes keep existing DOM
+		const hadData = matchupMatrixData.length > 0;
+		if (!hadData) {
+			bodyEl.innerHTML = '<tr><td colspan="7" class="loading">Loading...</td></tr>';
+		}
 
 		try {
 			const res = await fetch('/api/matchup-matrix');
 			const data = await res.json();
 
 			if (!data.enabled) {
-				bodyEl.innerHTML = '<tr><td colspan="7" class="error">Matchup data not available</td></tr>';
+				if (!hadData) {
+					bodyEl.innerHTML = '<tr><td colspan="7" class="error">Matchup data not available</td></tr>';
+				}
 				return;
 			}
 
-			matchupMatrixData = data.decks || [];
+			const newDecks = data.decks || [];
+			const newHash = newDecks.map(d =>
+				(d.name || '') + ':' + (d.games || 0) + ':' + ((d.win_rate || 0).toFixed(2))
+			).join('|');
+			if (newHash === lastMatchupHash && newDecks.length > 0) {
+				return; // Data unchanged, preserve DOM and scroll state
+			}
+			lastMatchupHash = newHash;
+			matchupMatrixData = newDecks;
+
+			// Preserve scroll position across re-render
+			const scrollParent = bodyEl.closest('.table') || bodyEl.parentElement;
+			const scrollTop = scrollParent ? scrollParent.scrollTop : 0;
+
 			renderMatchupMatrix(matchupMatrixData);
+			// Re-apply any active user filter so it isn't lost on refresh
+			filterMatchupMatrix();
+
+			if (scrollParent) scrollParent.scrollTop = scrollTop;
 		} catch (err) {
 			console.error('Error loading matchups:', err);
-			bodyEl.innerHTML = '<tr><td colspan="7" class="error">Error loading matchup data</td></tr>';
+			if (!hadData) {
+				bodyEl.innerHTML = '<tr><td colspan="7" class="error">Error loading matchup data</td></tr>';
+			}
 		}
 	}
 
@@ -1357,7 +1981,7 @@
 			const wrColor = d.win_rate >= 55 ? '#2ecc71' : d.win_rate >= 45 ? '#f39c12' : '#e74c3c';
 			const deckNameAttr = JSON.stringify(String(d.name || '')).slice(1, -1).replace(/"/g, '&quot;');
 			html += '<tr>';
-			html += '<td>' + getDeckDisplayName(d.name) + '</td>';
+			html += '<td><span class="deck-name-truncate">' + escapeHtml(getDeckDisplayName(d.name)) + '</span></td>';
 			html += '<td>' + d.commander + '</td>';
 			html += '<td style="color:' + wrColor + '; font-weight:bold;">' + (d.win_rate || 0).toFixed(1) + '%</td>';
 			html += '<td>' + d.games + '</td>';
@@ -1368,12 +1992,13 @@
 		}
 
 		bodyEl.innerHTML = html || '<tr><td colspan="7">No matchup data available</td></tr>';
-		bodyEl.querySelectorAll('.matchup-recs-btn').forEach(btn => {
-			btn.addEventListener('click', () => {
-				selectDeck(btn.dataset.deck || '');
-				goToRecommendations();
-			});
-		});
+		// Use event delegation via onclick to avoid accumulating duplicate listeners
+		bodyEl.onclick = function(e) {
+			const btn = e.target.closest('.matchup-recs-btn');
+			if (!btn) return;
+			selectDeck(btn.dataset.deck || '');
+			goToRecommendations();
+		};
 	}
 
 	function filterMatchupMatrix() {
@@ -1413,9 +2038,16 @@
 		}
 	}
 
+	let lastSnapshotsHash = '';
+	let selectedSnapshotName = '';
+
 	async function loadSnapshotsList() {
 		const listEl = document.getElementById('snapshotsList');
 		if (!listEl) return;
+
+		// Preserve current selection before potential rebuild
+		const prevSelected = listEl.querySelector('tr.selected');
+		if (prevSelected) selectedSnapshotName = prevSelected.dataset.name || '';
 
 		try {
 			const res = await fetch('/api/snapshots');
@@ -1427,6 +2059,11 @@
 			}
 
 			const snapshots = data.snapshots || [];
+			const newHash = snapshots.map(s => s.name + ':' + s.timestamp).join('|');
+			if (newHash === lastSnapshotsHash) {
+				return; // Data unchanged, preserve DOM and selection
+			}
+			lastSnapshotsHash = newHash;
 			let html = '';
 
 			if (snapshots.length === 0) {
@@ -1435,8 +2072,9 @@
 				html = '<table class="table" style="font-size:0.95em;"><thead><tr><th>Name</th><th>Date</th><th>Decks</th><th>Avg WR</th></tr></thead><tbody>';
 				for (let snap of snapshots) {
 					const date = new Date(snap.timestamp).toLocaleString();
-					html += '<tr>';
-					html += '<td>' + snap.name + '</td>';
+					const selClass = (snap.name === selectedSnapshotName) ? ' class="selected"' : '';
+					html += '<tr data-name="' + escapeHtml(snap.name) + '"' + selClass + '>';
+					html += '<td>' + escapeHtml(snap.name) + '</td>';
 					html += '<td style="color:#888;">' + date + '</td>';
 					html += '<td>' + snap.deck_count + '</td>';
 					html += '<td><strong>' + (snap.average_wr || 0).toFixed(1) + '%</strong></td>';
@@ -1594,21 +2232,81 @@
 
 	// Initialize - load persistent state first
 	loadUploadedDecks();
+	renderUploadedDecks();
 	loadDeckEditorState();
 	loadImplementationStatus();
 	setupRecDeckSelectHandler();
 
-	// Load snapshots on page load
-	setInterval(loadSnapshotsList, 10000);
-	loadSnapshotsList();
+	// ===== Polling =====
+	//
+	// Each endpoint gets its own interval so a slow endpoint doesn't
+	// block faster, more important polls.  Start times are staggered
+	// so not all requests fire in the same event-loop tick.
 
-	setInterval(loadResults, 5000);
-	setInterval(updateGameStatus, 2000);
-	setInterval(loadEDHGames, 5000);
-	setInterval(loadMatchupMatrix, 5000);
+	const POLL = {
+		results:     { fn: loadResults,            ms: 5000, delay: 500 },
+		edhGames:    { fn: loadEDHGames,           ms: 8000, delay: 1500 },
+		gameLogList: { fn: loadGameLogList,        ms: 8000, delay: 2000 },
+		matchupMatrix: { fn: loadMatchupMatrix,    ms: 10000, delay: 2500 },
+		snapshots:   { fn: loadSnapshotsList,      ms: 15000, delay: 3500 },
+	};
+
+	let pollingTimers = {};
+
+	function startPolling() {
+		for (const [key, cfg] of Object.entries(POLL)) {
+			if (pollingTimers[key]) continue;
+			// Stagger the initial fire so requests don't pile up.
+			setTimeout(() => {
+				cfg.fn();
+				pollingTimers[key] = setInterval(cfg.fn, cfg.ms);
+				console.log('[Polling] Started ' + key + ' every ' + cfg.ms + 'ms');
+			}, cfg.delay);
+		}
+	}
+
+	function stopPolling() {
+		for (const key in pollingTimers) {
+			if (pollingTimers[key]) {
+				clearInterval(pollingTimers[key]);
+				pollingTimers[key] = null;
+				console.log('[Polling] Stopped ' + key);
+			}
+		}
+	}
+
+	// Use Page Visibility API to pause/resume polling
+	document.addEventListener('visibilitychange', () => {
+		if (document.hidden) {
+			stopPolling();
+		} else {
+			startPolling();
+		}
+	});
+
+	// Initial loads (fire immediately, not staggered)
+	loadSnapshotsList();
 	loadResults();
 	loadEDHGames();
+	loadGameLogList();
 	loadMatchupMatrix();
+	updateGameStatus();
+	startPolling();
+	
+	// Check DB connectivity
+	fetch('/api/db-status').then(r => r.json()).then(d => {
+		const indicator = document.getElementById('gameStatusIndicator');
+		if (d.connected && d.total_pods > 0) {
+			indicator.textContent = '💾 DB: ' + d.total_pods + ' pods, ' + (d.decks||0) + ' decks, ' + (d.total_cards_tracked||0) + ' cards';
+			indicator.style.color = '#2ecc71';
+		} else if (d.connected) {
+			indicator.textContent = '💾 DB connected (no data yet)';
+			indicator.style.color = '#f39c12';
+		} else {
+			indicator.textContent = '⚠️ No database — results will not persist';
+			indicator.style.color = '#e74c3c';
+		}
+	});
 
 	// After initial load, try to restore active deck selection across tabs
 	setTimeout(() => {

@@ -5,7 +5,20 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// globalTargetPatterns are compiled once and shared across all parser instances.
+var (
+	globalTargetPatterns     []*TargetPattern
+	globalTargetPatternsOnce sync.Once
+)
+
+func initTargetPatterns() {
+	tp := &TargetParser{}
+	tp.initializePatterns()
+	globalTargetPatterns = tp.patterns
+}
 
 // TargetParser parses targeting restrictions from oracle text.
 type TargetParser struct {
@@ -20,12 +33,10 @@ type TargetPattern struct {
 }
 
 // NewTargetParser creates a new target parser with predefined patterns.
+// Patterns are compiled once globally via sync.Once and shared across all instances.
 func NewTargetParser() *TargetParser {
-	parser := &TargetParser{
-		patterns: make([]*TargetPattern, 0),
-	}
-	parser.initializePatterns()
-	return parser
+	globalTargetPatternsOnce.Do(initTargetPatterns)
+	return &TargetParser{patterns: globalTargetPatterns}
 }
 
 // initializePatterns sets up all the regex patterns for target restriction parsing.

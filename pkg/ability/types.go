@@ -79,6 +79,7 @@ const (
 	LoseGame           // Target player or each opponent loses the game
 	LookAtLibraryTop   // Look at top N cards of library (informational; no game state change)
 	RevealInformation  // Reveal hand, top card, etc. (informational; no game state change)
+	ImprintCards       // Imprint — exile a card from hand when ETB (Chrome Mox, etc.)
 )
 
 // String returns the human-readable name of an EffectType.
@@ -150,6 +151,8 @@ func (et EffectType) String() string {
 		return "LookAtLibraryTop"
 	case RevealInformation:
 		return "RevealInformation"
+	case ImprintCards:
+		return "ImprintCards"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}

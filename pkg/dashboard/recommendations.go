@@ -174,10 +174,12 @@ func GenerateDeckRecommendations(deckStats *simulation.EDHDeckStats, cardLib map
 			if globalStats.Casts >= 10 && globalWinRate > deckWinRate+5 && globalWinRate >= 35 {
 				// Filter out cards that violate the commander's color identity
 				if cardDB != nil {
-					if c, ok := cardDB.GetCardByName(cardName); ok {
-						if !isColorIdentitySubset(c.ColorIdentity, cmdrIdentity) {
-							continue
-						}
+					c, ok := cardDB.GetCardByName(cardName)
+					if !ok {
+						continue // skip cards we can't verify color identity for
+					}
+					if !isColorIdentitySubset(c.ColorIdentity, cmdrIdentity) {
+						continue
 					}
 				}
 				delta := globalWinRate - deckWinRate
@@ -242,10 +244,12 @@ func GenerateSideboardSuggestions(deckStats *simulation.EDHDeckStats, allDecks [
 				if replWR > 50 {
 					// Filter out replacements that violate the commander's color identity
 					if cardDB != nil {
-						if c, ok := cardDB.GetCardByName(replName); ok {
-							if !isColorIdentitySubset(c.ColorIdentity, cmdrIdentity) {
-								continue
-							}
+						c, ok := cardDB.GetCardByName(replName)
+						if !ok {
+							continue // skip cards we can't verify color identity for
+						}
+						if !isColorIdentitySubset(c.ColorIdentity, cmdrIdentity) {
+							continue
 						}
 					}
 					suggs = append(suggs, SideboardSuggestion{

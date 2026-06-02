@@ -17,6 +17,8 @@ const (
 	EventCreatureSummon   EDHEventKind = "creature_summon"
 	EventPermanentCast    EDHEventKind = "permanent_cast"
 	EventCommanderCast    EDHEventKind = "commander_cast"
+	EventFetchActivated   EDHEventKind = "fetch_activated"
+	EventSpellCountered   EDHEventKind = "spell_countered"
 	EventAttackDeclared   EDHEventKind = "attack_declared"
 	EventCombatResolved   EDHEventKind = "combat_resolved"
 	EventPlayerEliminated EDHEventKind = "player_eliminated"

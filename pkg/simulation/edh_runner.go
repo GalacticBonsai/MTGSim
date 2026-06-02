@@ -105,25 +105,174 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 }
 
 // setupEDHPlayers materializes Player objects, registers commanders, and
-// performs initial draws (including any requested mulligans).
+// performs initial draws with intelligent mulligan decisions.
+// Per the cEDH mulligan framework (Sperling 2023), the default action is to
+// mulligan; a hand is only kept if it contains a compelling reason (Truly
+// Broken Things or strong Development). As the hand shrinks, leniency increases.
 func setupEDHPlayers(seats []EDHSeat, rng *rand.Rand) ([]*game.Player, []int) {
 	players := make([]*game.Player, len(seats))
 	casts := make([]int, len(seats))
-	for i, s := range seats {
+	for i := range seats {
+		s := &seats[i]
 		p := game.NewEDHPlayer(s.DeckName)
 		p.Library = append(p.Library, s.Library...)
 		rng.Shuffle(len(p.Library), func(a, b int) { p.Library[a], p.Library[b] = p.Library[b], p.Library[a] })
-		for _, commander := range seatCommanders(s) {
+		for _, commander := range seatCommanders(*s) {
 			p.RegisterCommander(commander)
 		}
-		if s.Mulligans > 0 {
-			_, _ = p.LondonMulligan(rng, s.Mulligans)
+		p.DrawOpeningHand()
+
+		taken := s.Mulligans
+		if taken <= 0 {
+			taken = iterativeMulligan(p, rng, i, seatCommanders(*s))
 		} else {
-			p.DrawOpeningHand()
+			// If a caller forces >0 mulligans, cast to int and execute directly.
+			_, _ = p.LondonMulligan(rng, taken)
 		}
+		s.Mulligans = taken
 		players[i] = p
 	}
 	return players, casts
+}
+
+// iterativeMulligan evaluates the player's hand after each draw, mulliganing
+// until the hand is acceptable or the player reaches 4 cards. Returns the
+// number of mulligans taken.
+// Flow: 7 → evaluate → (free) 7 → evaluate → 6 → evaluate → 5 → evaluate → 4 → keep.
+func iterativeMulligan(p *game.Player, rng *rand.Rand, seat int, commanders []game.SimpleCard) int {
+	for m := 0; m < 4; m++ {
+		keep, _ := evaluateOpeningHand(p.Hand, commanders, seat, m)
+		if keep {
+			return m
+		}
+	// m=0: free mulligan (still 7), m=1: bottom 1 (6), m=2: bottom 2 (5), m=3: bottom 3 (4)
+		_, _ = p.LondonMulligan(rng, m+1)
+	}
+	return 4
+}
+
+// evaluateOpeningHand returns true if the hand is worth keeping, following
+// the cEDH mulligan framework:
+//
+//	Level 1 — Truly Broken Things: T1 Remora, fast mana + engine, Ad Naus with
+//	         mana, Necro with mana, fast Dockside. These are auto-keeps.
+//	Level 2 — Development: 3 lands + curve, 2 lands + ramp, 2 lands + 1-drop,
+//	         premium lands. Kept if strong enough.
+//	Level 3 — Everything else is a mulligan unless we're at 4-5 cards (desperate).
+//
+// leniency increases as mulligansTaken increases (fewer cards → more willing).
+func evaluateOpeningHand(hand []game.SimpleCard, commanders []game.SimpleCard, seat int, mulligansTaken int) (bool, string) {
+	lands := 0
+	premiumLands := 0
+	fastMana0 := 0
+	fastMana1 := 0
+	twoDropRamp := 0
+	hasRemora := false
+	hasRhystic := false
+	hasSentinel := false
+	hasAdNaus := false
+	hasNecro := false
+	hasDockside := false
+	hasFreeInteraction := 0
+	hasTutor := 0
+
+	maxCmc := 0
+	oneDrops := 0
+
+	for _, c := range hand {
+		if c.IsLand() {
+			lands++
+			switch c.Name {
+			case "Ancient Tomb", "City of Traitors":
+				premiumLands++
+			}
+			continue
+		}
+		cmc := int(c.GetMinManaCost().Total())
+		if cmc > maxCmc {
+			maxCmc = cmc
+		}
+		if cmc == 1 && !c.IsLand() {
+			oneDrops++
+		}
+		switch c.Name {
+		case "Mana Crypt", "Jeweled Lotus", "Chrome Mox", "Mox Diamond", "Mox Opal", "Lotus Petal":
+			fastMana0++
+		case "Sol Ring", "Mana Vault":
+			fastMana1++
+		case "Arcane Signet", "Fellwar Stone":
+			twoDropRamp++
+		case "Mystic Remora":
+			hasRemora = true
+		case "Rhystic Study":
+			hasRhystic = true
+		case "Esper Sentinel":
+			hasSentinel = true
+		case "Ad Nauseam", "Ad Nauseum":
+			hasAdNaus = true
+		case "Necropotence":
+			hasNecro = true
+		case "Dockside Extortionist":
+			hasDockside = true
+		case "Force of Will", "Pact of Negation", "Force of Negation", "Deflecting Swat", "Fierce Guardianship":
+			hasFreeInteraction++
+		case "Demonic Tutor", "Vampiric Tutor", "Imperial Seal", "Enlightened Tutor",
+			"Mystical Tutor", "Worldly Tutor", "Gamble":
+			hasTutor++
+		}
+	}
+
+	fastManaTotal := fastMana0 + fastMana1 + twoDropRamp
+
+	// --- Level 1: Truly Broken Things (auto-keep) ---
+
+	if hasRemora && lands >= 1 {
+		return true, "T1 Mystic Remora"
+	}
+	if (hasRhystic || hasSentinel) && lands >= 2 && fastManaTotal >= 1 {
+		return true, "t1-2 draw engine + ramp"
+	}
+	if fastMana0 >= 1 && lands >= 1 && (hasRemora || hasSentinel || hasRhystic || hasTutor >= 1) {
+		return true, "0-CMC fast mana + broken followup"
+	}
+	if fastMana1 >= 1 && lands >= 2 {
+		return true, "Sol Ring/Vault + 2 lands"
+	}
+	if hasAdNaus && lands+fastManaTotal+premiumLands >= 4 {
+		return true, "Ad Nauseum with mana"
+	}
+	if hasNecro && lands+fastManaTotal+premiumLands >= 3 {
+		return true, "Necropotence with mana"
+	}
+	if hasDockside && lands >= 2 && fastManaTotal >= 1 {
+		return true, "fast Dockside"
+	}
+
+	// --- Level 2: Development ---
+
+	if lands >= 3 && maxCmc <= lands+1 {
+		return true, "3 lands + good curve"
+	}
+	if lands >= 2 && fastManaTotal >= 1 && maxCmc <= 4 {
+		return true, "2 lands + ramp + curve"
+	}
+	if lands >= 2 && oneDrops >= 1 {
+		return true, "2 lands + 1-drop"
+	}
+	if premiumLands >= 1 && lands >= 2 {
+		return true, "premium land + 2 lands"
+	}
+
+	// --- Level 3: Leniency for smaller hands ---
+
+	if mulligansTaken >= 2 && lands >= 2 && maxCmc <= lands+2 {
+		return true, "playable 6-card hand"
+	}
+	if mulligansTaken >= 3 && lands >= 1 {
+		return true, "desperate 4-5 card keep"
+	}
+
+	return false, "no compelling reason to keep"
 }
 
 // survivors counts players that have not been eliminated.

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/card"
 	"github.com/mtgsim/mtgsim/pkg/deck"
 	"github.com/mtgsim/mtgsim/pkg/game"
+	"github.com/mtgsim/mtgsim/pkg/scryfall"
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
@@ -40,6 +42,22 @@ type EDHGamesProvider func() []simulation.EDHGameRecord
 // EDHSummaryProvider returns global EDH telemetry for dashboard highlight cards.
 type EDHSummaryProvider func() simulation.EDHSummary
 
+// GameLogEntry is a lightweight summary used to populate the game selector.
+type GameLogEntry struct {
+	ID          int      `json:"id"`
+	Winner      string   `json:"winner"`
+	Turns       int      `json:"turns"`
+	Players     []string `json:"players"`
+	EventCount  int      `json:"event_count"`
+	TotalMana   int      `json:"total_mana"`
+	TotalCards  int      `json:"total_cards"`
+	TotalCombat int      `json:"total_combat"`
+}
+
+// GameLogProvider returns summaries for the game selector and full event
+// logs for a specific game so the front-end can render a replay view.
+type GameLogProvider func() (summaries []GameLogEntry, getGame func(id int) *simulation.EDHGameRecord)
+
 // CardLibraryProvider returns the persistent global card stats library.
 type CardLibraryProvider func() map[string]stats.GlobalCardStats
 
@@ -51,6 +69,12 @@ type GameRunner interface {
 	RunGames(count int)
 	IsRunning() bool
 	SetSuggestedDeck(seat *simulation.EDHSeat)
+}
+
+// DataResetter allows resetting persistent game data from the dashboard UI.
+type DataResetter interface {
+	ResetCardLibrary()
+	ResetGameLogs()
 }
 
 // SuggestedDeckProvider returns the currently suggested deck, or nil if none is set.
@@ -67,18 +91,41 @@ type Server struct {
 	gameRunner         GameRunner
 	suggestedDeck      *simulation.EDHSeat
 	suggestedDeckMu    sync.Mutex
+	recordUpload       func(name string)
+	deleteUpload       func(name string)
+	uploadedDecks      func() []string
 	cardDB             *card.CardDB
+	scryfallClient     *scryfall.Client
+	gameLogProvider    GameLogProvider
+
+	// In-memory byte caches for uploaded-filtered EDH results
+	uploadedEdhCache      []byte
+	uploadedEdhCached     time.Time
 	snapshotManager    *SnapshotManager
 	port               int
 	mux                *http.ServeMux
+	
+	// Cache for provider results to reduce lock contention
+	cacheMu              sync.RWMutex
+	cacheMaxAge          time.Duration
+
+	dataResetter DataResetter
+
+	// In-memory byte caches for serialised API responses so we avoid
+	// re-computing and re-serialising on every poll cycle.
+	resultsCache         []byte
+	resultsCached        time.Time
+	edhResultsCacheBytes []byte
+	edhResultsBytesCached time.Time
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
 func NewServer(provider ResultsProvider, port int) *Server {
 	return &Server{
-		provider: provider,
-		port:     port,
-		mux:      http.NewServeMux(),
+		provider:    provider,
+		port:        port,
+		mux:         http.NewServeMux(),
+		cacheMaxAge: 30 * time.Second,
 	}
 }
 
@@ -102,8 +149,25 @@ func (s *Server) SetImplementationReportProvider(p ImplementationReportProvider)
 // SetGameRunner attaches a game runner for /api/run-games endpoint.
 func (s *Server) SetGameRunner(gr GameRunner) { s.gameRunner = gr }
 
+// SetUploadRecorder sets a callback invoked when a deck is uploaded.
+func (s *Server) SetUploadRecorder(fn func(name string)) { s.recordUpload = fn }
+
+// SetDeleteRecorder sets a callback invoked when an uploaded deck is removed.
+func (s *Server) SetDeleteRecorder(fn func(name string)) { s.deleteUpload = fn }
+
+// SetUploadedDecksProvider sets a function that returns uploaded deck names.
+func (s *Server) SetUploadedDecksProvider(fn func() []string) { s.uploadedDecks = fn }
+
 // SetCardDB attaches a card database for deck parsing.
 func (s *Server) SetCardDB(db *card.CardDB) { s.cardDB = db }
+
+func (s *Server) SetScryfallClient(cl *scryfall.Client) { s.scryfallClient = cl }
+
+// SetGameLogProvider attaches a game log ring buffer for /api/game-log-list and /api/game-log.
+func (s *Server) SetGameLogProvider(p GameLogProvider) { s.gameLogProvider = p }
+
+// SetDataResetter attaches a data reseter for resetting card library and game logs.
+func (s *Server) SetDataResetter(d DataResetter) { s.dataResetter = d }
 
 // SetSnapshotManager attaches a snapshot manager for meta tracking.
 func (s *Server) SetSnapshotManager(sm *SnapshotManager) { s.snapshotManager = sm }
@@ -142,14 +206,21 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/game-status", s.handleGameStatus)
 	s.mux.HandleFunc("/api/suggested-deck", s.handleSuggestedDeck)
 	s.mux.HandleFunc("/api/upload-deck", s.handleUploadDeck)
+	s.mux.HandleFunc("/api/uploaded-decks", s.handleUploadedDecks)
 	s.mux.HandleFunc("/api/card-recommendations", s.handleCardRecommendations)
 	s.mux.HandleFunc("/api/sideboard-suggestions", s.handleSideboardSuggestions)
 	s.mux.HandleFunc("/api/matchup-matrix", s.handleMatchupMatrix)
 	s.mux.HandleFunc("/api/card-search", s.handleCardSearch)
+	s.mux.HandleFunc("/api/db-status", s.handleDBStatus)
+	s.mux.HandleFunc("/api/card-image", s.handleCardImage)
 	s.mux.HandleFunc("/api/save-snapshot", s.handleSaveSnapshot)
 	s.mux.HandleFunc("/api/snapshots", s.handleListSnapshots)
 	s.mux.HandleFunc("/api/snapshot-comparison", s.handleSnapshotComparison)
 	s.mux.HandleFunc("/api/meta-trends", s.handleMetaTrends)
+	s.mux.HandleFunc("/api/game-log-list", s.handleGameLogList)
+	s.mux.HandleFunc("/api/game-log", s.handleGameLog)
+	s.mux.HandleFunc("/api/reset-card-library", s.handleResetCardLibrary)
+	s.mux.HandleFunc("/api/reset-game-logs", s.handleResetGameLogs)
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -160,7 +231,19 @@ func (s *Server) Start() error {
 	s.registerRoutes()
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("Starting dashboard server on http://localhost%s\n", addr)
-	return http.ListenAndServe(addr, s.mux)
+	
+	// Timeouts are generous because some API handlers (e.g. handleResults)
+	// may block briefly on the simulation mutex before returning a cached
+	// response.  Caching ensures most requests complete in under 100 ms so
+	// pile-up is not a practical concern.
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      s.mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  10 * time.Second,
+	}
+	return server.ListenAndServe()
 }
 
 type deckRow struct {
@@ -170,6 +253,11 @@ type deckRow struct {
 	WinRate float64 `json:"win_rate"`
 }
 
+type winRateBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
 type resultsResponse struct {
 	TotalGames  int       `json:"total_games"`
 	UniqueDecks int       `json:"unique_decks"`
@@ -177,17 +265,30 @@ type resultsResponse struct {
 
 	TotalDecks int  `json:"totalDecks,omitempty"`
 	Truncated  bool `json:"truncated,omitempty"`
+
+	// Server-computed win-rate histogram so the front-end doesn't need
+	// to iterate the full deck list.
+	WinRateBuckets []winRateBucket `json:"win_rate_buckets,omitempty"`
 }
 
 // handleResults returns deck win/loss aggregates derived from simulation.Results.
 func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Try serving from the byte cache first (avoids provider lock, sort, and
+	// JSON serialisation on every poll cycle).
+	s.cacheMu.RLock()
+	if s.resultsCache != nil && time.Since(s.resultsCached) < s.cacheMaxAge {
+		_, _ = w.Write(s.resultsCache)
+		s.cacheMu.RUnlock()
+		return
+	}
+	s.cacheMu.RUnlock()
+
 	snapshot := s.provider()
 
-	rows := make([]deckRow, 0, len(snapshot))
-
 	totalRecords := 0
+	rows := make([]deckRow, 0, len(snapshot))
 
 	for _, res := range snapshot {
 		rows = append(rows, deckRow{
@@ -196,7 +297,6 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 			Losses:  res.Losses,
 			WinRate: res.WinPercentage(),
 		})
-
 		totalRecords += res.Wins + res.Losses
 	}
 
@@ -204,14 +304,70 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		return rows[i].WinRate > rows[j].WinRate
 	})
 
-	resp := resultsResponse{
-		TotalGames:  totalRecords / 2,
-		UniqueDecks: len(rows),
-		TotalDecks:  len(rows),
-		Decks:       rows,
+	// Build win-rate histogram from the full dataset before truncation.
+	buckets := computeWinRateBuckets(rows)
+
+	// Default limit prevents blowing up JSON payload size for very large
+	// result sets.  The front-end charts (win-rate histogram, top-N bar
+	// chart) all work from the histogram or the first few entries.
+	const defaultMaxDecks = 500
+	totalDecks := len(rows)
+	limit := defaultMaxDecks
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if v, err := strconv.Atoi(limitStr); err == nil && v >= 0 {
+			limit = v
+		}
+	}
+	truncated := limit > 0 && limit < len(rows)
+	if truncated {
+		rows = rows[:limit]
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	resp := resultsResponse{
+		TotalGames:     totalRecords / 2,
+		UniqueDecks:    totalDecks,
+		TotalDecks:     totalDecks,
+		Decks:          rows,
+		Truncated:      truncated,
+		WinRateBuckets: buckets,
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "json marshal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.cacheMu.Lock()
+	s.resultsCache = data
+	s.resultsCached = time.Now()
+	s.cacheMu.Unlock()
+
+	_, _ = w.Write(data)
+}
+
+// computeWinRateBuckets partitions decks into the four win-rate quartiles
+// used by the front-end doughnut chart.
+func computeWinRateBuckets(decks []deckRow) []winRateBucket {
+	var lt25, lt50, lt75, ge75 int
+	for _, d := range decks {
+		switch {
+		case d.WinRate < 25:
+			lt25++
+		case d.WinRate < 50:
+			lt50++
+		case d.WinRate < 75:
+			lt75++
+		default:
+			ge75++
+		}
+	}
+	return []winRateBucket{
+		{Label: "0-25%", Count: lt25},
+		{Label: "25-50%", Count: lt50},
+		{Label: "50-75%", Count: lt75},
+		{Label: "75-100%", Count: ge75},
+	}
 }
 
 type edhResultsResponse struct {
@@ -232,19 +388,99 @@ func (s *Server) handleEDHResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	uploadedOnly := r.URL.Query().Get("uploaded") == "1"
+	light := r.URL.Query().Get("light") == "1"
+	deckFilter := r.URL.Query().Get("deck")
+
+	if !light && deckFilter == "" {
+		if uploadedOnly {
+			s.cacheMu.RLock()
+			if s.uploadedEdhCache != nil && time.Since(s.uploadedEdhCached) < s.cacheMaxAge {
+				_, _ = w.Write(s.uploadedEdhCache)
+				s.cacheMu.RUnlock()
+				return
+			}
+			s.cacheMu.RUnlock()
+		} else {
+			s.cacheMu.RLock()
+			if s.edhResultsCacheBytes != nil && time.Since(s.edhResultsBytesCached) < s.cacheMaxAge {
+				_, _ = w.Write(s.edhResultsCacheBytes)
+				s.cacheMu.RUnlock()
+				return
+			}
+			s.cacheMu.RUnlock()
+		}
+	}
+
 	allDecks := s.edhProvider()
+	var decks []simulation.EDHDeckStats
+	var totalDecks int
+
+	if deckFilter != "" {
+		for _, d := range allDecks {
+			if d.DeckName == deckFilter {
+				decks = append(decks, d)
+				totalDecks = 1
+				break
+			}
+		}
+	} else if uploadedOnly && s.uploadedDecks != nil {
+		names := s.uploadedDecks()
+		nameSet := make(map[string]bool, len(names))
+		for _, n := range names {
+			nameSet[n] = true
+		}
+		for _, d := range allDecks {
+			if nameSet[d.DeckName] {
+				d2 := d
+				if light { d2.CardStats = nil }
+				decks = append(decks, d2)
+			}
+		}
+		totalDecks = len(decks)
+	} else {
+		for _, d := range allDecks {
+			d2 := d
+			if light { d2.CardStats = nil }
+			decks = append(decks, d2)
+		}
+		totalDecks = len(decks)
+		limit := 100
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if v, err := strconv.Atoi(limitStr); err == nil && v > 0 { limit = v }
+		}
+		if deckFilter == "" && !uploadedOnly && len(decks) > limit {
+			decks = decks[:limit]
+		}
+	}
 
 	resp := edhResultsResponse{
 		Enabled:    true,
-		TotalDecks: len(allDecks),
-		Decks:      allDecks,
+		TotalDecks: totalDecks,
+		Decks:      decks,
 	}
 
 	if s.edhSummary != nil {
 		resp.Summary = s.edhSummary()
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	data, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "json marshal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.cacheMu.Lock()
+	if uploadedOnly {
+		s.uploadedEdhCache = data
+		s.uploadedEdhCached = time.Now()
+	} else {
+		s.edhResultsCacheBytes = data
+		s.edhResultsBytesCached = time.Now()
+	}
+	s.cacheMu.Unlock()
+
+	_, _ = w.Write(data)
 }
 
 type edhGamesResponse struct {
@@ -264,6 +500,15 @@ func (s *Server) handleEDHGames(w http.ResponseWriter, r *http.Request) {
 type cardLibraryResponse struct {
 	Enabled bool                             `json:"enabled"`
 	Cards   map[string]stats.GlobalCardStats `json:"cards"`
+	CardDB  map[string]cardMeta              `json:"card_db,omitempty"`
+}
+
+type cardMeta struct {
+	TypeLine string   `json:"type_line"`
+	CMC      float32  `json:"cmc"`
+	ManaCost string   `json:"mana_cost"`
+	Colors   []string `json:"colors,omitempty"`
+	ImageURL string   `json:"image_url,omitempty"`
 }
 
 func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
@@ -272,7 +517,33 @@ func (s *Server) handleCardLibrary(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: false})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(cardLibraryResponse{Enabled: true, Cards: s.cardLibrary()})
+	lib := s.cardLibrary()
+	resp := cardLibraryResponse{Enabled: true, Cards: lib}
+	if len(resp.Cards) > 500 {
+		filtered := make(map[string]stats.GlobalCardStats, 500)
+		type entry struct{ name string; casts int }
+		var entries []entry
+		for name, s := range resp.Cards { entries = append(entries, entry{name, s.Casts}) }
+		sort.Slice(entries, func(i, j int) bool { return entries[i].casts > entries[j].casts })
+		for i := 0; i < 500 && i < len(entries); i++ {
+			filtered[entries[i].name] = resp.Cards[entries[i].name]
+		}
+		resp.Cards = filtered
+	}
+	if s.cardDB != nil {
+		resp.CardDB = make(map[string]cardMeta)
+		for name, card := range lib {
+			if c, ok := s.cardDB.GetCardByName(name); ok {
+				imageURL := card.ImageURL
+				if imageURL == "" && c.ImageURIs != nil { imageURL = c.ImageURIs.Normal }
+				resp.CardDB[name] = cardMeta{
+					TypeLine: c.TypeLine, CMC: c.CMC, ManaCost: c.ManaCost,
+					Colors: c.ColorIdentity, ImageURL: imageURL,
+				}
+			}
+		}
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 type implementationResponse struct {
@@ -326,6 +597,38 @@ func (s *Server) handleRunGames(w http.ResponseWriter, r *http.Request) {
 		"message": "games started",
 		"count":   count,
 	})
+}
+
+func (s *Server) handleResetCardLibrary(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "POST required"})
+		return
+	}
+	if s.dataResetter == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "data reseter not configured"})
+		return
+	}
+	s.dataResetter.ResetCardLibrary()
+	_ = json.NewEncoder(w).Encode(map[string]any{"message": "card library reset"})
+}
+
+func (s *Server) handleResetGameLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "POST required"})
+		return
+	}
+	if s.dataResetter == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "data reseter not configured"})
+		return
+	}
+	s.dataResetter.ResetGameLogs()
+	_ = json.NewEncoder(w).Encode(map[string]any{"message": "game logs cleared"})
 }
 
 // handleGameStatus returns the current status of game running
@@ -396,7 +699,7 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "deck-*.txt")
@@ -407,18 +710,18 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 	
 	// Copy uploaded file to temp file
 	if _, err := io.Copy(tmpFile, file); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": "failed to save file: " + err.Error(),
 		})
 		return
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 	
 	// Parse the deck
 	commanders, main, side, err := deck.ImportCommanderDeckfileWithCommanders(tmpFile.Name(), s.cardDB)
@@ -470,10 +773,45 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 	// Set as suggested deck
 	s.SetSuggestedDeck(&seat)
 	
+	// Persist to uploaded decks table
+	if s.recordUpload != nil {
+		s.recordUpload(deckName)
+	}
+	
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "deck uploaded and set",
 		"name":    handler.Filename,
 	})
+}
+
+// handleUploadedDecks lists or deletes uploaded decks.
+func (s *Server) handleUploadedDecks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodDelete {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "missing name"})
+			return
+		}
+		if s.deleteUpload != nil {
+			s.deleteUpload(name)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "deleted"})
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		if s.cardLibrary != nil {
+			// Return deck names from the provider (not implemented as separate list)
+			_ = json.NewEncoder(w).Encode(map[string]any{"decks": []string{}})
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": "method not allowed"})
 }
 
 // handleCardRecommendations returns deck improvement suggestions.
@@ -775,6 +1113,102 @@ func (s *Server) handleMetaTrends(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"enabled": true,
 		"trends":  trends,
+	})
+}
+
+func (s *Server) handleDBStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{"connected": false}
+	if s.edhProvider != nil {
+		allDecks := s.edhProvider()
+		totalPods := 0
+		for _, d := range allDecks {
+			totalPods += d.Games
+		}
+		resp["connected"] = true
+		resp["decks"] = len(allDecks)
+		resp["total_pods"] = totalPods
+	}
+	if s.cardLibrary != nil {
+		cards := s.cardLibrary()
+		resp["total_cards_tracked"] = len(cards)
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleCardImage(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+	var imageURL string
+	if lib := s.cardLibrary; lib != nil {
+		cards := lib()
+		if c, ok := cards[name]; ok && c.ImageURL != "" {
+			imageURL = c.ImageURL
+		}
+	}
+	if imageURL == "" && s.cardDB != nil {
+		if c, ok := s.cardDB.GetCardByName(name); ok && c.ImageURIs != nil {
+			imageURL = c.ImageURIs.Normal
+		}
+	}
+	if imageURL == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if s.scryfallClient != nil {
+		path, err := s.scryfallClient.DownloadAndCacheImage(imageURL)
+		if err == nil {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+	http.Redirect(w, r, imageURL, http.StatusFound)
+}
+
+// handleGameLogList returns a list of recent game summaries for the log viewer.
+func (s *Server) handleGameLogList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.gameLogProvider == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false, "games": []any{}})
+		return
+	}
+	summaries, _ := s.gameLogProvider()
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"games":   summaries,
+	})
+}
+
+// handleGameLog returns the full event log for a specific game.
+func (s *Server) handleGameLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.gameLogProvider == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+		return
+	}
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	_, getGame := s.gameLogProvider()
+	rec := getGame(id)
+	if rec == nil {
+		http.Error(w, "game not found", http.StatusNotFound)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"enabled": true,
+		"game":    rec,
 	})
 }
 

@@ -17,8 +17,8 @@
 		<div class="tabs">
 			<button class="tab-btn active" data-tab="overview" onclick="showTab('overview', this)" title="Game status, deck upload, and simulation charts">Overview</button>
 			<button class="tab-btn" data-tab="test-results" onclick="showTab('test-results', this)" title="EDH deck performance and recent game logs">Test Results</button>
-			<button class="tab-btn" data-tab="my-deck" onclick="showTab('my-deck', this)" title="Build and modify your decks">My Deck</button>
-			<button class="tab-btn" data-tab="recommendations" onclick="showTab('recommendations', this)" title="AI-suggested deck improvements">Recommendations</button>
+			<button class="tab-btn" data-tab="game-log" onclick="showTab('game-log', this)" title="View turn-by-turn event logs for recent games">Game Log</button>
+			<button class="tab-btn" data-tab="my-deck" onclick="showTab('my-deck', this)" title="Build, modify, and get recommendations for your decks">My Deck</button>
 			<button class="tab-btn" data-tab="card-analysis" onclick="showTab('card-analysis', this)" title="Analyze top cards and global statistics">Card Analysis</button>
 			<button class="tab-btn" data-tab="meta-trends" onclick="showTab('meta-trends', this)" title="Track meta evolution and matchups">Meta Trends</button>
 		</div>
@@ -26,6 +26,12 @@
 
 		<div class="grid" id="summary">
 			<div class="loading">Loading...</div>
+		</div>
+
+		<div id="uploadedDecksManager" style="margin-top:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #4ecdc4; display:none;">
+			<h3 style="margin-top:0;">Uploaded Decks</h3>
+			<p style="color:#888; font-size:0.9em; margin:0 0 10px 0;">Decks you've uploaded appear in every pod. Remove them here.</p>
+			<div id="uploadedDecksList"></div>
 		</div>
 
 		<div id="gameControlsSection" style="margin-top:20px; padding:15px; background:#2a2a2a; border-radius:6px; border-left:4px solid #ff6b6b;">
@@ -46,6 +52,13 @@
 				<input type="number" id="gamesInput" value="100" min="1" max="10000" style="width:80px; padding:6px; border:1px solid #444; background:#1a1a1a; color:#fff; border-radius:4px;">
 				<button id="runGamesBtn" onclick="runMoreGames()" style="padding:8px 16px; background:#ff6b6b; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">▶ Run Games</button>
 				<span id="gameStatusIndicator" style="color:#888; font-size:0.9em;"></span>
+			</div>
+
+			<div style="margin-top:15px; padding-top:12px; border-top:1px solid #444; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+				<span style="color:#888; font-size:0.9em; margin-right:5px;">Reset data:</span>
+				<button onclick="resetCardLibrary()" style="padding:6px 14px; background:#e74c3c; color:#fff; border:none; border-radius:4px; cursor:pointer;">🗑 Card Library</button>
+				<button onclick="resetGameLogs()" style="padding:6px 14px; background:#e67e22; color:#fff; border:none; border-radius:4px; cursor:pointer;">🗑 Game Logs</button>
+				<span id="resetStatus" style="color:#2ecc71; font-size:0.9em;"></span>
 			</div>
 		</div>
 
@@ -74,7 +87,7 @@
 			<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
 				<input id="deckSearch" class="search-box" placeholder="Search decks..." oninput="filterEDHDecks()" style="flex:1; min-width:250px;">
 				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
-					<input type="checkbox" id="showOnlyUploaded" onchange="filterEDHDecks()" checked>
+					<input type="checkbox" id="showOnlyUploaded" onchange="loadResults()" checked>
 					Show only my uploaded decks
 				</label>
 				<button id="clearDeckSelection" onclick="clearSelectedDeck()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">Clear Selection</button>
@@ -86,7 +99,22 @@
 					<div class="card"><h2>Commander</h2><div class="value" id="selectedDeckCommander"></div></div>
 					<div class="card"><h2>Games</h2><div class="value" id="selectedDeckGames"></div></div>
 					<div class="card"><h2>Win Rate</h2><div class="value" id="selectedDeckWinRate" style="color:#4ecdc4;"></div></div>
-					<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgMana"></div></div>
+					<div class="card"><h2>Avg Lands</h2><div class="value" id="selectedDeckAvgLands"></div></div>
+					<div class="card"><h2>Avg Cards</h2><div class="value" id="selectedDeckAvgCards"></div></div>
+					<div class="card"><h2>Avg Mana</h2><div class="value" id="selectedDeckAvgManaProduced"></div></div>
+					<div class="card"><h2>Storm Max</h2><div class="value" id="selectedDeckStorm"></div></div>
+				</div>
+				<div style="display:flex; gap:30px; flex-wrap:wrap; margin-top:10px;">
+					<div style="min-width:200px;"><h4 style="color:#2ecc71; margin-bottom:4px;">Wins</h4>
+						<div>Combat: <strong id="selCombatWins">0</strong></div>
+						<div>Effect: <strong id="selEffectWins">0</strong></div>
+						<div>Deckout: <strong id="selDeckoutWins">0</strong></div>
+					</div>
+					<div style="min-width:200px;"><h4 style="color:#e74c3c; margin-bottom:4px;">Kills Dealt</h4>
+						<div>Per Turn: <strong id="selAvgManaSpent">0</strong></div>
+						<div>Creatures: <strong id="selAvgCreatures">0</strong></div>
+						<div>Combat Dmg: <strong id="selAvgCombat">0</strong></div>
+					</div>
 				</div>
 				<div style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
 					<button onclick="goToRecommendations()" style="padding:8px 16px; background:#5a6dd8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🔮 View Recommendations</button>
@@ -161,6 +189,54 @@
 			</table>
 		</div>
 
+		<div id="game-log" class="tab-content">
+			<h3>Game Log Viewer</h3>
+			<p style="color:#888; margin-bottom:15px;">View turn-by-turn event logs for recent games to verify game correctness.</p>
+			
+			<div style="display:flex; gap:15px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+				<select id="gameLogSelector" onchange="loadGameLog()" style="flex:1; min-width:300px; padding:8px; background:#0a0e27; color:#fff; border:1px solid #1a1f3a; border-radius:4px;">
+					<option value="">Select a game...</option>
+				</select>
+				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; white-space:nowrap;">
+					<input type="checkbox" id="gameLogShowAllEvents" onchange="renderGameLogEvents()" checked>
+					Show all events
+				</label>
+				<label style="color:#888; font-size:0.9em; display:flex; align-items:center; gap:6px; white-space:nowrap;">
+					Filter:
+					<select id="gameLogEventFilter" onchange="renderGameLogEvents()" style="background:#0a0e27; color:#fff; border:1px solid #1a1f3a; padding:5px; border-radius:3px;">
+						<option value="">All</option>
+						<option value="game_start">Game Start</option>
+						<option value="turn_start">Turn Start</option>
+						<option value="land_play">Land Play</option>
+						<option value="creature_summon">Creature Summon</option>
+						<option value="permanent_cast">Permanent Cast</option>
+						<option value="commander_cast">Commander Cast</option>
+						<option value="fetch_activated">Fetch Activated</option>
+						<option value="spell_countered">Spell Countered</option>
+						<option value="attack_declared">Attack Declared</option>
+						<option value="combat_resolved">Combat Resolved</option>
+						<option value="player_eliminated">Player Eliminated</option>
+						<option value="game_end">Game End</option>
+					</select>
+				</label>
+			</div>
+
+			<div id="gameLogSummary" style="margin-bottom:15px; padding:12px; background:#1a1a1a; border-radius:6px; border-left:4px solid #4ecdc4; display:none;">
+				<div style="display:flex; gap:20px; flex-wrap:wrap;">
+					<span><strong>Winner:</strong> <span id="glWinner" style="color:#4ecdc4;"></span></span>
+					<span><strong>Turns:</strong> <span id="glTurns"></span></span>
+					<span><strong>Players:</strong> <span id="glPlayers"></span></span>
+					<span><strong>Total Mana:</strong> <span id="glMana"></span></span>
+					<span><strong>Total Cards:</strong> <span id="glCards"></span></span>
+					<span><strong>Combat Damage:</strong> <span id="glCombat"></span></span>
+				</div>
+			</div>
+
+			<div id="gameLogContent" style="max-height:600px; overflow-y:auto;">
+				<div class="loading">Select a game to view its event log</div>
+			</div>
+		</div>
+
 		<div id="my-deck" class="tab-content">
 			<h3>Build & Modify Your Deck</h3>
 			<p style="color:#888; margin-bottom:15px;">Upload, edit, and test your decklist here.</p>
@@ -191,11 +267,15 @@
 					<h4>Deck Stats</h4>
 					<div id="deckStatsDisplay" style="font-size:0.95em; line-height:1.8;">
 						<div><strong>Total Cards:</strong> <span id="deckCardCount">0</span></div>
+						<div><strong>Win Rate:</strong> <span id="myDeckWinRate" style="color:#4ecdc4; font-weight:bold;">-</span></div>
 						<div><strong>Avg Mana Cost:</strong> <span id="deckAvgMana">0</span></div>
 						<div><strong>Land Count:</strong> <span id="deckLandCount">0</span></div>
 						<div><strong>Unique Cards:</strong> <span id="deckUniqueCount">0</span></div>
-						<div><strong>Mana Distribution:</strong></div>
-						<div id="manaCurve" style="margin-top:8px; font-size:0.9em; background:#0a0e27; padding:8px; border-radius:4px;"></div>
+					</div>
+					<hr style="border-color:#333; margin:12px 0;">
+					<h4 style="color:#5a6dd8;">Recommendations</h4>
+					<div id="inlineRecContent" style="font-size:0.9em;">
+						<div style="color:#666;">Select a deck above and click <b>Update Stats</b></div>
 					</div>
 				</div>
 			</div>
@@ -221,21 +301,6 @@
 
 			<div id="cardSearchResults" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap:15px;">
 				<div class="loading">Start searching for cards...</div>
-			</div>
-		</div>
-
-		<div id="recommendations" class="tab-content">
-			<h3>Deck Recommendations</h3>
-			<p style="color:#888; margin-bottom:15px;">AI-suggested improvements based on card performance data.</p>
-			
-			<div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-				<select id="recDeckSelect" style="padding:8px 12px; background:#1a1a1a; color:#fff; border:1px solid #444; border-radius:4px; flex:1; min-width:250px;">
-					<option value="">Select a deck...</option>
-				</select>
-			</div>
-
-			<div id="recContent">
-				<div class="loading">Select a deck to view recommendations</div>
 			</div>
 		</div>
 
@@ -350,6 +415,13 @@
 				<div class="loading">Select a comparison above</div>
 			</div>
 		
+	</div>
+
+	<div id="cardModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; justify-content:center; align-items:center;">
+		<div style="background:#1a1a1a; border-radius:8px; padding:24px; max-width:500px; width:90%; position:relative; border:1px solid #333;">
+			<button onclick="closeCardModal()" style="position:absolute; top:10px; right:14px; background:none; border:none; color:#888; font-size:1.5em; cursor:pointer;">&times;</button>
+			<div id="cardModalContent" style="color:#ccc;"></div>
+		</div>
 	</div>
 
 	<script src="/app.js"></script>

@@ -20,6 +20,7 @@
 	.table td { padding: 15px; border-bottom: 1px solid #1a1f3a; }
 	.table tr:last-child td { border-bottom: none; }
 	.table tbody tr:hover { background: #1a1f3a; }
+	.table tbody tr.selected { background: #2a3a5a; }
 	.th-sort { cursor: pointer; user-select: none; }
 	.th-sort:hover { color: #5a6dd8; }
 	.th-sort::after { content: ' ⇅'; font-size: 0.8em; opacity: 0.5; }
@@ -162,4 +163,15 @@
 	.win-rate-high { color: #2ecc71; }
 	.win-rate-medium { color: #f39c12; }
 	.win-rate-low { color: #e74c3c; }
+
+	.deck-name-truncate {
+		max-width: 250px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		direction: rtl;
+		text-align: left;
+		display: inline-block;
+		vertical-align: bottom;
+	}
 
