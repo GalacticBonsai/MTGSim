@@ -97,7 +97,7 @@ func (cl *CardLibrary) Reset() {
 	defer cl.mu.Unlock()
 	cl.Cards = make(map[string]GlobalCardStats)
 	if cl.path != "" {
-		os.Remove(cl.path)
+		_ = os.Remove(cl.path)
 	}
 }
 

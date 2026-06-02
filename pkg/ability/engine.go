@@ -512,7 +512,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			}
 			if effs, ok := targets[0].([]Effect); ok {
 				if effectIdx < len(effs) {
-					ee.applyEffect(effs[effectIdx], controller, targets[1:])
+					_ = ee.applyEffect(effs[effectIdx], controller, targets[1:])
 				}
 			}
 		}

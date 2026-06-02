@@ -18,7 +18,7 @@ func makeSeat(name, basic, creature, power string, copies int, cmdr *game.Simple
 	}
 	for i := 0; i < copies; i++ {
 		cards = append(cards, game.SimpleCard{
-			Name: creature, TypeLine: "Creature", Power: power, Toughness: "2",
+			Name: creature, TypeLine: "Creature", Power: power, Toughness: "2", ManaCost: "{1}{G}",
 		})
 	}
 	return EDHSeat{
@@ -107,7 +107,7 @@ func TestSimulateEDHGame_ComboEndsBeforeTurnTen(t *testing.T) {
 }
 
 func TestSimulateEDHGame_RegistersCommander(t *testing.T) {
-	cmdr := &game.SimpleCard{Name: "Test Cmdr", TypeLine: "Legendary Creature", Power: "5", Toughness: "5"}
+	cmdr := &game.SimpleCard{Name: "Test Cmdr", TypeLine: "Legendary Creature", Power: "5", Toughness: "5", ManaCost: "{1}{G}"}
 	seats := []EDHSeat{
 		makeSeat("WithCmdr", "Forest", "Bear", "2", 4, cmdr),
 		makeSeat("NoCmdr", "Plains", "Soldier", "1", 4, nil),

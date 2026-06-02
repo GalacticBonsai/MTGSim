@@ -207,6 +207,7 @@ func (gr *EDHGameRunner) runBatch(count int) {
 
 // pickPodWithUploaded picks n random seats, ensuring chosen (if non-empty)
 // is in the pod, then shuffles. Non-uploaded decks fill the remaining seats.
+//nolint:unused
 func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
 	return pickPodFromPool(seats, n, rng, mulligans, chosen)
 }
@@ -348,6 +349,7 @@ func main() {
 				deckCards = append(deckCards, c)
 			}
 		}
+		_ = deckCards
 		// unimpl := implTracker.CheckDeck(deckCards, cardDB)
 		// for _, name := range unimpl {
 		// 	logger.LogMeta("Warning: unimplemented card in %s: %s", seat.DeckPath, name)
@@ -372,7 +374,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		logger.LogMeta("Database opened: %s", *dbPath)
 	}
 
@@ -579,6 +581,7 @@ func toSimpleCard(c card.Card) game.SimpleCard {
 	}
 }
 
+//nolint:unused
 func pickPod(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int) []simulation.EDHSeat {
 	idxs := rng.Perm(len(seats))[:n]
 	pod := make([]simulation.EDHSeat, n)

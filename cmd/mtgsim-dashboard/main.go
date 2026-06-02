@@ -128,7 +128,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 			os.Exit(1)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		logger.LogMeta("Database opened: %s", *dbPath)
 	}
 

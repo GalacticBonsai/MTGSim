@@ -145,8 +145,8 @@ func iterativeMulligan(p *game.Player, rng *rand.Rand, seat int, commanders []ga
 		if keep {
 			return m
 		}
-		// m=0: free mulligan (still 7), m=1: bottom 1 (6), m=2: bottom 2 (5), m=3: bottom 3 (4)
-		p.LondonMulligan(rng, m+1)
+	// m=0: free mulligan (still 7), m=1: bottom 1 (6), m=2: bottom 2 (5), m=3: bottom 3 (4)
+		_, _ = p.LondonMulligan(rng, m+1)
 	}
 	return 4
 }

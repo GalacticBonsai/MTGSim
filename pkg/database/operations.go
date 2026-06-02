@@ -203,7 +203,7 @@ func (db *DB) Get1v1DeckStats() ([]Deck1v1Stats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []Deck1v1Stats
 	for rows.Next() {
@@ -295,40 +295,9 @@ func (db *DB) GetEDHDeckStats() ([]EDHDeckStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []EDHDeckStats
-	for rows.Next() {
-		var s EDHDeckStats
-		var avgLife, avgMulls, avgCmdr, avgMana, avgManaProduced, avgCards, avgLands, avgSpells, avgCreatures, avgCombat sql.NullFloat64
-		if err := rows.Scan(
-			&s.DeckName, &s.CommanderName, &s.Games, &s.Wins, &s.Losses,
-			&avgLife, &avgMulls, &s.CommanderDamageKOs, &s.LifeLossKOs, &s.MillKOs, &s.DeckoutKOs, &s.EffectKOs,
-			&s.CombatWins, &s.EffectWins, &s.DeckoutWins,
-			&avgCmdr, &avgMana, &avgManaProduced, &avgCards, &avgLands, &avgSpells, &avgCreatures, &avgCombat,
-			&s.MaxStormCount, &s.TotalManaSpent, &s.TotalManaProduced, &s.TotalCardsPlayed, &s.TotalCombatDamage, &s.Eliminations,
-		); err != nil {
-			return nil, err
-		}
-		s.AvgFinalLife = avgLife.Float64
-		s.AvgMulligans = avgMulls.Float64
-		s.AvgCommanderCasts = avgCmdr.Float64
-		s.AvgManaSpent = avgMana.Float64
-		s.AvgManaProduced = avgManaProduced.Float64
-		s.AvgCardsPlayed = avgCards.Float64
-		s.AvgLandsPlayed = avgLands.Float64
-		s.AvgSpellsCast = avgSpells.Float64
-		s.AvgCreaturesCast = avgCreatures.Float64
-		s.AvgCombatDamage = avgCombat.Float64
-		if s.Games > 0 {
-			s.WinRate = float64(s.Wins) / float64(s.Games) * 100
-		}
-		out = append(out, s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
 	// Load per-deck card stats in a single batch query
 	cardStats, err := db.getAllDeckCardStats()
 	if err != nil {
@@ -351,7 +320,7 @@ func (db *DB) getAllDeckCardStats() (map[string]map[string]struct{ Casts, Wins i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make(map[string]map[string]struct{ Casts, Wins int })
 	for rows.Next() {
@@ -462,7 +431,7 @@ func (db *DB) GetRecentEDHPods(limit int) ([]EDHRecentPod, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var pods []EDHRecentPod
 	for rows.Next() {
@@ -504,7 +473,7 @@ func (db *DB) GetRecentEDHPods(limit int) ([]EDHRecentPod, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer pRows.Close()
+	defer func() { _ = pRows.Close() }()
 
 	playerMap := make(map[int64][]EDHRecentPlayer)
 	for pRows.Next() {
@@ -547,7 +516,7 @@ func (db *DB) GetGlobalCardStats() ([]GlobalCardStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []GlobalCardStats
 	for rows.Next() {
@@ -597,7 +566,7 @@ func (db *DB) GetUploadedDeckNames() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var name string

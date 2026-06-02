@@ -128,6 +128,7 @@ func sliceToAny[T any](in []T) []any {
 	}
 	return out
 }
+//nolint:unused
 func permsToAny(in []*game.Permanent) []any {
 	out := make([]any, len(in))
 	for i, v := range in {
@@ -269,19 +270,10 @@ func searchLibrarySmart(p *game.Player, count int, description string, onResult 
 				return false
 			}
 			ct := strings.ToLower(c.TypeLine)
-			matchedAny := false
-			if strings.Contains(desc, "island") && strings.Contains(ct, "island") {
-				matchedAny = true
-			}
-			if strings.Contains(desc, "swamp") && strings.Contains(ct, "swamp") {
-				matchedAny = true
-			}
-			if strings.Contains(desc, "mountain") && strings.Contains(ct, "mountain") {
-				matchedAny = true
-			}
-			if strings.Contains(desc, "forest") && strings.Contains(ct, "forest") {
-				matchedAny = true
-			}
+			matchedAny := (strings.Contains(desc, "island") && strings.Contains(ct, "island")) ||
+				(strings.Contains(desc, "swamp") && strings.Contains(ct, "swamp")) ||
+				(strings.Contains(desc, "mountain") && strings.Contains(ct, "mountain")) ||
+				(strings.Contains(desc, "forest") && strings.Contains(ct, "forest"))
 			if strings.Contains(desc, "plains") && strings.Contains(ct, "plains") {
 				matchedAny = true
 			}

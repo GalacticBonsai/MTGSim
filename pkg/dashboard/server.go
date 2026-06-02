@@ -107,11 +107,6 @@ type Server struct {
 	
 	// Cache for provider results to reduce lock contention
 	cacheMu              sync.RWMutex
-	edhResultsCache      []simulation.EDHDeckStats
-	edhResultsCached     time.Time
-	edhSummaryCache      simulation.EDHSummary
-	edhGamesCacheData    []simulation.EDHGameRecord
-	edhGamesCached       time.Time
 	cacheMaxAge          time.Duration
 
 	dataResetter DataResetter
@@ -704,7 +699,7 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "deck-*.txt")
@@ -715,18 +710,18 @@ func (s *Server) handleUploadDeck(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 	
 	// Copy uploaded file to temp file
 	if _, err := io.Copy(tmpFile, file); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": "failed to save file: " + err.Error(),
 		})
 		return
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 	
 	// Parse the deck
 	commanders, main, side, err := deck.ImportCommanderDeckfileWithCommanders(tmpFile.Name(), s.cardDB)

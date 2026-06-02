@@ -14,10 +14,10 @@ import (
 // start, at least one land/creature/combat entry, and game end).
 func TestEDHEventLog_Roundtrip(t *testing.T) {
 	a := makeSeat("A", "Plains", "Bear", "2", 8, &game.SimpleCard{
-		Name: "A Cmdr", TypeLine: "Legendary Creature", Power: "5", Toughness: "5",
+		Name: "A Cmdr", TypeLine: "Legendary Creature", Power: "5", Toughness: "5", ManaCost: "{2}{W}",
 	})
 	b := makeSeat("B", "Forest", "Wolf", "3", 8, &game.SimpleCard{
-		Name: "B Cmdr", TypeLine: "Legendary Creature", Power: "4", Toughness: "4",
+		Name: "B Cmdr", TypeLine: "Legendary Creature", Power: "4", Toughness: "4", ManaCost: "{1}{G}",
 	})
 	rec, err := SimulateEDHGame(EDHRunOptions{
 		Seats:        []EDHSeat{a, b},

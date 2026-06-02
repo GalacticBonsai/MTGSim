@@ -319,7 +319,7 @@ func castNonPermanentSpell(g *game.Game, ap *game.Player, c game.SimpleCard, log
 				}
 			}
 		}
-		engine.ExecuteAbility(ab, playerAdapter, targets)
+		_ = engine.ExecuteAbility(ab, playerAdapter, targets)
 	}
 	ap.Graveyard = append(ap.Graveyard, c)
 	return true
@@ -355,7 +355,7 @@ func resolvePermanentETB(g *game.Game, perm *game.Permanent, ap *game.Player, lo
 				}
 			}
 		}
-		engine.ExecuteAbility(ab, playerAdapter, targets)
+		_ = engine.ExecuteAbility(ab, playerAdapter, targets)
 	}
 }
 
@@ -363,6 +363,7 @@ func eventDetail(name string, manaSpent, storm int) string {
 	return name + " | mana=" + intString(manaSpent) + " storm=" + intString(storm)
 }
 
+//nolint:unused
 func isValidSpellCost(c game.SimpleCard) bool {
 	if c.IsLand() {
 		return false

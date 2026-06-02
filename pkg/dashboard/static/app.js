@@ -176,16 +176,7 @@
 		section.style.display = '';
 		let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
 		for (let name of names) {
-			const escaped = name.replace(/'/g, "\\'");
-			html += '<div style="display:flex; align-items:center; justify-content:space-between; background:#1a1a1a; padding:8px 12px; border-radius:4px;">'
-				+ '<span>' + escapeHtml(name) + '</span>'
-				+ '<button onclick="deleteUploadedDeck(\'' + escaped + '\')" style="padding:4px 10px; background:#e74c3c; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:0.85em;">Remove</button>'
-				+ '</div>';
-		}
-		html += '</div>';
-		container.innerHTML = html;
-	}
-
+			const escaped = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 	async function deleteUploadedDeck(name) {
 		try {
 			const res = await fetch('/api/uploaded-decks?name=' + encodeURIComponent(name), { method: 'DELETE' });
@@ -1605,19 +1596,18 @@
 			if (recs.remove_candidates && recs.remove_candidates.length > 0) {
 				html += '<div style="margin-bottom:6px;"><strong style="color:#e74c3c;">🗑️ Cut:</strong></div>';
 				for (let c of recs.remove_candidates.slice(0, 5)) {
-					const escaped = c.card_name.replace(/'/g, "\\'");
-					html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#e74c3c;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' casts)</div>';
-				}
+				const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+				html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#e74c3c;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' casts)</div>';
 			}
-			if (recs.add_candidates && recs.add_candidates.length > 0) {
-				html += '<div style="margin-bottom:6px; margin-top:6px;"><strong style="color:#2ecc71;">➕ Add:</strong></div>';
-				let shown = 0;
-				const deckCards = new Set(currentDeckList.map(c => c.name.toLowerCase()));
-				for (let c of recs.add_candidates) {
-					if (deckCards.has(c.card_name.toLowerCase())) continue;
-					if (shown >= 5) break;
-					shown++;
-					const escaped = c.card_name.replace(/'/g, "\\'");
+		}
+		if (recs.add_candidates && recs.add_candidates.length > 0) {
+			html += '<div style="margin-top:6px;"><strong style="color:#2ecc71;">✅ Add:</strong></div>';
+			for (let c of recs.add_candidates) {
+				// Check if already in deck
+				if (deckCards.has(c.card_name.toLowerCase())) continue;
+				if (shown >= 5) break;
+				shown++;
+				const escaped = c.card_name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 					html += '<div style="padding:2px 0; font-size:0.85em;">' + cardLink(c.card_name) + ' <span style="color:#2ecc71;">' + (c.win_rate||0).toFixed(1) + '%</span> (' + (c.casts||0) + ' global)';
 					html += ' <button onclick="addCardToMyDeck(\'' + escaped + '\')" style="padding:1px 6px;background:#4ecdc4;color:#000;border:none;border-radius:2px;cursor:pointer;font-size:0.75em;">+Add</button></div>';
 				}
@@ -1839,7 +1829,7 @@
 			html += '<div style="color:#666;">No performance data yet</div>';
 		}
 		html += '<hr style="border-color:#333; margin:10px 0;">';
-		html += '<button onclick="addCardToMyDeck(\'' + cardName.replace(/'/g, "\\'") + '\')" style="padding:6px 14px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">+ Add to My Deck</button>';
+		html += '<button onclick="addCardToMyDeck(\'' + cardName.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\')" style="padding:6px 14px; background:#4ecdc4; color:#000; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">+ Add to My Deck</button>';
 		
 		document.getElementById('cardModalContent').innerHTML = html;
 		document.getElementById('cardModal').style.display = 'flex';
@@ -1851,7 +1841,7 @@
 	
 	function cardLink(name) {
 		const escaped = escapeHtml(name);
-		const safe = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+		const safe = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 		return '<a href="javascript:void(0)" onclick="showCardModal(\'' + safe + '\')" style="color:#4ecdc4; cursor:pointer; text-decoration:none;" title="Click for details">' + escaped + '</a>';
 	}
 
