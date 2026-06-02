@@ -58,10 +58,6 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 	if maxTurns <= 0 {
 		maxTurns = 50
 	}
-	priority := opts.Priority
-	if priority == nil {
-		priority = NoopPriorityHandler{}
-	}
 	var log *EDHEventLog
 	if opts.RecordEvents {
 		log = NewEDHEventLog()
@@ -74,6 +70,11 @@ func SimulateEDHGame(opts EDHRunOptions) (EDHGameRecord, error) {
 		for _, s := range opts.Seats {
 			log.Append(EDHEvent{Turn: 1, Phase: "setup", Kind: EventGameStart, Actor: s.DeckName, Detail: s.DeckPath})
 		}
+	}
+
+	priority := opts.Priority
+	if priority == nil {
+		priority = NewStackAwareHandler(g, log)
 	}
 
 	turnLimitHit := false
