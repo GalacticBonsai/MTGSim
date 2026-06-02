@@ -3,20 +3,19 @@
 ## #1 Full Priority System — ✅ DONE (PR #53)
 - **Branch:** `priority-system`
 - **PR:** https://github.com/GalacticBonsai/MTGSim/pull/53
-- **Files:**
-  - `pkg/simulation/priority_handler.go` (new)
-  - `pkg/simulation/edh_runner.go` (modified)
-- **What:** Replaced NoopPriorityHandler with StackAwareHandler that runs APNAP priority rounds. Opponents activate abilities and cast instants during priority windows using the AI decision-maker.
+- **Files:** `pkg/simulation/priority_handler.go` (new), `pkg/simulation/edh_runner.go` (modified)
+- **What:** Replaced NoopPriorityHandler with StackAwareHandler that runs APNAP priority rounds. Opponents activate abilities and cast instants during priority windows using AI.
 
-## #2 The Stack — Full implementation with targets, modes, resolution
-- **Status:** PENDING
-- **Branch:** TBD
-- **What:** LIFO spell resolution, countermagic targeting stack items, triggered ability stacking, priority rounds that loop until stack empty.
+## #2 The Stack — ✅ DONE (PR #54)
+- **Branch:** `the-stack`
+- **PR:** https://github.com/GalacticBonsai/MTGSim/pull/54
+- **Files:** `pkg/simulation/priority_handler.go`, `pkg/ability/priority.go`, `pkg/ability/spell_casting.go`
+- **What:** Integrated the ability package's Stack and PriorityManager into the simulation loop. ProcessPriorityRound with AI DecisionFunc, stack-backed priority rounds with LIFO resolution.
 
 ## #3 Instant-speed interaction
-- **Status:** PENDING (partially done in #1)
+- **Status:** UP NEXT
 - **Branch:** TBD
-- **What:** Opponents hold priority, respond to each other's spells, cast protection spells.
+- **What:** Opponents hold priority, respond to each other's spells, cast protection spells in response to removal. Builds on #1/#2.
 
 ## #4 Countermagic AI
 - **Status:** PENDING
@@ -34,4 +33,5 @@
 ## #7 Blocks
 - **Status:** PENDING
 
-... (continuing from README todo list)
+## #8 Mana burn / mana pool emptying
+- **Status:** PENDING
