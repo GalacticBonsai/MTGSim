@@ -89,12 +89,91 @@ func (h *StackAwareHandler) OnOpponentPriority(g *game.Game, active *game.Player
 	}
 }
 
+// CastSpellThroughStack routes a spell through the stack during the main
+// phase. It removes the card from hand, puts it on the stack, runs
+// ProcessPriority to allow opponents to respond, resolves the stack, and
+// moves the card to the graveyard. The caller MUST have already paid
+// mana for the card.
+func (h *StackAwareHandler) CastSpellThroughStack(ap *game.Player, c game.SimpleCard, casterName string) bool {
+	gs := h.gameState
+	playerAdapter := gs.GetPlayer(casterName)
+	if playerAdapter == nil {
+		return false
+	}
+
+	// Remove card from hand
+	cidx := -1
+	for i, cc := range ap.Hand {
+		if cc.Name == c.Name {
+			cidx = i
+			break
+		}
+	}
+	if cidx < 0 {
+		return false
+	}
+	ap.Hand = append(ap.Hand[:cidx], ap.Hand[cidx+1:]...)
+
+	abilities, err := h.engine.ParseAndRegisterAbilities(c.OracleText, c)
+	if err != nil || len(abilities) == 0 {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return true
+	}
+
+	var effects []abil.Effect
+	for _, ab := range abilities {
+		effects = append(effects, ab.Effects...)
+	}
+
+	spell := &abil.Spell{
+		Name:       c.Name,
+		ManaCost:   c.ManaCost,
+		CMC:        int(c.GetMinManaCost().Total()),
+		TypeLine:   c.TypeLine,
+		OracleText: c.OracleText,
+		Effects:    effects,
+		Source:     c,
+	}
+
+	// Set up priority for main phase
+	h.spellCasting.SetActivePlayer(playerAdapter)
+	h.spellCasting.SetPhase("Main Phase")
+
+	pm := h.spellCasting.GetPriorityManager()
+
+	// Cast the spell (puts on stack via priority manager, resets priority)
+	if err := pm.CastSpell(playerAdapter, spell, nil); err != nil {
+		logger.LogPlayer("Failed to cast %s through stack: %v", c.Name, err)
+		ap.Graveyard = append(ap.Graveyard, c)
+		return false
+	}
+
+	logger.LogPlayer("%s casts %s through stack", ap.GetName(), c.Name)
+
+	// Run full priority round — opponents can respond, then stack resolves
+	if err := h.spellCasting.ProcessPriority(); err != nil {
+		logger.LogCard("Priority round error for %s: %v", c.Name, err)
+	}
+
+	ap.Graveyard = append(ap.Graveyard, c)
+	return true
+}
+
 // aiDecision is called by the PriorityManager for each player when they
 // have priority. It uses the AIDecisionMaker to decide whether to
-// activate abilities or cast instants.
+// activate abilities or cast instants — now stack-aware.
 func (h *StackAwareHandler) aiDecision(player abil.AbilityPlayer) *abil.PriorityDecision {
 	opponents := h.getOpponents(player)
 	context := h.ai.BuildDecisionContext(player, opponents, h.spellCasting.GetPriorityManager().GetPhase())
+
+	// If there's an opponent's spell on the stack, consider countering it
+	stack := h.spellCasting.GetStack()
+	if top := stack.Peek(); top != nil && top.Type == abil.StackItemSpell && top.Controller.GetName() != player.GetName() {
+		spell := top.Spell
+		if counterDecision := h.tryCounterSpell(player, spell.Name, spell.CMC); counterDecision != nil {
+			return counterDecision
+		}
+	}
 
 	if h.ai.ShouldActivateAbilities(context) {
 		abilities := h.engine.GetActivatableAbilities(player)
@@ -118,6 +197,61 @@ func (h *StackAwareHandler) aiDecision(player abil.AbilityPlayer) *abil.Priority
 
 	return &abil.PriorityDecision{
 		Action: abil.PriorityActionPass,
+		Player: player,
+	}
+}
+
+// tryCounterSpell checks whether the player can counter the given
+// opponent spell. Returns a CastSpell decision if a suitable counterspell
+// is found, or nil.
+func (h *StackAwareHandler) tryCounterSpell(player abil.AbilityPlayer, opponentSpellName string, opponentSpellCMC int) *abil.PriorityDecision {
+	// Find the underlying game.Player for mana checking
+	var gp *game.Player
+	for _, p := range h.g.GetPlayersRaw() {
+		if p.GetName() == player.GetName() && !p.HasLost() {
+			gp = p
+			break
+		}
+	}
+	if gp == nil {
+		return nil
+	}
+
+	strategy := NewCounterspellStrategy(gp)
+	shouldCounter, counter := strategy.ShouldCounterSpell(opponentSpellName, opponentSpellCMC)
+	if !shouldCounter {
+		return nil
+	}
+
+	// Pay mana for the counterspell
+	if !gp.PayForCard(counter) {
+		return nil
+	}
+
+	abilities, err := h.engine.ParseAndRegisterAbilities(counter.OracleText, counter)
+	if err != nil || len(abilities) == 0 {
+		return nil
+	}
+
+	var effects []abil.Effect
+	for _, ab := range abilities {
+		effects = append(effects, ab.Effects...)
+	}
+
+	spell := &abil.Spell{
+		Name:       counter.Name,
+		ManaCost:   counter.ManaCost,
+		CMC:        int(counter.GetMinManaCost().Total()),
+		TypeLine:   counter.TypeLine,
+		OracleText: counter.OracleText,
+		Effects:    effects,
+		Source:     counter,
+	}
+
+	logger.LogPlayer("%s counters %s with %s", player.GetName(), opponentSpellName, counter.Name)
+	return &abil.PriorityDecision{
+		Action: abil.PriorityActionCastSpell,
+		Spell:  spell,
 		Player: player,
 	}
 }
@@ -170,6 +304,16 @@ func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, contex
 			Action: abil.PriorityActionCastSpell,
 			Spell:  spell,
 			Player: player,
+		}
+	}
+	return nil
+}
+
+// getGamePlayer finds the game.Player by name, skipping eliminated players.
+func (h *StackAwareHandler) getGamePlayer(name string) *game.Player {
+	for _, p := range h.g.GetPlayersRaw() {
+		if p.GetName() == name && !p.HasLost() {
+			return p
 		}
 	}
 	return nil

@@ -200,7 +200,7 @@ func TestRunMainPhase_TapsLandsAndPaysCreatureCosts(t *testing.T) {
 	p1.AddCardToHand(game.SimpleCard{Name: "Elk", TypeLine: "Creature", Power: "3", Toughness: "3", ManaCost: "{2}{G}"})
 
 	m := newEDHMetrics(2)
-	runMainPhase(g, p1, []int{0, 0}, nil, m)
+	runMainPhase(g, p1, []int{0, 0}, nil, m, nil)
 
 	if len(p1.GetLands()) != 1 || !p1.GetLands()[0].IsTapped() {
 		t.Fatalf("expected Forest to be played and tapped for mana")
@@ -227,7 +227,7 @@ func TestRunMainPhase_CastsManaRockAndUsesItForPermanent(t *testing.T) {
 
 	log := NewEDHEventLog()
 	m := newEDHMetrics(2)
-	runMainPhase(g, p1, []int{0, 0}, log, m)
+	runMainPhase(g, p1, []int{0, 0}, log, m, nil)
 
 	if p1.FindCardInHand("Sol Ring") >= 0 || p1.FindCardInHand("Steel Golem") >= 0 {
 		t.Fatalf("expected Sol Ring and Steel Golem to be cast; hand=%+v", p1.Hand)

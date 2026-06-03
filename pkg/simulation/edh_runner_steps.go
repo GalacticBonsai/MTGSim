@@ -22,6 +22,12 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 		metrics.resetTurn()
 	}
 
+	// Extract the stack handler if available for stack-based casting in the main phase.
+	var stackHandler *StackAwareHandler
+	if h, ok := priority.(*StackAwareHandler); ok {
+		stackHandler = h
+	}
+
 	lastState := ""
 	unchangedActions := 0
 	const maxUnchangedActions = 12
@@ -60,7 +66,7 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			if log != nil {
 				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventTurnStart, Actor: ap.GetName()})
 			}
-			runMainPhase(g, ap, casts, log, metrics)
+			runMainPhase(g, ap, casts, log, metrics, stackHandler)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseCombat:
 			runCombatPhase(g, ap, log, metrics)
@@ -143,7 +149,9 @@ func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player, metrics
 // runMainPhase plays one land, casts the commander when possible, and
 // summons creatures in hand if mana allows. Optional log
 // records every public action so a replay can be reproduced.
-func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics) {
+// stackHandler, when non-nil, routes instants and sorceries through the
+// ability package's stack so opponents can respond before resolution.
+func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics, stackHandler *StackAwareHandler) {
 	idx := indexOfPlayer(g, ap)
 	landsPlayed := 0
 	for _, c := range ap.Hand {
@@ -216,7 +224,12 @@ skipCommander:
 			}
 			manaSpent := manaSpentForCard(c)
 			if c.IsInstant() || c.IsSorcery() {
-				resolved := castNonPermanentSpell(g, ap, c, log, metrics)
+				var resolved bool
+				if stackHandler != nil {
+					resolved = stackHandler.CastSpellThroughStack(ap, c, ap.GetName())
+				} else {
+					resolved = castNonPermanentSpell(g, ap, c, log, metrics)
+				}
 				storm := 0
 				if metrics != nil && resolved {
 					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
