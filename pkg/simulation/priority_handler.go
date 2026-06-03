@@ -7,44 +7,63 @@ import (
 	"github.com/mtgsim/mtgsim/internal/logger"
 )
 
-// StackAwareHandler implements PriorityHandler by running full priority
-// rounds with AI decision-making. During each phase's priority window it
-// gives all living non-active players an opportunity to activate
-// instant-speed abilities or cast instants from hand.
+// StackAwareHandler implements PriorityHandler by running full APNAP
+// priority rounds backed by the ability package's Stack and
+// PriorityManager. During each priority window players get a real
+// opportunity to cast instants or activate abilities; these actions go
+// through the stack so that other players can respond before they
+// resolve.
 //
-// The handler is the concrete bridge between the ability engine (which
-// knows how to parse oracle text and resolve effects) and the
-// simulation loop (which knows the turn structure). Each priority round
-// fires once per unique (turn, phase) pair.
+// Each priority round continues until all players pass with an empty
+// stack (CR 117), matching the real MTG turn structure within the
+// simulation's phase loop.
 type StackAwareHandler struct {
 	g              *game.Game
 	engine         *abil.ExecutionEngine
+	spellCasting   *abil.SpellCastingEngine
 	ai             *abil.AIDecisionMaker
 	gameState      *bridge.AbilityGameState
+	activePlayer   abil.AbilityPlayer
 	processedRound bool
 	lastTurn       int
 	lastPhase      game.Phase
 	log            *EDHEventLog
 }
 
-// NewStackAwareHandler creates a handler for the given game.
-// log may be nil.
+// NewStackAwareHandler creates a handler backed by a real Stack and
+// PriorityManager. log may be nil.
 func NewStackAwareHandler(g *game.Game, logOpt *EDHEventLog) *StackAwareHandler {
 	gs := bridge.NewAbilityGameState(g)
 	engine := abil.NewExecutionEngine(gs)
-	ai := abil.NewAIDecisionMaker(engine)
-	return &StackAwareHandler{
-		g:         g,
-		engine:    engine,
-		ai:        ai,
-		gameState: gs,
-		log:       logOpt,
+	spellCasting := abil.NewSpellCastingEngine(gs, engine)
+
+	players := make([]abil.AbilityPlayer, 0, len(g.GetPlayersRaw()))
+	for _, p := range g.GetPlayersRaw() {
+		if ap := gs.GetPlayer(p.GetName()); ap != nil {
+			players = append(players, ap)
+		}
 	}
+	spellCasting.SetPlayers(players)
+
+	ai := abil.NewAIDecisionMaker(engine)
+
+	h := &StackAwareHandler{
+		g:            g,
+		engine:       engine,
+		spellCasting: spellCasting,
+		ai:           ai,
+		gameState:    gs,
+		log:          logOpt,
+	}
+
+	spellCasting.GetPriorityManager().DecisionFunc = h.aiDecision
+
+	return h
 }
 
 // OnOpponentPriority implements PriorityHandler. On the first call per
-// (turn, phase) it runs the full priority round for all opponents.
-// Subsequent calls for the same turn+phase are no-ops.
+// (turn, phase) it runs a full ProcessPriorityRound. Subsequent calls
+// for the same turn+phase are no-ops.
 func (h *StackAwareHandler) OnOpponentPriority(g *game.Game, active *game.Player, opp *game.Player, phase game.Phase) {
 	if g.GetTurnNumber() != h.lastTurn || phase != h.lastPhase {
 		h.processedRound = false
@@ -55,112 +74,105 @@ func (h *StackAwareHandler) OnOpponentPriority(g *game.Game, active *game.Player
 		return
 	}
 	h.processedRound = true
-	h.processPriorityForPhase(active, phase)
-}
 
-// processPriorityForPhase iterates over all living non-active players in
-// APNAP order and gives each one a chance to act.
-func (h *StackAwareHandler) processPriorityForPhase(active *game.Player, phase game.Phase) {
-	players := h.g.GetPlayersRaw()
-	n := len(players)
-	start := indexOfPlayer(h.g, active)
-	if start < 0 {
-		return
-	}
-	pLabel := phaseLabel(phase)
-
-	for i := 1; i < n; i++ {
-		opp := players[(start+i)%n]
-		if opp == active || opp.HasLost() {
-			continue
-		}
-		h.offerPlayer(opp, pLabel)
-	}
-}
-
-// offerPlayer gives a single opponent the chance to act:
-//  1. Activate instant-speed abilities via the AI decision-maker
-//  2. Cast one instant from hand
-func (h *StackAwareHandler) offerPlayer(opp *game.Player, phaseLabel string) {
-	ap := h.gameState.GetPlayer(opp.GetName())
+	ap := h.gameState.GetPlayer(active.GetName())
 	if ap == nil {
 		return
 	}
+	h.activePlayer = ap
+	h.spellCasting.SetActivePlayer(ap)
+	h.spellCasting.SetPhase(phaseLabel(phase))
 
-	opponents := h.getOpponents(ap)
-	context := h.ai.BuildDecisionContext(ap, opponents, phaseLabel)
-
-	h.activateInstantAbilities(ap, context)
-	h.castPriorityInstants(opp, ap)
-}
-
-// activateInstantAbilities uses the AI to find and activate abilities
-// that can be activated at instant speed (AnyTime timing).
-func (h *StackAwareHandler) activateInstantAbilities(ap abil.AbilityPlayer, context abil.DecisionContext) {
-	if !h.ai.ShouldActivateAbilities(context) {
-		return
-	}
-	abilities := h.engine.GetActivatableAbilities(ap)
-	if len(abilities) == 0 {
-		return
-	}
-	chosen := h.ai.ChooseAbilitiesToActivate(abilities, context)
-	for _, ab := range chosen {
-		targets := h.ai.ChooseTargetsFor(ab, context)
-		if err := h.engine.ExecuteAbility(ab, ap, targets); err == nil {
-			logger.LogPlayer("%s activates %s during priority", ap.GetName(), ab.Name)
-		}
+	logger.LogCard("Starting priority round for %s in %s", active.GetName(), phaseLabel(phase))
+	if err := h.spellCasting.ProcessPriority(); err != nil {
+		logger.LogCard("Priority round error: %v", err)
 	}
 }
 
-// castPriorityInstants scans the opponent's hand for instant cards the AI
-// should cast during this priority window. Only the first castable
-// instant is cast per window to keep the simulation decisive.
-func (h *StackAwareHandler) castPriorityInstants(opp *game.Player, ap abil.AbilityPlayer) {
-	for _, card := range opp.Hand {
-		if !card.IsInstant() || card.OracleText == "" {
+// aiDecision is called by the PriorityManager for each player when they
+// have priority. It uses the AIDecisionMaker to decide whether to
+// activate abilities or cast instants.
+func (h *StackAwareHandler) aiDecision(player abil.AbilityPlayer) *abil.PriorityDecision {
+	opponents := h.getOpponents(player)
+	context := h.ai.BuildDecisionContext(player, opponents, h.spellCasting.GetPriorityManager().GetPhase())
+
+	if h.ai.ShouldActivateAbilities(context) {
+		abilities := h.engine.GetActivatableAbilities(player)
+		chosen := h.ai.ChooseAbilitiesToActivate(abilities, context)
+		if len(chosen) > 0 {
+			logger.LogPlayer("%s activates %s during priority", player.GetName(), chosen[0].Name)
+			targets := h.ai.ChooseTargetsFor(chosen[0], context)
+			return &abil.PriorityDecision{
+				Action:  abil.PriorityActionActivateAbility,
+				Ability: chosen[0],
+				Targets: targets,
+				Player:  player,
+			}
+		}
+	}
+
+	decision := h.decideInstantSpell(player, context)
+	if decision != nil {
+		return decision
+	}
+
+	return &abil.PriorityDecision{
+		Action: abil.PriorityActionPass,
+		Player: player,
+	}
+}
+
+// decideInstantSpell checks the player's hand for castable instants,
+// pays their mana cost immediately (as CR 601.2h requires), and returns
+// a CastSpell decision. Returns nil if no instant is worth casting.
+func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, context abil.DecisionContext) *abil.PriorityDecision {
+	for _, raw := range player.GetHand() {
+		card, ok := raw.(game.SimpleCard)
+		if !ok || !card.IsInstant() || card.OracleText == "" {
 			continue
 		}
-		if !opp.CanPayForCard(card) {
+		var gp *game.Player
+		for _, p := range h.g.GetPlayersRaw() {
+			if p.GetName() == player.GetName() && !p.HasLost() {
+				gp = p
+				break
+			}
+		}
+		if gp == nil || !gp.CanPayForCard(card) {
 			continue
 		}
+		if !gp.PayForCard(card) {
+			continue
+		}
+
 		abilities, err := h.engine.ParseAndRegisterAbilities(card.OracleText, card)
 		if err != nil || len(abilities) == 0 {
 			continue
 		}
-		if !opp.PayForCard(card) {
-			continue
-		}
 
+		var effects []abil.Effect
 		for _, ab := range abilities {
-			_ = h.engine.ExecuteAbility(ab, ap, nil)
+			effects = append(effects, ab.Effects...)
 		}
 
-		h.removeFromHand(opp, card)
-		opp.Graveyard = append(opp.Graveyard, card)
-
-		logger.LogCard("%s casts %s at instant speed during priority",
-			opp.GetName(), card.Name)
-		if h.log != nil {
-			h.log.Append(EDHEvent{
-				Turn:   h.g.GetTurnNumber(),
-				Phase:  phaseName(h.g.GetCurrentPhase()),
-				Kind:   EventPermanentCast,
-				Actor:  opp.GetName(),
-				Detail: card.Name + " (instant)",
-			})
+		spell := &abil.Spell{
+			Name:       card.Name,
+			ManaCost:   card.ManaCost,
+			CMC:        int(card.GetMinManaCost().Total()),
+			TypeLine:   card.TypeLine,
+			OracleText: card.OracleText,
+			Effects:    effects,
+			Source:     card,
 		}
-		return
-	}
-}
 
-func (h *StackAwareHandler) removeFromHand(p *game.Player, card game.SimpleCard) {
-	for i, c := range p.Hand {
-		if c.Name == card.Name {
-			p.Hand = append(p.Hand[:i], p.Hand[i+1:]...)
-			return
+		logger.LogPlayer("%s casts %s at instant speed", player.GetName(), card.Name)
+		return &abil.PriorityDecision{
+			Action: abil.PriorityActionCastSpell,
+			Spell:  spell,
+			Player: player,
 		}
 	}
+	return nil
 }
 
 func (h *StackAwareHandler) getOpponents(player abil.AbilityPlayer) []abil.AbilityPlayer {

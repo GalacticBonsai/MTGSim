@@ -7,6 +7,12 @@ import (
 	"github.com/mtgsim/mtgsim/internal/logger"
 )
 
+// PriorityDecisionFunc is called by ProcessPriorityRound when a player
+// has priority. Return a non-Pass action to cast a spell or activate an
+// ability; return pass to yield to the next player. When nil (the
+// default) getPlayerDecision always returns Pass.
+type PriorityDecisionFunc func(player AbilityPlayer) *PriorityDecision
+
 // PriorityManager manages the priority system for Magic: The Gathering
 type PriorityManager struct {
 	stack          *Stack
@@ -16,6 +22,7 @@ type PriorityManager struct {
 	allPlayers     []AbilityPlayer
 	priorityPassed map[string]bool
 	phase          string
+	DecisionFunc   PriorityDecisionFunc
 }
 
 // PriorityAction represents an action a player can take when they have priority
@@ -66,6 +73,11 @@ func (pm *PriorityManager) SetPhase(phase string) {
 // GetCurrentPlayer returns the player who currently has priority
 func (pm *PriorityManager) GetCurrentPlayer() AbilityPlayer {
 	return pm.currentPlayer
+}
+
+// GetPhase returns the current phase label.
+func (pm *PriorityManager) GetPhase() string {
+	return pm.phase
 }
 
 // PassPriority handles a player passing priority
@@ -134,12 +146,22 @@ func (pm *PriorityManager) ActivateAbility(player AbilityPlayer, ability *Abilit
 	return nil
 }
 
-// ProcessPriorityRound processes a complete round of priority
-func (pm *PriorityManager) ProcessPriorityRound() error {
+// ProcessPriorityRound processes a complete round of priority.
+// maxIterations limits the number of decisions to prevent runaway loops
+// (use ≤ 0 for unlimited).
+func (pm *PriorityManager) ProcessPriorityRound(maxIterations int) error {
 	logger.LogCard("Starting priority round in %s", pm.phase)
+	iterations := 0
 
-	// Continue until all players pass priority or stack is resolved
 	for {
+		if maxIterations > 0 {
+			iterations++
+			if iterations > maxIterations {
+				logger.LogCard("Priority round hit iteration limit %d, breaking", maxIterations)
+				break
+			}
+		}
+
 		// If stack is empty and all players passed, we're done
 		if pm.stack.IsEmpty() && pm.allPlayersPassedPriority() {
 			logger.LogCard("Priority round complete - stack empty and all passed")
@@ -294,8 +316,9 @@ func (pm *PriorityManager) resolveManaAbility(ability *Ability, player AbilityPl
 }
 
 func (pm *PriorityManager) getPlayerDecision(player AbilityPlayer) *PriorityDecision {
-	// This would be implemented by the AI or human player interface
-	// For now, return a pass decision
+	if pm.DecisionFunc != nil {
+		return pm.DecisionFunc(player)
+	}
 	return &PriorityDecision{
 		Action: PriorityActionPass,
 		Player: player,

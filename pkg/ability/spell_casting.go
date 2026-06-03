@@ -138,9 +138,10 @@ func (sce *SpellCastingEngine) ActivateAbility(ability *Ability, controller Abil
 	return sce.priorityManager.ActivateAbility(controller, ability, targets)
 }
 
-// ProcessPriority processes a complete priority round
+// ProcessPriority processes a complete priority round with a default
+// iteration limit of 100 to prevent runaway loops.
 func (sce *SpellCastingEngine) ProcessPriority() error {
-	return sce.priorityManager.ProcessPriorityRound()
+	return sce.priorityManager.ProcessPriorityRound(100)
 }
 
 // ResolveStack resolves all items on the stack
