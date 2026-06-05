@@ -95,7 +95,7 @@ func TestStackIntegrationLightningBoltCounterspell(t *testing.T) {
 	}
 
 	// Note: Lightning Bolt is not yet countered - it will be countered when Counterspell resolves
-	if lightningBoltItem.Countered {
+	if lightningBoltItem.Countered { //nolint:staticcheck
 		t.Error("Lightning Bolt should not be marked as countered yet (Counterspell hasn't resolved)")
 	}
 

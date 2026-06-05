@@ -28,13 +28,13 @@ func TestStackAwareHandler_CreatesStack(t *testing.T) {
 	if h == nil {
 		t.Fatal("NewStackAwareHandler returned nil")
 	}
-	if h.engine == nil {
+	if h.engine == nil { //nolint:staticcheck
 		t.Error("expected non-nil ExecutionEngine")
 	}
-	if h.ai == nil {
+	if h.ai == nil { //nolint:staticcheck
 		t.Error("expected non-nil AIDecisionMaker")
 	}
-	if h.gameState == nil {
+	if h.gameState == nil { //nolint:staticcheck
 		t.Error("expected non-nil AbilityGameState")
 	}
 }

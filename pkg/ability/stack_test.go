@@ -350,7 +350,7 @@ func TestStackCountering(t *testing.T) {
 		t.Errorf("Failed to counter spell: %v", err)
 	}
 
-	if !lightningBoltItem.Countered {
+	if !lightningBoltItem.Countered { //nolint:staticcheck
 		t.Error("Lightning Bolt should be marked as countered")
 	}
 }

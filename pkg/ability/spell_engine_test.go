@@ -190,7 +190,7 @@ func TestSpellEngineCounterspell(t *testing.T) {
 	}
 
 	// Lightning Bolt should NOT be marked as countered yet (counterspell hasn't resolved)
-	if lightningBoltItem.Countered {
+	if lightningBoltItem.Countered { //nolint:staticcheck
 		t.Error("Lightning Bolt should not be marked as countered yet (counterspell hasn't resolved)")
 	}
 
@@ -201,7 +201,7 @@ func TestSpellEngineCounterspell(t *testing.T) {
 	}
 
 	// Now Lightning Bolt should be marked as countered
-	if !lightningBoltItem.Countered {
+	if !lightningBoltItem.Countered { //nolint:staticcheck
 		t.Error("Lightning Bolt should be marked as countered after counterspell resolves")
 	}
 }
