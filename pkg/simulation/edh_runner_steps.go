@@ -669,10 +669,10 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *ed
 		}
 		if err := g.DeclareAttacker(perm, defender); err == nil {
 			declared++
-			if log != nil {
-				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: ap.GetName(), Target: defender.GetName(), Detail: perm.GetName()})
-			}
 		}
+	}
+	if log != nil && declared > 0 {
+		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: ap.GetName(), Target: defender.GetName(), Detail: intString(declared) + " attackers"})
 	}
 	g.ResolveCombatDamage()
 	damage := max(0, beforeLife-defender.GetLifeTotal())
