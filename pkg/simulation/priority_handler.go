@@ -452,16 +452,6 @@ func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, contex
 	return nil
 }
 
-// getGamePlayer finds the game.Player by name, skipping eliminated players.
-func (h *StackAwareHandler) getGamePlayer(name string) *game.Player {
-	for _, p := range h.g.GetPlayersRaw() {
-		if p.GetName() == name && !p.HasLost() {
-			return p
-		}
-	}
-	return nil
-}
-
 func (h *StackAwareHandler) getOpponents(player abil.AbilityPlayer) []abil.AbilityPlayer {
 	var opponents []abil.AbilityPlayer
 	for _, p := range h.g.GetPlayersRaw() {
