@@ -694,6 +694,7 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Reanimated %s from graveyard", reanimatedCard.Name)
 
 	default:
+		logger.LogCard("Unimplemented effect type during applyEffect: %v for %s", effect.Type, effect.Description)
 		return fmt.Errorf("unimplemented effect type: %v", effect.Type)
 	}
 
