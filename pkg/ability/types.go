@@ -540,69 +540,6 @@ func (ae *AbilityEngine) ProcessTriggeredAbilities() {
 	}
 }
 
-// ResolveStack resolves the top object on the stack.
-func (ae *AbilityEngine) ResolveStack() error {
-	if len(ae.stack) == 0 {
-		return ErrEmptyStack
-	}
-
-	// Get top object
-	topObject := ae.stack[len(ae.stack)-1]
-	ae.stack = ae.stack[:len(ae.stack)-1]
-
-	// Resolve the ability
-	return ae.resolveAbility(topObject)
-}
-
-// resolveAbility resolves a specific ability.
-func (ae *AbilityEngine) resolveAbility(stackObj *StackObject) error {
-	// TODO: Implement ability resolution based on effect types
-	for _, effect := range stackObj.Ability.Effects {
-		err := ae.applyEffect(effect, stackObj)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// applyEffect applies a specific effect.
-func (ae *AbilityEngine) applyEffect(effect Effect, stackObj *StackObject) error {
-	switch effect.Type {
-	case DrawCards:
-		// TODO: Implement card drawing
-		for _, target := range stackObj.Targets {
-			if player, ok := target.(AbilityPlayer); ok {
-				ae.gameState.DrawCards(player, effect.Value)
-			}
-		}
-	case DealDamage:
-		// Implement damage dealing
-		for _, target := range stackObj.Targets {
-			ae.gameState.DealDamage(stackObj.Source, target, effect.Value)
-		}
-	case GainLife:
-		// TODO: Implement life gain
-		for _, target := range stackObj.Targets {
-			if player, ok := target.(AbilityPlayer); ok {
-				ae.gameState.GainLife(player, effect.Value)
-			}
-		}
-	case AddMana:
-		// TODO: Implement mana addition
-	case ChooseMode:
-		// Modal choices are parsed explicitly and resolved by higher-level spell
-		// choice logic; they are no longer represented as fake card draw.
-	case TakeExtraTurn:
-		// Extra-turn queueing is not part of the current GameState interface.
-		// Keep the effect explicit so callers can detect/support it without
-		// corrupting statistics as a DrawCards effect.
-	default:
-		return ErrUnknownEffect
-	}
-	return nil
-}
-
 // ResetTurnCounters resets all per-turn ability usage counters.
 func (ae *AbilityEngine) ResetTurnCounters() {
 	for _, ability := range ae.abilities {
