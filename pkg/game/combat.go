@@ -76,6 +76,9 @@ func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	if blocker.IsTapped() {
 		return fmt.Errorf("tapped creatures can't block")
 	}
+	if blocker.CantBlock() {
+		return fmt.Errorf("creature can't block")
+	}
 	// CR 702.9: a creature with flying can be blocked only by creatures
 	// with flying or reach.
 	if attacker.HasKeyword(KWFlying) && !blocker.HasKeyword(KWFlying) && !blocker.HasKeyword(KWReach) {

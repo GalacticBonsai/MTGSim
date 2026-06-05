@@ -604,9 +604,23 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			stack := s.GetStack()
 			if stack.Size() > 0 {
 				top := stack.Peek()
-				if top != nil {
-					stack.AddSpell(top.Spell, controller, top.Targets)
-					logger.LogCard("Copied spell: %s", top.Description)
+				if top != nil && top.Spell != nil {
+					copyEffects := make([]Effect, len(top.Spell.Effects))
+					copy(copyEffects, top.Spell.Effects)
+					copyTargets := make([]interface{}, len(top.Targets))
+					copy(copyTargets, top.Targets)
+					copied := &Spell{
+						ID:         uuid.New(),
+						Name:       top.Spell.Name,
+						ManaCost:   top.Spell.ManaCost,
+						CMC:        top.Spell.CMC,
+						TypeLine:   top.Spell.TypeLine,
+						OracleText: top.Spell.OracleText,
+						Effects:    copyEffects,
+						Source:     top.Spell.Source,
+					}
+					stack.AddSpell(copied, controller, copyTargets)
+					logger.LogCard("Copied spell: %s (new ID: %s)", top.Spell.Name, copied.ID)
 				}
 			}
 		}
