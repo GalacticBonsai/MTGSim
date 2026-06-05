@@ -3,8 +3,10 @@ package ability
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mtgsim/mtgsim/internal/logger"
+	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
 // PriorityDecisionFunc is called by ProcessPriorityRound when a player
@@ -307,9 +309,29 @@ func (pm *PriorityManager) resolveManaAbility(ability *Ability, player AbilityPl
 	// Mana abilities resolve immediately without using the stack
 	for _, effect := range ability.Effects {
 		if effect.Type == AddMana {
-			// Apply mana effect directly
-			logger.LogCard("%s activates mana ability: %s", player.GetName(), ability.Name)
-			// TODO: Add mana to player's mana pool
+			manaType := game.Colorless
+			if effect.Description != "" {
+				lower := strings.ToLower(effect.Description)
+				switch {
+				case strings.Contains(lower, "white"):
+					manaType = game.White
+				case strings.Contains(lower, "blue"):
+					manaType = game.Blue
+				case strings.Contains(lower, "black"):
+					manaType = game.Black
+				case strings.Contains(lower, "red"):
+					manaType = game.Red
+				case strings.Contains(lower, "green"):
+					manaType = game.Green
+				case strings.Contains(lower, "colorless") || strings.Contains(lower, "any"):
+					manaType = game.Colorless
+				case strings.Contains(lower, "any"):
+					manaType = game.Any
+				}
+			}
+			pool := player.GetManaPool()
+			pool[manaType] += effect.Value
+			logger.LogCard("%s activates mana ability: %s — adds %d %s mana (pool: %v)", player.GetName(), ability.Name, effect.Value, manaType, pool)
 		}
 	}
 	return nil
@@ -345,8 +367,14 @@ func isInstantSpeed(spell *Spell) bool {
 }
 
 func hasFlash(spell *Spell) bool {
-	// Check if spell has flash keyword
-	return false // Simplified for now
+	if spell == nil {
+		return false
+	}
+	oracle := strings.ToLower(spell.OracleText)
+	if strings.Contains(oracle, "flash") {
+		return true
+	}
+	return false
 }
 
 func hasInstantSpeedKeyword(spell *Spell) bool {

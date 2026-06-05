@@ -505,9 +505,21 @@ func (ae *AbilityEngine) TriggerAbilities(condition TriggerCondition, source int
 
 // shouldTrigger determines if a specific ability should trigger.
 func (ae *AbilityEngine) shouldTrigger(ability *Ability, source interface{}) bool {
-	// TODO: Implement specific trigger condition checking
-	// This would check things like "when a creature enters the battlefield"
-	// vs "when this creature enters the battlefield"
+	if ability == nil {
+		return false
+	}
+	// If the trigger condition references a specific named source,
+	// only fire when that source matches.
+	if ability.Source != nil {
+		if named, ok := ability.Source.(interface{ GetName() string }); ok {
+			if srcNamed, ok2 := source.(interface{ GetName() string }); ok2 {
+				// "when this creature enters" means source must match
+				if ability.TriggerCondition == EntersTheBattlefield {
+					return named.GetName() == srcNamed.GetName()
+				}
+			}
+		}
+	}
 	return true
 }
 

@@ -38,8 +38,9 @@ func (p *playerAdapter) AddCardToHand(c any) {
 		p.P.AddCardToHand(sc)
 	}
 }
-func (p *playerAdapter) GetCreatures() []any { return wrapPerms(p.P.GetCreatures(), p.Game) }
-func (p *playerAdapter) GetLands() []any     { return wrapPerms(p.P.GetLands(), p.Game) }
+func (p *playerAdapter) GetCreatures() []any       { return wrapPerms(p.P.GetCreatures(), p.Game) }
+func (p *playerAdapter) GetLands() []any           { return wrapPerms(p.P.GetLands(), p.Game) }
+func (p *playerAdapter) AddLandPlay(n int)         { p.P.AddLandPlay(n) }
 
 func wrapPerms(perms []*game.Permanent, g *game.Game) []any {
 	out := make([]any, len(perms))
