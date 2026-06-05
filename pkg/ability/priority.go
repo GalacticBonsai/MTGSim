@@ -370,11 +370,7 @@ func hasFlash(spell *Spell) bool {
 	if spell == nil {
 		return false
 	}
-	oracle := strings.ToLower(spell.OracleText)
-	if strings.Contains(oracle, "flash") {
-		return true
-	}
-	return false
+	return strings.Contains(strings.ToLower(spell.OracleText), "flash")
 }
 
 func hasInstantSpeedKeyword(spell *Spell) bool {

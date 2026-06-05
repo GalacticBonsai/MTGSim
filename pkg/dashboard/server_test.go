@@ -201,7 +201,7 @@ func TestNewServer(t *testing.T) {
 	if server == nil {
 		t.Fatal("expected non-nil server")
 	}
-	if server.port != 8080 {
+	if server.port != 8080 { //nolint:staticcheck
 		t.Errorf("expected port 8080, got %d", server.port)
 	}
 	if server.provider == nil {
