@@ -250,25 +250,31 @@ skipCommander:
 				again = true
 				break
 			}
-			perm, err := castPermanentCard(g, ap, c)
-			if err != nil || perm == nil {
-				continue
+			if stackHandler != nil {
+				if !stackHandler.CastPermanentThroughStack(ap, c, ap.GetName()) {
+					continue
+				}
+			} else {
+				perm, perr := castPermanentCard(g, ap, c)
+				if perr != nil || perm == nil {
+					continue
+				}
+				perm.SetEnteredTurn(g.GetTurnNumber())
+				resolvePermanentETB(g, perm, ap, log)
 			}
-		perm.SetEnteredTurn(g.GetTurnNumber())
-		resolvePermanentETB(g, perm, ap, log)
-		storm := 0
-		if metrics != nil {
-			storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
-		}
-		if log != nil {
-			kind := EventPermanentCast
-			if c.IsCreature() {
-				kind = EventCreatureSummon
+			storm := 0
+			if metrics != nil {
+				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
 			}
-			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
-		}
-		again = true
-		break
+			if log != nil {
+				kind := EventPermanentCast
+				if c.IsCreature() {
+					kind = EventCreatureSummon
+				}
+				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+			}
+			again = true
+			break
 		}
 	}
 

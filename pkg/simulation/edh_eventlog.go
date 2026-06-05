@@ -25,6 +25,7 @@ const (
 	EventGameEnd          EDHEventKind = "game_end"
 	EventTriggerResolved  EDHEventKind = "trigger_resolved"
 	EventActivatedAbility EDHEventKind = "activated_ability"
+	EventSpellResolved    EDHEventKind = "spell_resolved"
 )
 
 // EDHEvent is a single structured entry in a pod's event log. Designed

@@ -58,6 +58,35 @@ func NewStackAwareHandler(g *game.Game, logOpt *EDHEventLog) *StackAwareHandler 
 
 	spellCasting.GetPriorityManager().DecisionFunc = h.aiDecision
 
+	// Wire stack callbacks: log resolution events and apply state-based actions.
+	spellCasting.GetStack().OnResolve = func(item *abil.StackItem) {
+		if h.log == nil {
+			return
+		}
+		if item.Type == abil.StackItemSpell && item.Spell != nil {
+			if item.Countered {
+				h.log.Append(EDHEvent{
+					Turn:   h.g.GetTurnNumber(),
+					Phase:  phaseLabel(h.g.GetCurrentPhase()),
+					Kind:   EventSpellCountered,
+					Actor:  item.Controller.GetName(),
+					Detail: item.Spell.Name,
+				})
+			} else {
+				h.log.Append(EDHEvent{
+					Turn:   h.g.GetTurnNumber(),
+					Phase:  phaseLabel(h.g.GetCurrentPhase()),
+					Kind:   EventSpellResolved,
+					Actor:  item.Controller.GetName(),
+					Detail: item.Spell.Name,
+				})
+			}
+		}
+	}
+	spellCasting.GetStack().OnAfterResolve = func() {
+		h.g.ApplyStateBasedActions()
+	}
+
 	return h
 }
 
@@ -157,6 +186,120 @@ func (h *StackAwareHandler) CastSpellThroughStack(ap *game.Player, c game.Simple
 
 	ap.Graveyard = append(ap.Graveyard, c)
 	return true
+}
+
+// CastPermanentThroughStack routes a permanent spell through the stack.
+// It removes the card from hand, puts it on the stack as a spell, runs
+// priority rounds (opponents can respond/counter), and on successful
+// resolution creates the permanent on the battlefield and fires ETB
+// triggers. Returns true if the permanent resolved and entered the
+// battlefield.
+func (h *StackAwareHandler) CastPermanentThroughStack(ap *game.Player, c game.SimpleCard, casterName string) bool {
+	gs := h.gameState
+	playerAdapter := gs.GetPlayer(casterName)
+	if playerAdapter == nil {
+		return false
+	}
+
+	// Remove card from hand
+	cidx := -1
+	for i, cc := range ap.Hand {
+		if cc.Name == c.Name {
+			cidx = i
+			break
+		}
+	}
+	if cidx < 0 {
+		return false
+	}
+	ap.Hand = append(ap.Hand[:cidx], ap.Hand[cidx+1:]...)
+
+	abilities, err := h.engine.ParseAndRegisterAbilities(c.OracleText, c)
+	if err != nil {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return false
+	}
+
+	var effects []abil.Effect
+	isPermanent := c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()
+	for _, ab := range abilities {
+		if isPermanent && (ab.Type == abil.Triggered || ab.Type == abil.Activated || ab.Type == abil.Mana) {
+			continue
+		}
+		effects = append(effects, ab.Effects...)
+	}
+
+	spell := &abil.Spell{
+		Name:       c.Name,
+		ManaCost:   c.ManaCost,
+		CMC:        int(c.GetMinManaCost().Total()),
+		TypeLine:   c.TypeLine,
+		OracleText: c.OracleText,
+		Effects:    effects,
+		Source:     c,
+	}
+
+	// Set up priority for main phase
+	h.spellCasting.SetActivePlayer(playerAdapter)
+	h.spellCasting.SetPhase("Main Phase")
+
+	pm := h.spellCasting.GetPriorityManager()
+
+	// Cast the spell (puts on stack via priority manager)
+	if err := pm.CastSpell(playerAdapter, spell, nil); err != nil {
+		logger.LogPlayer("Failed to cast %s through stack: %v", c.Name, err)
+		ap.Graveyard = append(ap.Graveyard, c)
+		return false
+	}
+
+	logger.LogPlayer("%s casts %s through stack", ap.GetName(), c.Name)
+
+	// Save the StackItem reference so we can check if it was countered after priority resolves.
+	candidate := h.spellCasting.GetStack().LastCastItem()
+
+	// Run full priority round — opponents can respond, then stack resolves
+	if err := h.spellCasting.ProcessPriority(); err != nil {
+		logger.LogCard("Priority round error for %s: %v", c.Name, err)
+	}
+
+	// If the spell was countered, the card goes to graveyard.
+	if candidate != nil && candidate.Countered {
+		ap.Graveyard = append(ap.Graveyard, c)
+		logger.LogPlayer("%s was countered — permanent not created", c.Name)
+		return false
+	}
+
+	// Spell resolved — create permanent on battlefield and fire ETB
+	perm, err := castPermanentCard(h.g, ap, c)
+	if err != nil || perm == nil {
+		ap.Graveyard = append(ap.Graveyard, c)
+		return false
+	}
+	perm.SetEnteredTurn(h.g.GetTurnNumber())
+	resolvePermanentETB(h.g, perm, ap, h.log)
+
+	return true
+}
+
+// phaseLabel converts a game.Phase to the string label used by the
+// ability engine's priority-manager and AI systems.
+func phaseLabel(p game.Phase) string {
+	switch p {
+	case game.PhaseUpkeep:
+		return "Upkeep"
+	case game.PhaseDraw:
+		return "Draw"
+	case game.PhaseMain1:
+		return "Main Phase"
+	case game.PhaseCombat:
+		return "Combat Phase"
+	case game.PhaseMain2:
+		return "Main Phase"
+	case game.PhaseEnd:
+		return "End Step"
+	default:
+		return "Main Phase"
+	}
 }
 
 // aiDecision is called by the PriorityManager for each player when they
@@ -329,25 +472,4 @@ func (h *StackAwareHandler) getOpponents(player abil.AbilityPlayer) []abil.Abili
 		}
 	}
 	return opponents
-}
-
-// phaseLabel converts a game.Phase to the string label used by the
-// ability engine's priority-manager and AI systems.
-func phaseLabel(p game.Phase) string {
-	switch p {
-	case game.PhaseUpkeep:
-		return "Upkeep"
-	case game.PhaseDraw:
-		return "Draw"
-	case game.PhaseMain1:
-		return "Main Phase"
-	case game.PhaseCombat:
-		return "Combat Phase"
-	case game.PhaseMain2:
-		return "Main Phase"
-	case game.PhaseEnd:
-		return "End Step"
-	default:
-		return "Main Phase"
-	}
 }

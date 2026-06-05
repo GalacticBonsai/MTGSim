@@ -50,6 +50,9 @@ type Stack struct {
 	allPlayers      []AbilityPlayer
 	gameState       GameState
 	executionEngine *ExecutionEngine
+	lastCastItem    *StackItem
+	OnResolve       func(item *StackItem)
+	OnAfterResolve  func() // called after each successful resolution (e.g., for SBAs)
 }
 
 // NewStack creates a new stack instance
@@ -126,8 +129,12 @@ func (s *Stack) AddSpell(spell *Spell, controller AbilityPlayer, targets []inter
 		Targets:     targets,
 		Description: fmt.Sprintf("%s (spell)", spell.Name),
 	}
+	s.lastCastItem = item
 	s.Push(item)
 }
+
+// LastCastItem returns the most recently added StackItem via AddSpell/AddAbility.
+func (s *Stack) LastCastItem() *StackItem { return s.lastCastItem }
 
 // AddAbility adds an ability to the stack
 func (s *Stack) AddAbility(ability *Ability, controller AbilityPlayer, targets []interface{}) {
@@ -140,6 +147,7 @@ func (s *Stack) AddAbility(ability *Ability, controller AbilityPlayer, targets [
 		Targets:     targets,
 		Description: fmt.Sprintf("%s (ability)", ability.Name),
 	}
+	s.lastCastItem = item
 	s.Push(item)
 }
 
@@ -206,10 +214,18 @@ func (s *Stack) ResolveTop() error {
 		return err
 	}
 
+	if s.OnResolve != nil {
+		s.OnResolve(item)
+	}
+
 	// After resolution, priority returns to the active player
 	s.resetPriorityPassing()
 	if s.gameState != nil {
 		s.priorityPlayer = s.gameState.GetActivePlayer()
+	}
+
+	if s.OnAfterResolve != nil {
+		s.OnAfterResolve()
 	}
 
 	return nil
