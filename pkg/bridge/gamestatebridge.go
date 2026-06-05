@@ -351,6 +351,9 @@ func (b *AbilityGameState) MillCards(player abil.AbilityPlayer, count int) {
 func (b *AbilityGameState) ReanimateCreature(player abil.AbilityPlayer, card game.SimpleCard) {
 	if pa, ok := player.(*playerAdapter); ok {
 		pa.P.PutTokenOnBattlefield(card)
+		if b.OnActivate != nil {
+			b.OnActivate(card.Name, "reanimated")
+		}
 	}
 }
 

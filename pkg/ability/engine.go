@@ -657,12 +657,8 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 			}
 		}
 		if !found {
-			reanimatedCard = game.SimpleCard{
-				Name:      "Reanimated Creature",
-				TypeLine:  "Creature",
-				Power:     "2",
-				Toughness: "2",
-			}
+			logger.LogCard("ReanimateCreature: no valid creature target found, skipping")
+			return nil
 		}
 		ee.gameState.ReanimateCreature(controller, reanimatedCard)
 		logger.LogCard("Reanimated %s from graveyard", reanimatedCard.Name)

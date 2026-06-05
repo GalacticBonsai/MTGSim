@@ -1,40 +1,78 @@
-# MTGSim 🎴⚔️
+# MTGSim — cEDH Deck Optimizer & Simulator
 
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](./)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> A headless, automated **Magic: The Gathering** simulator and deck-analysis sandbox written in Go.
+> A multiplayer Commander simulator purpose-built to discover the best cEDH deck. Import lists, simulate thousands of high-fidelity pods, and let data — not theory — tell you which cards win.
 
-MTGSim lets you import decklists, simulate thousands of games, and analyze performance — from quick 1v1 smoke tests to full multiplayer EDH pods with structured replay export. Everything runs locally with a cached Scryfall card database and ships with a built-in web dashboard.
+## Why this exists
 
-## Three commands, three levels of fidelity
+Deckbuilding for cEDH has always been driven by intuition, heuristics, and collective table experience. MTGSim replaces guesswork with evidence:
+
+- Simulate 50+ concurrent pods using real cEDH decklists
+- Track every card's win rate, cast count, and performance across thousands of games
+- Get data-driven cut/add recommendations for any deck
+- Test sideboard variants, meta adjustments, and new brews at scale
+
+This isn't a casual EDH simulator. Multiplayer pods, 40 life, commander tax, 21-damage SBA, London Mulligans, storm counts, mana tracking, turn-limited combo detection — every mechanic that matters in competitive Commander is accounted for.
+
+## How it works
+
+```
+Import decks → Validate vs Scryfall oracle → Simulate pods with character-level AI → Collect per-card stats → Recommend cuts/adds → Repeat
+```
+
+### Three commands, three levels of fidelity
 
 | Command | What it does | Best for |
 |---|---|---|
 | `mtgsim` | 1v1 simulator with stats, sideboards, and confidence intervals | Smoke-testing and comparing tuned lists |
-| `mtgsim-edh` | Multiplayer Commander pods (2–6 players) | EDH meta analysis |
-| `mtgsim-dashboard` | Live web dashboard for results | Real-time browsing |
+| `mtgsim-edh` | Multiplayer Commander pods (2–6 players) | EDH meta analysis and deck optimization |
+| `mtgsim-dashboard` | Live web dashboard with per-card stats and deck recommendations | Real-time analysis |
 
-## Feature highlights
+## Core features
 
-- 🧠 **Multiplayer EDH engine** — 2-6 players, 40 life, command zone, commander tax, 21-damage SBA, London Mulligans
-- 📊 **Threat-based AI** — attack targeting uses board-state scoring; APNAP-ordered trigger resolution
-- 📝 **Replay export** — per-pod structured JSON event logs (turns, casts, combat, eliminations)
-- 🌐 **Built-in dashboard** — auto-refreshing HTML UI with 1v1 and EDH endpoints
-- 📦 **Flexible deck import** — plain lists, Cockatrice `.dck`, sectioned exports (Moxfield, etc.), inferred commanders
-- 🧪 **Comprehensive tests** — full coverage across `pkg/game`, `pkg/ability`, `pkg/simulation`, `pkg/deck`, and `pkg/dashboard`
+### Simulation engine
+- **Full multiplayer EDH** — 2–6 players, 40 life, command zone, commander tax, 21-damage SBA, APNAP ordering
+- **cEDH mulligan AI** — Hand evaluation based on competitive mulligan framework (Sperling 2023): prioritizes truly broken openers (T1 Remora, Sol Ring + 2 lands, Ad Naus with mana), aggressive default-to-mulligan
+- **Storm tracking** — records storm count for combo detection
+- **Threat-based combat** — attack targeting uses board-state scoring; AI prioritizes dangerous commanders and open boards
+- **Ability engine** — 250+ regex patterns parse oracle text into structured abilities (mana, triggered, activated, static)
+- **Combo detection** — oracle-consultation, godo-helm, and extensible combo finish framework
+- **EDH event log** — structured JSON per-pod replay (lands, summons, combat, commander casts, eliminations)
+- **ETB triggers** — enter-the-battlefield effects resolve automatically
+- **Mana production** — auto-tap lands, rocks, and dorks for main-phase casting
+- **Search/tutor resolution** — Grim Monolith, Urborg/Vesuva effects, and search routines
 
-## Quick decision guide
+### Deck optimization
+- **Per-card win-rate tracking** — every card records casts and wins across thousands of games
+- **Cut/add recommendations** — the dashboard highlights underperformers and suggests upgrades from the global card library
+- **Sideboard variant generation** — automatically generate variants by swapping configurable numbers of sideboard cards
+- **Uploaded deck comparison** — upload your list, compare its performance against the meta
+- **Persistent card library** — aggregate stats survive restarts (`card_library.json`), reset on demand via API
 
-- **1v1 analysis with confidence intervals** → `mtgsim`
-- **EDH pod testing & replay export** → `mtgsim-edh`
-- **Browser-based metrics** → `mtgsim-dashboard`
+### Dashboard
+- **Dark-themed HTML UI** with auto-refresh
+- **Per-deck rankings** with win rates and game counts
+- **Per-card stats** — global win rate, cast counts, recommendations
+- **Uploaded deck management** — upload, analyze, remove
+- **Game log** — browse recent pods with player details
+- **EDH telemetry** — average turns, storm counts, mana spent, combat damage, eliminations
+- **Reset controls** — clear card library or game logs from the UI
+- **JSON API** — all data accessible programmatically
 
-## Requirements
+### Deck import
+- **Multiple formats** — plain lists, Cockatrice `.dck`, sectioned exports (Moxfield etc.)
+- **Commander detection** — infers command zones from section headers, inline annotations, sideboard conventions
+- **Color identity validation** — validates every card against commander(s) using Scryfall data
+- **Recursive directory scanning** — import hundreds of decks at once
 
-- Go 1.21+ (Go 1.23.x recommended — `go.mod` pins `toolchain go1.23.4`)
-- Internet access **only** if the card database is missing (one-time Scryfall download)
+### Infrastructure
+- **PostgreSQL persistence** — optional DSN-backed durable storage for deployments
+- **Docker support** — containerized deployment with Postgres
+- **Scryfall integration** — automatic card database download, image enrichment
+- **Replay export** — per-pod structured JSON for external analysis
+- **Performance** — 105x optimized (13.6ms per game), 14M→64K allocations per game via singleton regex compilation
 
 ## Quick start
 
@@ -43,316 +81,265 @@ git clone https://github.com/mtgsim/mtgsim.git
 cd MTGSim
 ```
 
-On first run the simulator checks for `.cache/cardDB.json`. If it is missing, it downloads the pinned Scryfall oracle snapshot and caches it locally automatically.
+On first run the simulator downloads the Scryfall oracle snapshot and caches it at `.cache/cardDB.json`.
 
-### 1️⃣ Run a 1v1 batch
-
-```sh
-go run ./cmd/mtgsim -games=100 -decks=decks/1v1 -v=1
-```
-
-**Typical output snippet:**
-
-```text
-== Simulation Summary ==
-Games: 100 | Total Time: 1.2s | Games/sec: 83
-
-Deck Performance (95% CI)
-Red Deck              52      48      52.0%   [42.1%, 61.8%]
-Green Deck            48      52      48.0%   [38.2%, 57.9%]
-
-Aggregate Game Metrics
-Avg Turns: 8.4
-Final Life P1: avg=12.3 min=0 max=20 | P2: avg=8.1 min=0 max=20
-```
-
-### 2️⃣ Launch the live dashboard
+### Run a cEDH meta simulation
 
 ```sh
-go run ./cmd/mtgsim-dashboard -games=200 -decks=decks/1v1 -port=8080
+go run ./cmd/mtgsim-edh -games=200 -pod=4 -decks=decks/edh -port=8080
 ```
 
-Then open **http://localhost:8080** in your browser. The page auto-refreshes every 5 seconds as games finish.
-
-### 3️⃣ Run a 4-player EDH pod batch with replay export
+### Launch the dashboard
 
 ```sh
-go run ./cmd/mtgsim-edh -games=25 -pod=4 -decks=decks/edh \
-  -mulligans=1 -replay=replays -port=0
+go run ./cmd/mtgsim-edh -games=0 -decks=decks/edh -port=8080
+# Open http://localhost:8080
 ```
 
-**Typical output snippet:**
+### Upload your deck for analysis
 
-```text
-META: Starting 25 4-player pods (seed=1715601023)...
-META: Completed 10/25 pods
-META: Completed 20/25 pods
-META: Simulated 25 pods in 3.1s (avg 12.4 turns/pod)
-=== EDH Results ===
-Deck Krenko                      G:25  W:12  L:13  WR: 48.0%  AvgLife: 18.3  CmdrDmgKO:3
-```
+1. Start the dashboard with an EDH deck directory
+2. Go to the "My Deck" tab
+3. Name your deck, paste your list
+4. Click "Save & Analyze" — the runner will include your deck in future pods
 
-Replay files land in `replays/pod-0001.json`, `replays/pod-0002.json`, etc.
+## Requirements
 
-## Building the tools
-
-```sh
-go build -o mtgsim          ./cmd/mtgsim
-go build -o mtgsim-dashboard ./cmd/mtgsim-dashboard
-go build -o mtgsim-edh      ./cmd/mtgsim-edh
-```
-
-## Command overview
-
-| Command | Purpose | Important flags |
-|---|---|---|
-| `mtgsim` | 1v1 simulator with stats and CI | `-games`, `-decks`, `-swap`, `-v`, `-log` |
-| `mtgsim-dashboard` | Runs simulations and serves dashboard UI | `-games`, `-decks`, `-port`, `-keep-alive`, `-log` |
-| `mtgsim-edh` | Headless multiplayer EDH / Commander runner | `-games`, `-pod`, `-decks`, `-max-turns`, `-mulligans`, `-replay`, `-sideboard-variants`, `-sideboard-swaps`, `-port`, `-keep-alive`, `-seed`, `-log` |
-
-### `mtgsim`
-
-Two-player batch simulator with full mana enforcement, stack-based casting, aggregate metrics, and Wilson-score confidence intervals.
-
-```sh
-./mtgsim -games=250 -decks=decks/welcome -log=META
-```
-
-Flags:
-
-- `-games N`: number of games to simulate (default `100`)
-- `-decks DIR`: recursively scanned deck directory (default `decks/1v1`)
-- `-swap N`: swap `N` random sideboard cards into the main deck each game
-- `-v N`: verbosity (`0` minimal, `1` summary, `2` per-game details)
-- `-log LEVEL`: logger verbosity
-
-### `mtgsim-dashboard`
-
-Runs 1v1 simulations and serves an HTML dashboard at `http://localhost:<port>`.
-
-```sh
-./mtgsim-dashboard -games=300 -decks=decks/1v1 -port=8080
-```
-
-Notable flags:
-
-- `-games N`: simulations to run (default `50`)
-- `-decks DIR`: recursively scanned deck directory (default `decks/1v1`)
-- `-port N`: HTTP port (default `8080`)
-- `-keep-alive`: keep the server running after the batch completes (default `true`)
-
-### `mtgsim-edh`
-
-Runs multiplayer Commander / EDH pods headlessly and can optionally expose EDH metrics on the same dashboard server.
-
-```sh
-./mtgsim-edh -games=50 -pod=4 -decks=decks/edh -mulligans=1 -replay=replays -keep-alive=false
-```
-
-Notable flags:
-
-- `-games N`: number of pods to simulate (default `50`)
-- `-pod N`: players per pod, from `2` to `6` (default `4`)
-- `-decks DIR`: recursively scanned deck directory (default `decks`)
-- `-max-turns N`: hard turn cap per pod (default `50`)
-- `-mulligans N`: London Mulligans each player takes before turn 1
-- `-seed N`: RNG seed (`0` means time-based)
-- `-replay DIR`: write one JSON replay per pod
-- `-sideboard-variants N`: generate `N` sideboard-swap variants per imported deck
-- `-sideboard-swaps N`: number of cards swapped for each generated variant (default `3`)
-- `-port N`: dashboard port; set `0` to disable dashboard startup
-- `-keep-alive`: keep dashboard alive after simulations finish (default `true`)
-
-Important note: because the default EDH deck root is `decks`, `mtgsim-edh` will recurse through every subdirectory under `decks/`. If you want only Commander lists, prefer `-decks=decks/edh`.
-
-## Dashboard & API
-
-When a dashboard-capable binary (`mtgsim-dashboard` or `mtgsim-edh`) is running, the server exposes a dark-themed auto-refreshing HTML UI plus JSON endpoints you can query directly.
-
-### Endpoints
-
-| Endpoint | What it returns | Available from |
-|---|---|---|
-| `GET /` | Dark HTML dashboard with live tables | Any dashboard binary |
-| `GET /api/health` | `{"status":"healthy"}` | Any dashboard binary |
-| `GET /api/results` | 1v1 win/loss aggregates | Any dashboard binary |
-| `GET /api/edh-results` | EDH per-deck stats + summary telemetry | `mtgsim-edh` only |
-| `GET /api/edh-games` | Recent EDH pod records (latest 10) | `mtgsim-edh` only |
-
-### Example API queries
-
-```sh
-# 1v1 leaderboard
-curl -s http://localhost:8080/api/results | jq '.decks[:3]'
-
-# EDH aggregate telemetry (requires mtgsim-edh)
-curl -s http://localhost:8080/api/edh-results | jq '.summary'
-
-# Recent pod replays (requires mtgsim-edh)
-curl -s http://localhost:8080/api/edh-games | jq '.games[0] | {winner, turns, players}'
-```
-
-### HTML dashboard preview
-
-The UI auto-refreshes every 5 seconds and shows:
-
-- **Summary cards** — total games, unique decks, average turns
-- **Deck rankings** — sortable win-rate table
-- **EDH telemetry** (when running `mtgsim-edh`) — pods, highest storm count, total mana spent, combat damage, eliminations
-- **Recent pods** — winner, turns, per-player mana/cards played, and final event
-
-## Deck file formats
-
-Deck discovery is recursive and filename-agnostic. In practice, this repo contains `.deck`, `.dck`, and `.txt` deck exports. The importer parses deck contents rather than depending on a specific extension.
-
-Supported patterns include:
-
-### Plain list
-
-```txt
-4 Lightning Bolt
-3 Mountain
-20 Forest
-```
-
-### Sectioned list
-
-```txt
-About
-Name My Awesome Deck
-
-Deck
-4x Lightning Bolt (CLB) 401
-3x Mountain (DSK) 283
-
-Sideboard
-2x Naturalize (M19) 190
-```
-
-### Commander / EDH-friendly sections
-
-```txt
-COMMANDER:
-1 Krenko, Mob Boss
-
-DECK
-99 other cards...
-
-SIDEBOARD
-5 flex cards...
-```
-
-The Commander importer also handles common export conventions such as:
-
-- `Commander`, `Command Zone`, `Deck`, and `Sideboard` section headers
-- `SB:` inline lines used by Cockatrice-style exports
-- `COMMANDER:` inline lines
-- `NAME:` deck titles
-- Moxfield/Cockatrice-style final command-zone groups
-
-Commander imports validate card color identity against the designated commander(s). Sideboard cards are also checked because the EDH runner can generate sideboard-swap variants.
+- Go 1.25+
+- Internet access **only** if the card database is missing (one-time Scryfall download)
+- PostgreSQL (optional, for persistent storage)
 
 ## Repository layout
 
-```text
+```
 MTGSim/
-├── cmd/                  # CLI entry points
-│   ├── mtgsim/
-│   ├── mtgsim-dashboard/
-│   └── mtgsim-edh/
+├── cmd/
+│   ├── mtgsim/            # 1v1 batch simulator
+│   ├── mtgsim-dashboard/  # Dashboard server with 1v1 runner
+│   └── mtgsim-edh/        # EDH pod simulator + dashboard
 ├── pkg/
-│   ├── ability/          # Ability parsing, targeting, stack, priority, AI glue
-│   ├── bridge/           # Bridges between game state and ability systems
-│   ├── card/             # Card models, mana parsing, card database loader
-│   ├── dashboard/        # HTTP server and HTML dashboard
-│   ├── deck/             # Deck import and commander validation
-│   ├── game/             # Core rules engine and zones
-│   └── simulation/       # 1v1 / EDH runners, results, utilities, threat logic
-├── internal/logger/      # Internal logging helpers
-├── decks/                # Sample 1v1 and EDH decklists
-├── meta/                 # Deck generation utilities
-└── .cache/
-    └── cardDB.json       # Cached Scryfall oracle DB (created/updated locally)
+│   ├── ability/           # Oracle text parser, stack, targeting, effects engine
+│   ├── bridge/            # Game state adapters for ability/AI systems
+│   ├── card/              # Card models, mana parsing, Scryfall database
+│   ├── dashboard/         # HTTP server, HTML UI, JSON API
+│   ├── database/          # PostgreSQL persistence and queries
+│   ├── deck/              # Deck import, commander validation
+│   ├── game/              # Core rules engine (zones, phases, combat, triggers)
+│   ├── simulation/        # 1v1 / EDH runners, mulligan AI, results, combos
+│   ├── combo/             # Combo detection framework
+│   └── stats/             # Card library and global stats
+├── internal/logger/       # Structured logging
+├── decks/                 # Sample cEDH decklists
+├── .cache/cardDB.json     # Scryfall oracle cache (auto-downloaded)
+└── meta/                  # Deck generation utilities
 ```
 
-## Architecture overview
+## Command reference
 
-```mermaid
-graph LR
-    A[Deck files<br/>.deck .dck .txt] -->|pkg/deck| B(Card DB<br/>.cache/cardDB.json)
-    B --> C[pkg/card]
-    C --> D[pkg/game<br/>Core engine]
-    D --> E[pkg/simulation<br/>1v1 & EDH runners]
-    E --> F[JSON replay<br/>replays/]
-    E --> G[pkg/dashboard<br/>HTTP server]
-    G --> H[HTML UI + API<br/>localhost:8080]
-    I[pkg/ability<br/>Stack & targeting] --> D
-    J[pkg/bridge<br/>AI glue] --> D
-```
+### `mtgsim-edh` flags
 
-**Flow in words:**
-1. **Deck import** (`pkg/deck`) recursively reads lists, infers command zones, and validates color identity against the cached Scryfall oracle database (`pkg/card`).
-2. **Game engine** (`pkg/game`) runs headless turn/phase loops, combat with first-strike timing, layered continuous effects, triggers, state-based actions, and commander damage.
-3. **Ability & bridge layers** (`pkg/ability`, `pkg/bridge`) extend the engine with stack handling, targeting, timing checks, and AI-assisted casting.
-4. **Simulation runners** (`pkg/simulation`) orchestrate 1v1 pairings or EDH pods, aggregate metrics, apply threat-based attack targeting, and optionally write per-pod JSON replays.
-5. **Dashboard** (`pkg/dashboard`) serves both the auto-refreshing HTML UI and the JSON API endpoints.
+| Flag | Default | Description |
+|---|---|---|
+| `-games` | `0` | Number of pods (0 = continuous mode) |
+| `-pod` | `4` | Players per pod (2–6) |
+| `-decks` | `decks` | Deck directory (recursive) |
+| `-max-turns` | `50` | Hard turn limit |
+| `-port` | `8080` | Dashboard port (0 = no dashboard) |
+| `-keep-alive` | `true` | Keep server running after batch |
+| `-seed` | `0` | RNG seed (0 = time-based) |
+| `-replay` | `` | Replay output directory |
+| `-db` | `` | PostgreSQL DSN |
+| `-card-stats` | `card_library.json` | Persistent card stats file |
+| `-sideboard-variants` | `0` | Variants per deck |
+| `-sideboard-swaps` | `3` | Cards swapped per variant |
+| `-mulligans` | `0` | Force mulligan count (0 = AI) |
 
-## Rules engine highlights
+## API endpoints
 
-The `pkg/game` engine is intentionally headless and focused on simulation workflows. Current engine capabilities in the checked-in code include:
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | GET | Dashboard UI |
+| `/api/health` | GET | Health check |
+| `/api/edh-results` | GET | Per-deck EDH stats |
+| `/api/edh-summary` | GET | Global EDH aggregates |
+| `/api/edh-games` | GET | Recent pod records |
+| `/api/card-library` | GET | Global per-card stats |
+| `/api/card-db` | GET | Card metadata from Scryfall |
+| `/api/run-games` | POST | Trigger additional simulations |
+| `/api/game-status` | GET | Running/polling state |
+| `/api/uploaded-decks` | GET/POST/DELETE | Uploaded deck management |
+| `/api/reset-card-library` | POST | Clear card stats |
+| `/api/reset-game-logs` | POST | Clear game logs |
+| `/api/deck-analysis` | GET | Cut/add recommendations for a deck |
 
-- turn / phase progression and cleanup
-- combat with blockers and first-strike / double-strike timing
-- keyword handling used by combat and state-based actions
-- layered continuous effects for power/toughness changes
-- triggers, watchers, and event-driven game hooks
-- damage prevention and replacement-effect hooks
-- commander bookkeeping (command zone, tax, commander damage)
-- multiplayer APNAP trigger ordering
+---
 
-The `pkg/ability` and `pkg/bridge` packages extend this with stack handling, targeting, timing checks, and AI-assisted activation / casting in the more detailed simulation paths.
+## Todo
 
-## Sample deck directories
+The following is the complete roadmap to make this the best cEDH deck construction and simulation application ever built.
 
-- `decks/1v1`: basic two-player test decks
-- `decks/welcome`: simple monocolor intro-style lists
-- `decks/vanilla`: creature-heavy lower-complexity lists
-- `decks/novelty`: themed examples
-- `decks/edh`: Commander / EDH exports used by the multiplayer runner
+### Rules engine completeness
 
-## Current limitations
+- [ ] **Full priority system** — pass priority around the table in APNAP order; players get priority in every phase/step
+- [ ] **The Stack** — full implementation with targets, modes, split-second, and triggered ability stacking
+- [ ] **Instant-speed interaction** — AI holds priority and casts instants (removal, counterspells, protection) during opponents' turns
+- [ ] **Combat tricks** — AI casts pump spells, combat tricks, and untap effects during combat
+- [ ] **Blocks** — AI evaluates block decisions (trade, chump, double-block)
+- [ ] **Mana burn / mana pool emptying** — CR 500.4: mana pool empties between steps/phases
+- [ ] **Phasing** — implement phasing rules for cards like Teferi's Protection
+- [ ] **MDFCs / modal double-faced cards** — both faces with correct mana costs and type lines
+- [ ] **Split cards, fuse, aftermath** — multi-sided spell handling
+- [ ] **Adventure, Bestow** — creature vs. non-creature spell modality
+- [ ] **Cascade, discover, suspend** — alternative casting methods
+- [ ] **Foretell, morph, manifest** — facedown card mechanics
+- [ ] **Dice rolling, coin flipping** — for cards like Delina, Wild Mage
+- [ ] **Monarch, Initiative** — tracking who is the monarch / has the initiative
+- [ ] **City's Blessing** — tracking permanent permanents you control
+- [ ] **Day/night cycle** — werewolf/curse tracking
+- [ ] **Descend, delirium, threshold, hellbent** — graveyard/hand-count thresholds
+- [ ] **Devotion** — counting mana symbols on permanents
+- [ ] **Domain, basic land count** — land type and basic count checks
 
-- **Simulation fidelity** — `mtgsim` is a batch simulator, not a full competitive MTG AI. It uses heuristics rather than exhaustive search.
-- **Instant-speed interaction** — The EDH runner auto-plays lands, commanders, castable non-instant permanents, combat, and main-phase abilities. Rich instant-speed play is not enabled by default.
-- **Opponent priority** — The EDH opponent-priority hook exists, but the default handler is a no-op. Custom priority handlers can be wired in via `pkg/game`.
-- **Replay playback** — JSON replays are write-only today. A deterministic replay-import CLI is not yet implemented.
-- **Deck discovery** — Recursive directory scanning does not filter by file extension. Keep sideboard drafts and non-deck files out of the scanned tree.
+### Ability parsing and effects
 
-## Development
+- [ ] **All triggered abilities** — `whenever`, `at`, `when` for every event type
+- [ ] **Replacement effects** — `if you would`, `instead` patterns
+- [ ] **Cost reduction / increasing** — `spells you cast cost {1} less`
+- [ ] **Mana cost modification** — `this spell costs {X} more to cast for each`
+- [ ] **Protection from X** — protection from colors/creature types
+- [ ] **Hexproof, shroud, ward** — targeting restrictions
+- [ ] **Indestructible, deathtouch, lifelink, infect** — combat keyword effects
+- [ ] **First strike, double strike, trample** — combat damage step ordering
+- [ ] **Haste** — summoning sickness tracking
+- [ ] **Flash** — timing restriction modification
+- [ ] **Vigilance, menace, fear, intimidate** — attack/block restrictions
+- [ ] **Prowess, heroic** — spell-based triggers
+- [ ] **Delirium, threshold** — condition-based triggers
+- [ ] **Leaves-the-battlefield triggers** — `when ~ leaves the battlefield`
+- [ ] **Dies triggers** — `when ~ dies`
+- [ ] **Graveyard recursion** — `return target card from graveyard to battlefield`
+- [ ] **Exile interaction** — `exile ~, then you may cast it`
+- [ ] **Token creation** — with correct subtypes, colors, and abilities
+- [ ] **Copy effects** — `copy target permanent`, `copy target spell`
+- [ ] **Flicker / blink** — `exile target creature, then return it to the battlefield`
+- [ ] **Clones** — `you may have ~ enter as a copy of`
+- [ ] **Theft / control change** — `gain control of target creature`
+- [ ] **Phase-out** — `phase out target permanent`
+- [ ] **Tutor effects** — `search your library for a card` (with all restriction types)
+- [ ] **Wheel effects** — `each player discards their hand, then draws seven cards`
+- [ ] **Mass discard / draw** — windfall, peer into the abyss patterns
+- [ ] **Alternative casting costs** — `you may cast ~ without paying its mana cost`
+- [ ] **Miracle, entwine, kicker** — modal cost payment
+- [ ] **Buyback, flashback, unearth** — alternate zone casting
+- [ ] **Convoke, delve, affinity** — cost reduction mechanics
+- [ ] **Living weapon, modular** — enters-the-battlefield counter placement
+- [ ] **Sagas** — chapter counter tracking and lore counter triggers
+- [ ] **Classes (Dungeons & Dragons)** — level-up tracking
+- [ ] **Contraptions, attractions** — Un-sets if desired
+- [ ] **Companion** — deckbuilding restriction checking
+- [ ] **Partner, Background** — multiple commander handling
+- [ ] **Friends forever, doctor's companion** — special partner variants
 
-Run the standard checks from the repository root:
+### AI and decision-making
 
-```sh
-go test ./...
-go vet ./...
-```
+- [ ] **Full optimal mulligan** — per-deck hand evaluation using historical performance data
+- [ ] **Mulligan simulation** — before deciding, simulate N random hands and pick the best one
+- [ ] **Deep threat assessment** — score each opponent's board for: combo proximity, commander danger, card advantage engines
+- [ ] **Kingmaking avoidance** — distribute attacks/removal evenly; prioritize the player most likely to win
+- [ ] **Combo detection and prioritization** — recognize when the AI's hand contains a deterministic win, cast it
+- [ ] **Stax piece sequencing** — play Rule of Law, Drannith Magistrate, Rest in Peace at optimal times
+- [ ] **Countermagic AI** — decide which spells to counter based on known decklists, storm count, and win condition proximity
+- [ ] **Removal targeting** — prioritize mana-positive rocks over mana-negative ones, engines over threats
+- [ ] **Graveyard hate timing** — Surgical Extraction / Faerie Macabre at the right moment (response to tutor, response to breach)
+- [ ] **Fetch land optimization** — decide which land to fetch based on current hand and commander colors
+- [ ] **Brainstorm / topdeck manipulation** — optimal putting-back decisions
+- [ ] **Rhystic Study / Mystic Remora payment AI** — decide whether opponents pay the {1} or let them draw
+- [ ] **Opponent hand estimation** — infer bombs and interaction from known information (tutors, revealed cards)
+- [ ] **Politic / table talk simulation** — who to attack, who to save interaction for
+- [ ] **Learning / reinforcement learning** — train AI across thousands of games to improve decisions
+- [ ] **Opening hand selection tuning** — automatically tune the mulligan AI per-deck using genetic algorithms
 
-If you want a quick manual smoke test, these are the highest-signal commands:
+### Deck construction and optimization
 
-```sh
-go run ./cmd/mtgsim -games=10 -decks=decks/1v1
-go run ./cmd/mtgsim-edh -games=2 -pod=4 -decks=decks/edh -port=0
-```
+- [ ] **Genetic deck optimizer** — mutate cards in/out, simulate pods, select for win rate, repeat across generations
+- [ ] **Curve analysis** — interactive mana curve with simulation of color-screw probability
+- [ ] **Color-fixing analysis** — land count + color source calculator (chrome mox, rainbow lands, basics)
+- [ ] **Mana base solver** — given a deck's color requirements, output optimal land count and composition
+- [ ] **Auto-sideboarding** — given a meta snapshot, generate optimal 15-card sideboard
+- [ ] **Meta analysis** — cluster decks by archetype, compute which cards over/underperform against each archetype
+- [ ] **Card synergy scoring** — compute pairwise synergy (e.g., Underworld Breach + Lion's Eye Diamond)
+- [ ] **Deck similarity** — for any two decks, compute Jaccard similarity and shared strategies
+- [ ] **Budget mode** — filter recommendations by budget constraints
+- [ ] **Tournament meta import** — scrape or import decklists from MTGO/MTGTop8/EDHTop16
+- [ ] **Custom card evaluation rules** — user-defined card weights and bans
+- [ ] **Multi-archetype comparison** — import N decks in the same archetype, identify the highest-variance flex slots
+- [ ] **Cut/add confidence** — highlight the statistical significance of each recommendation (p-value, confidence interval)
 
-## Contributing
+### Dashboard and visualization
 
-Contributions are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md) if you are contributing through a fork or PR workflow.
+- [ ] **Interactive card browser** — search, filter by color/CMC/type, view performance sparklines
+- [ ] **Heatmap: card vs. archetype** — win rate of each card against each archetype in the meta
+- [ ] **Time-series charts** — win rate over simulation batches (track meta shifts)
+- [ ] **Combo graph visualization** — network diagram of known combos with piece frequency
+- [ ] **Mana curve chart** — per-deck histogram overlayed with win-rate per CMC
+- [ ] **Player dashboard** — track your uploaded decks, personal stats, leaderboard
+- [ ] **Export analysis to PDF/CSV** — downloadable reports
+- [ ] **Per-deck matchup matrix** — heatmap of deck A vs. deck B win rates
+- [ ] **Event timeline viewer** — replay browser: step through each turn of a pod with board state snapshots
+- [ ] **Game replay viewer** — visual replay of any recorded pod (turn-by-turn)
+- [ ] **Leaderboard** — ranked decklist display with filters (time period, pod size, minimum games)
+- [ ] **Card image integration** — show Scryfall card images on hover in all tables
 
-## License
+### Data infrastructure
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+- [ ] **Persistent PostgreSQL schema migrations** — versioned, repeatable, rollback-capable
+- [ ] **Tournament mode** — run N pods with M decks, produce a tournament bracket
+- [ ] **Real-time streaming** — WebSocket push for live game results without polling
+- [ ] **REST API documentation** — OpenAPI/Swagger spec for all endpoints
+- [ ] **Authentication** — user accounts for multi-user deployments
+- [ ] **Rate limiting and caching** — optimize for high-throughput deployments
+- [ ] **Export API** — bulk export of all data in JSON/CSV/Parquet
+- [ ] **Database indexing** — optimize the most common query patterns
+- [ ] **Backup/restore** — automatic database snapshots
 
-## Acknowledgments
+### Performance and scalability
 
-- [Scryfall](https://scryfall.com/) for the oracle card data used by the local card database cache
-- The MTG community for the rules references, deck exports, and inspiration behind the simulator
+- [ ] **Distributed simulation** — run workers across multiple machines, aggregate results
+- [ ] **Lazy card parsing** — parse oracle text only when a card enters a relevant zone
+- [ ] **Ability caching** — memoize parsed abilities per card name (not per card instance)
+- [ ] **Game state delta compression** — only serialize state changes in replays
+- [ ] **Adaptive turn limit** — stop pods when no player can win (board state is stalled)
+- [ ] **Early game termination** — detect deterministic wins and end the pod immediately
+- [ ] **Profile-guided optimization** — PGO builds for the simulation binary
+- [ ] **SIMD mana pool operations** — batch mana payment for large boards
+
+### Testing and validation
+
+- [ ] **Rules regression tests** — for every implemented mechanic, a test that it interacts correctly with the stack, layers, and timing
+- [ ] **Card-specific integration tests** — for the top 500 cEDH staples, a test that their oracle text parses and resolves correctly
+- [ ] **Chaos mode** — run games with random actions and assert no crashes (fuzz testing)
+- [ ] **Determinism test** — same seed → same game state (every step)
+- [ ] **End-to-end simulation tests** — simulate N pods, compare aggregate stats to known good baselines
+- [ ] **CI benchmark tracking** — track simulation speed over time, alert on regressions
+
+### cEDH-specific features
+
+- [ ] **Tournament-ready results** — produce bracket-busting predictions for actual cEDH tournaments
+- [ ] **Flash / other banned-list awareness** — check legality against current ban lists
+- [ ] **Custom ban list support** — allow user-defined ban lists for playgroup testing
+- [ ] **Proxies** — untracked card library vs. real collection tracking
+- [ ] **Deck weight analysis** — compute "how tuned" a deck is based on staple inclusion rates
+- [ ] **Brew scorer** — given a novel decklist, predict its win rate within 5% based on similarity to known archetypes
+- [ ] **cEDH metagame clock** — identify which archetypes are under/overrepresented and whether the meta is healthy
+- [ ] **Rule zero / house rule support** — partial mulligan, extra starting life, etc.
+
+### Quality of life
+
+- [ ] **Prebuilt binary releases** — GitHub Actions publishing for Windows/macOS/Linux
+- [ ] **Docker Compose** — one-command deployment with Postgres + dashboard
+- [ ] **CLI interactive mode** — TUI for selecting decks, configuring runs, viewing results
+- [ ] **Desktop app** — Electron or Tauri wrapper for the dashboard
+- [ ] **Mobile-responsive dashboard** — make the UI usable on phones/tablets
+- [ ] **Notifications** — email/Slack/Discord webhook when a simulation batch completes
+- [ ] **Progress bar** — real-time simulation progress with estimated time remaining
+- [ ] **Deck editor** — in-browser deck list editing with autocomplete and validation

@@ -276,7 +276,7 @@ skipCommander:
 	bridge.AutoActivateMainPhaseAbilitiesWithLog(g, func(cardName, detail string) {
 		if log != nil {
 			actor := ap.GetName()
-			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventFetchActivated, Actor: actor, Detail: cardName + " -> " + detail})
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventActivatedAbility, Actor: actor, Detail: cardName + " -> " + detail})
 		}
 	})
 	attemptCEDHComboFinish(g, ap, log, metrics)
@@ -369,6 +369,13 @@ func resolvePermanentETB(g *game.Game, perm *game.Permanent, ap *game.Player, lo
 			}
 		}
 		_ = engine.ExecuteAbility(ab, playerAdapter, targets)
+		if log != nil {
+			targetStr := ""
+			for _, t := range targets {
+				if s, ok := t.(game.SimpleCard); ok { targetStr = s.Name; break }
+			}
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(g.GetCurrentPhase()), Kind: EventTriggerResolved, Actor: ap.GetName(), Detail: src.Name + " ETB: " + ab.Name, Target: targetStr})
+		}
 	}
 }
 
