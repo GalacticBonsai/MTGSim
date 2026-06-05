@@ -389,17 +389,6 @@ func eventDetail(name string, manaSpent, storm int) string {
 	return name + " | mana=" + intString(manaSpent) + " storm=" + intString(storm)
 }
 
-//nolint:unused
-func isValidSpellCost(c game.SimpleCard) bool {
-	if c.IsLand() {
-		return false
-	}
-	if cost := c.GetManaCost(); cost.Total() == 0 && c.ManaCost == "" {
-		return false
-	}
-	return true
-}
-
 func activateSearchAbilities(g *game.Game, ap *game.Player, log *EDHEventLog) {
 	gs := bridge.NewAbilityGameState(g)
 	engine := abil.NewExecutionEngine(gs)

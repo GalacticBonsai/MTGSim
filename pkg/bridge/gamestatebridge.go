@@ -128,15 +128,6 @@ func sliceToAny[T any](in []T) []any {
 	}
 	return out
 }
-//nolint:unused
-func permsToAny(in []*game.Permanent) []any {
-	out := make([]any, len(in))
-	for i, v := range in {
-		out[i] = v
-	}
-	return out
-}
-
 // --- Ability.GameState methods ---
 
 func (b *AbilityGameState) GetPlayer(name string) abil.AbilityPlayer {

@@ -71,13 +71,6 @@ func (p *Player) IncrementCommanderCast(name string) {
 	p.commanderCastCount[name]++
 }
 
-// MoveCommanderFromZoneToBattlefield removes the named commander from the
-// command zone and creates a battlefield permanent flagged as commander.
-// Returns nil if the commander is not currently in the command zone.
-func (p *Player) MoveCommanderFromZoneToBattlefield() *Permanent {
-	return nil // unused placeholder; callers should use CastCommander.
-}
-
 // CastCommander resolves a commander cast from the command zone: removes
 // the card from CZ, increments the cast counter, and creates a battlefield
 // permanent with the commander flag set. Returns nil if the named

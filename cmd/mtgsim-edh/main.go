@@ -205,13 +205,6 @@ func (gr *EDHGameRunner) runBatch(count int) {
 	logger.LogMeta("Batch of %d pods completed!", count)
 }
 
-// pickPodWithUploaded picks n random seats, ensuring chosen (if non-empty)
-// is in the pod, then shuffles. Non-uploaded decks fill the remaining seats.
-//nolint:unused
-func pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
-	return pickPodFromPool(seats, n, rng, mulligans, chosen)
-}
-
 func (gr *EDHGameRunner) pickPodWithUploaded(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int, chosen string) []simulation.EDHSeat {
 	return pickPodFromPool(seats, n, rng, mulligans, chosen)
 }
@@ -579,18 +572,6 @@ func toSimpleCard(c card.Card) game.SimpleCard {
 		ColorIdentity: c.ColorIdentity,
 		ManaCost:      c.ManaCost,
 	}
-}
-
-//nolint:unused
-func pickPod(seats []simulation.EDHSeat, n int, rng *rand.Rand, mulligans int) []simulation.EDHSeat {
-	idxs := rng.Perm(len(seats))[:n]
-	pod := make([]simulation.EDHSeat, n)
-	for i, j := range idxs {
-		s := seats[j]
-		s.Mulligans = mulligans
-		pod[i] = s
-	}
-	return pod
 }
 
 func recordLegacy(r *simulation.Results, rec simulation.EDHGameRecord) {
