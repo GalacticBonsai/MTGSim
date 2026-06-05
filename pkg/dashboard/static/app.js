@@ -177,6 +177,15 @@
 		let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
 		for (let name of names) {
 			const escaped = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+			html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:6px; background:#1a1a1a; border-radius:4px;">';
+			html += '<span>★ ' + escapeHtml(name) + '</span>';
+			html += '<button onclick="deleteUploadedDeck(\'' + escaped + '\')" style="padding:2px 8px;background:#e74c3c;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:0.75em;" title="Remove uploaded deck">✕</button>';
+			html += '</div>';
+		}
+		html += '</div>';
+		container.innerHTML = html;
+	}
+
 	async function deleteUploadedDeck(name) {
 		try {
 			const res = await fetch('/api/uploaded-decks?name=' + encodeURIComponent(name), { method: 'DELETE' });

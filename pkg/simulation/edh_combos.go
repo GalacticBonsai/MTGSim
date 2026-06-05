@@ -282,17 +282,17 @@ func castTutor(g *game.Game, p *game.Player, name string, log *EDHEventLog, metr
 			card := p.Library[idx]
 			p.Library = append(p.Library[:idx], p.Library[idx+1:]...)
 			p.Hand = append(p.Hand, card)
-			if log != nil {
-				log.Append(EDHEvent{
-					Turn:   g.GetTurnNumber(),
-					Phase:  phaseName(g.GetCurrentPhase()),
-					Kind:   EventFetchActivated,
-					Actor:  p.GetName(),
-					Detail: name + " -> " + card.Name,
-				})
-			}
-			return true
+		if log != nil {
+			log.Append(EDHEvent{
+				Turn:   g.GetTurnNumber(),
+				Phase:  phaseName(g.GetCurrentPhase()),
+				Kind:   EventPermanentCast,
+				Actor:  p.GetName(),
+				Detail: name + " (tutor -> " + card.Name + ")",
+			})
 		}
+		return true
+	}
 	}
 	return true
 }
@@ -321,9 +321,6 @@ func comboWin(g *game.Game, winner *game.Player, detail string, log *EDHEventLog
 		if opp != nil && opp != winner && !opp.HasLost() {
 			opp.Lose("effect")
 		}
-	}
-	if log != nil {
-		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(g.GetCurrentPhase()), Kind: EventGameEnd, Actor: winner.GetName(), Detail: detail})
 	}
 }
 

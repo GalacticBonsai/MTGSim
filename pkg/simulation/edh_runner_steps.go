@@ -22,6 +22,12 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 		metrics.resetTurn()
 	}
 
+	// Extract the stack handler if available for stack-based casting in the main phase.
+	var stackHandler *StackAwareHandler
+	if h, ok := priority.(*StackAwareHandler); ok {
+		stackHandler = h
+	}
+
 	lastState := ""
 	unchangedActions := 0
 	const maxUnchangedActions = 12
@@ -60,7 +66,7 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			if log != nil {
 				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventTurnStart, Actor: ap.GetName()})
 			}
-			runMainPhase(g, ap, casts, log, metrics)
+			runMainPhase(g, ap, casts, log, metrics, stackHandler)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseCombat:
 			runCombatPhase(g, ap, log, metrics)
@@ -143,7 +149,9 @@ func recordEliminations(g *game.Game, log *EDHEventLog, ap *game.Player, metrics
 // runMainPhase plays one land, casts the commander when possible, and
 // summons creatures in hand if mana allows. Optional log
 // records every public action so a replay can be reproduced.
-func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics) {
+// stackHandler, when non-nil, routes instants and sorceries through the
+// ability package's stack so opponents can respond before resolution.
+func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, metrics *edhMetrics, stackHandler *StackAwareHandler) {
 	idx := indexOfPlayer(g, ap)
 	landsPlayed := 0
 	for _, c := range ap.Hand {
@@ -216,7 +224,12 @@ skipCommander:
 			}
 			manaSpent := manaSpentForCard(c)
 			if c.IsInstant() || c.IsSorcery() {
-				resolved := castNonPermanentSpell(g, ap, c, log, metrics)
+				var resolved bool
+				if stackHandler != nil {
+					resolved = stackHandler.CastSpellThroughStack(ap, c, ap.GetName())
+				} else {
+					resolved = castNonPermanentSpell(g, ap, c, log, metrics)
+				}
 				storm := 0
 				if metrics != nil && resolved {
 					storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
@@ -237,25 +250,31 @@ skipCommander:
 				again = true
 				break
 			}
-			perm, err := castPermanentCard(g, ap, c)
-			if err != nil || perm == nil {
-				continue
+			if stackHandler != nil {
+				if !stackHandler.CastPermanentThroughStack(ap, c, ap.GetName()) {
+					continue
+				}
+			} else {
+				perm, perr := castPermanentCard(g, ap, c)
+				if perr != nil || perm == nil {
+					continue
+				}
+				perm.SetEnteredTurn(g.GetTurnNumber())
+				resolvePermanentETB(g, perm, ap, log)
 			}
-		perm.SetEnteredTurn(g.GetTurnNumber())
-		resolvePermanentETB(g, perm, ap, log)
-		storm := 0
-		if metrics != nil {
-			storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
-		}
-		if log != nil {
-			kind := EventPermanentCast
-			if c.IsCreature() {
-				kind = EventCreatureSummon
+			storm := 0
+			if metrics != nil {
+				storm = metrics.recordSpell(idx, manaSpent, c.IsCreature(), c.Name)
 			}
-			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
-		}
-		again = true
-		break
+			if log != nil {
+				kind := EventPermanentCast
+				if c.IsCreature() {
+					kind = EventCreatureSummon
+				}
+				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: kind, Actor: ap.GetName(), Detail: eventDetail(c.Name, manaSpent, storm)})
+			}
+			again = true
+			break
 		}
 	}
 
@@ -263,7 +282,7 @@ skipCommander:
 	bridge.AutoActivateMainPhaseAbilitiesWithLog(g, func(cardName, detail string) {
 		if log != nil {
 			actor := ap.GetName()
-			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventFetchActivated, Actor: actor, Detail: cardName + " -> " + detail})
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventActivatedAbility, Actor: actor, Detail: cardName + " -> " + detail})
 		}
 	})
 	attemptCEDHComboFinish(g, ap, log, metrics)
@@ -356,6 +375,13 @@ func resolvePermanentETB(g *game.Game, perm *game.Permanent, ap *game.Player, lo
 			}
 		}
 		_ = engine.ExecuteAbility(ab, playerAdapter, targets)
+		if log != nil {
+			targetStr := ""
+			for _, t := range targets {
+				if s, ok := t.(game.SimpleCard); ok { targetStr = s.Name; break }
+			}
+			log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(g.GetCurrentPhase()), Kind: EventTriggerResolved, Actor: ap.GetName(), Detail: src.Name + " ETB: " + ab.Name, Target: targetStr})
+		}
 	}
 }
 

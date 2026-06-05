@@ -298,6 +298,39 @@ func (db *DB) GetEDHDeckStats() ([]EDHDeckStats, error) {
 	defer func() { _ = rows.Close() }()
 
 	var out []EDHDeckStats
+	for rows.Next() {
+		var s EDHDeckStats
+		var avgFinalLife, avgMulligans, avgCmdrCasts, avgMana, avgManaProduced sql.NullFloat64
+		var avgCards, avgLands, avgSpells, avgCreatures, avgCombat sql.NullFloat64
+		if err := rows.Scan(
+			&s.DeckName, &s.CommanderName, &s.Games, &s.Wins, &s.Losses,
+			&avgFinalLife, &avgMulligans,
+			&s.CommanderDamageKOs, &s.LifeLossKOs, &s.MillKOs, &s.DeckoutKOs, &s.EffectKOs,
+			&s.CombatWins, &s.EffectWins, &s.DeckoutWins,
+			&avgCmdrCasts, &avgMana, &avgManaProduced, &avgCards, &avgLands, &avgSpells, &avgCreatures, &avgCombat,
+			&s.MaxStormCount, &s.TotalManaSpent, &s.TotalManaProduced, &s.TotalCardsPlayed, &s.TotalCombatDamage, &s.Eliminations,
+		); err != nil {
+			return nil, err
+		}
+		s.AvgFinalLife = avgFinalLife.Float64
+		s.AvgMulligans = avgMulligans.Float64
+		s.AvgCommanderCasts = avgCmdrCasts.Float64
+		s.AvgManaSpent = avgMana.Float64
+		s.AvgManaProduced = avgManaProduced.Float64
+		s.AvgCardsPlayed = avgCards.Float64
+		s.AvgLandsPlayed = avgLands.Float64
+		s.AvgSpellsCast = avgSpells.Float64
+		s.AvgCreaturesCast = avgCreatures.Float64
+		s.AvgCombatDamage = avgCombat.Float64
+		if s.Games > 0 {
+			s.WinRate = float64(s.Wins) / float64(s.Games) * 100
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	// Load per-deck card stats in a single batch query
 	cardStats, err := db.getAllDeckCardStats()
 	if err != nil {

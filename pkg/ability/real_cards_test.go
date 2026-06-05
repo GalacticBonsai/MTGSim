@@ -720,11 +720,12 @@ func TestEDHUnimplementedCardsLifecycle(t *testing.T) {
 	})
 
 	t.Run("Reanimate Execution", func(t *testing.T) {
+		targetCard := game.SimpleCard{Name: "DeadCreature", TypeLine: "Creature"}
 		player := &mockPlayer{
 			name:      "Alice",
 			life:      20,
 			creatures: []interface{}{},
-			graveyard: []interface{}{"DeadCreature"},
+			graveyard: []interface{}{targetCard},
 			manaPool:  make(map[game.ManaType]int),
 		}
 		gs := &mockGameState{
