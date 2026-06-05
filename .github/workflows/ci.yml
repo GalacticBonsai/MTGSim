@@ -75,7 +75,7 @@ jobs:
       - name: Download dependencies
         run: go mod download
       - name: Run tests
-        run: go test -v -race -count=1 -timeout=10m -coverprofile=coverage.out ./...
+        run: go test -v -race -count=1 -shuffle=on -vet=all -timeout=15m -coverprofile=coverage.out ./...
       - name: Generate coverage report
         run: go tool cover -html=coverage.out -o coverage.html
       - name: Upload coverage
@@ -83,6 +83,22 @@ jobs:
         with:
           name: coverage-report
           path: coverage.html
+
+  docker:
+    name: Docker Build
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   build:
     name: Build
@@ -96,7 +112,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - name: Build mtgsim
         run: go build -v -o mtgsim${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/mtgsim
       - name: Build mtgsim-dashboard
