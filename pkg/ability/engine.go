@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/mtgsim/mtgsim/internal/logger"
@@ -70,17 +71,32 @@ type SummoningSickness interface {
 }
 
 // Track cards that failed to implement correctly (parsed but not supported, or no effects for spell types)
-var unimplementedCards = map[string]string{}
+var (
+	unimplementedCardsMu sync.RWMutex
+	unimplementedCards   = map[string]string{}
+)
 
 func markUnimplementedCard(name, reason string) {
+	unimplementedCardsMu.Lock()
 	if _, exists := unimplementedCards[name]; !exists {
 		unimplementedCards[name] = reason
+		unimplementedCardsMu.Unlock()
 		logger.LogMeta("Unimplemented card: %s (%s)", name, reason)
+	} else {
+		unimplementedCardsMu.Unlock()
 	}
 }
 
-// GetUnimplementedCards returns a map[name]reason of unimplemented cards encountered.
-func GetUnimplementedCards() map[string]string { return unimplementedCards }
+// GetUnimplementedCards returns a snapshot map[name]reason of unimplemented cards encountered.
+func GetUnimplementedCards() map[string]string {
+	unimplementedCardsMu.RLock()
+	defer unimplementedCardsMu.RUnlock()
+	out := make(map[string]string, len(unimplementedCards))
+	for k, v := range unimplementedCards {
+		out[k] = v
+	}
+	return out
+}
 
 // ExecutionEngine handles the execution of abilities and their effects.
 type ExecutionEngine struct {
@@ -305,10 +321,10 @@ func (ee *ExecutionEngine) checkConditions(effect Effect, controller AbilityPlay
 			if len(controller.GetHand()) != 0 {
 				return false
 			}
-		case KickerPaid:
-			return true
-		case UnlessPaysMana:
-			return true
+	case KickerPaid:
+		return false
+	case UnlessPaysMana:
+		return false
 		case HaveMoreLandsThanOpponent:
 			if !ee.hasMoreLandsThanAnOpponent(controller) {
 				return false

@@ -110,7 +110,16 @@ func (t *ImplementationTracker) EvaluateAllInDB(db *card.CardDB) {
 	t.entries = make(map[string]ImplementationStatus)
 	t.mu.Unlock()
 	for _, c := range db.ListAll() {
-		_, _ = t.EvaluateCard(c)
+		impl, reason := testCardImplementation(c)
+		t.mu.Lock()
+		t.entries[c.Name] = ImplementationStatus{
+			Implemented: impl,
+			Reason:      reason,
+			ColorID:     colorIDString(c.ColorIdentity),
+			Set:         c.Set,
+			Type:        simplifyType(c.TypeLine),
+		}
+		t.mu.Unlock()
 	}
 }
 

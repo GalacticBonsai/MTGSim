@@ -337,16 +337,6 @@ func hasPayoffAnywhere(p *game.Player) bool {
 	return false
 }
 
-//nolint:unused
-func ownsAny(p *game.Player, names ...string) bool {
-	for _, name := range names {
-		if findZoneCard(p.Hand, name) >= 0 || findZoneCard(p.Library, name) >= 0 || findZoneCard(p.Graveyard, name) >= 0 || findZoneCard(p.CommandZone, name) >= 0 || permanentNamed(p, name) {
-			return true
-		}
-	}
-	return false
-}
-
 func availableManaSources(p *game.Player) int {
 	count := 0
 	for _, perm := range p.Battlefield {

@@ -802,8 +802,8 @@ func applySideboardSwap(main deck.Deck, side deck.Deck, n int) (deck.Deck, deck.
 
 // Build a game using pkg/game with libraries populated from deck cards.
 func buildGameFromDecks(d1, d2 deck.Deck) (*game.Game, *game.Player, *game.Player) {
-	p1 := game.NewPlayer(d1.Name, 20)
-	p2 := game.NewPlayer(d2.Name, 20)
+	p1 := game.NewPlayer(d1.Name, game.EDHStartingLife)
+	p2 := game.NewPlayer(d2.Name, game.EDHStartingLife)
 
 	// Convert decks to libraries
 	for _, c := range d1.Cards {
