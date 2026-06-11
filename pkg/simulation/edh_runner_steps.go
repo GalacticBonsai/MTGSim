@@ -69,7 +69,7 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			runMainPhase(g, ap, casts, log, metrics, stackHandler)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseCombat:
-			runCombatPhase(g, ap, log, metrics)
+			runCombatPhase(g, ap, log, metrics, priority)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseEnd:
 			offerOpponentPriority(g, ap, priority)
@@ -197,18 +197,35 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 		if ap.CanPayForCommander(cmdrCard) {
 			if ap.PayForCommander(cmdrCard) {
 				manaSpent := manaSpentForCommander(ap, cmdrCard)
-				perm := ap.CastCommander(name)
-				if perm == nil {
-					return
-				}
-				perm.SetEnteredTurn(g.GetTurnNumber())
-				casts[idx]++
-				storm := 0
-				if metrics != nil {
-					storm = metrics.recordSpell(idx, manaSpent, true, name)
-				}
-				if log != nil {
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
+
+				// Route commander through the stack so opponents can respond
+				if stackHandler != nil {
+					perm := stackHandler.CastCommanderThroughStack(ap, cmdrCard, ap.GetName())
+					if perm == nil {
+						return
+					}
+					casts[idx]++
+					storm := 0
+					if metrics != nil {
+						storm = metrics.recordSpell(idx, manaSpent, true, name)
+					}
+					if log != nil {
+						log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
+					}
+				} else {
+					perm := ap.CastCommander(name)
+					if perm == nil {
+						return
+					}
+					perm.SetEnteredTurn(g.GetTurnNumber())
+					casts[idx]++
+					storm := 0
+					if metrics != nil {
+						storm = metrics.recordSpell(idx, manaSpent, true, name)
+					}
+					if log != nil {
+						log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
+					}
 				}
 			}
 		}
@@ -666,7 +683,7 @@ func manaProductionOptions(c game.SimpleCard) []game.Mana {
 // runCombatPhase declares all eligible attackers against the most
 // threatening living opponent (Phase 4) and resolves combat damage.
 // Falls back to seat-order rotation when threat scores are tied.
-func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *edhMetrics) {
+func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *edhMetrics, priority PriorityHandler) {
 	defender := chooseAttackTarget(g, ap)
 	if defender == nil {
 		return
@@ -684,6 +701,11 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *ed
 	if log != nil && declared > 0 {
 		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: ap.GetName(), Target: defender.GetName(), Detail: intString(declared) + " attackers"})
 	}
+
+	// Priority window after declare attackers — CR 508.2 (active player gets
+	// priority, then opponents; instant-speed spells and abilities allowed).
+	offerOpponentPriority(g, ap, priority)
+
 	g.ResolveCombatDamage()
 	damage := max(0, beforeLife-defender.GetLifeTotal())
 	if metrics != nil {
@@ -692,6 +714,9 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *ed
 	if log != nil && declared > 0 {
 		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventCombatResolved, Actor: ap.GetName(), Target: defender.GetName(), Detail: "damage=" + intString(damage)})
 	}
+
+	// Priority window after combat damage — CR 510.3 / 511.2 (end of combat step).
+	offerOpponentPriority(g, ap, priority)
 }
 
 func indexOfPlayer(g *game.Game, p *game.Player) int {

@@ -1,6 +1,9 @@
 package simulation
 
 import (
+	"sort"
+	"strings"
+
 	abil "github.com/mtgsim/mtgsim/pkg/ability"
 	"github.com/mtgsim/mtgsim/pkg/bridge"
 	"github.com/mtgsim/mtgsim/pkg/game"
@@ -467,57 +470,212 @@ func (h *StackAwareHandler) tryCounterSpell(player abil.AbilityPlayer, opponentS
 	}
 }
 
+// instantScore returns a priority score for casting an instant in the
+// current context. Higher values are better. The scorer considers:
+//   - The top spell on the stack (opponent's threat we could respond to)
+//   - Board state (opponent creatures, our life total)
+//   - Hand size (low hand size → value draw spells)
+func instantScore(card game.SimpleCard, gp *game.Player, stackTop *abil.StackItem, opponentHasCreatures bool) int {
+	lower := strings.ToLower(card.TypeLine + " " + card.OracleText)
+	score := 1
+
+	// Counterspell: highest priority when there's an opponent spell on the stack
+	if card.IsCounterspell() {
+		if stackTop != nil && stackTop.Type == abil.StackItemSpell {
+			return 100
+		}
+		return 5
+	}
+
+	// Removal (destroy, exile, damage): valuable when opponents have creatures
+	if strings.Contains(lower, "destroy") || strings.Contains(lower, "exile") || strings.Contains(lower, "damage") {
+		if opponentHasCreatures {
+			score += 10
+		}
+	}
+
+	// Protection/hexproof/indestructible: valuable when our creature is threatened
+	if strings.Contains(lower, "hexproof") || strings.Contains(lower, "indestructible") || strings.Contains(lower, "protection") {
+		score += 3
+	}
+
+	// Card draw: more valuable with fewer cards in hand
+	if strings.Contains(lower, "draw") {
+		if len(gp.Hand) <= 2 {
+			score += 8
+		} else {
+			score += 2
+		}
+	}
+
+	// Life gain: more valuable at low life
+	if strings.Contains(lower, "gain") && strings.Contains(lower, "life") {
+		if gp.GetLifeTotal() <= 10 {
+			score += 6
+		}
+	}
+
+	// Bounce: valuable when opponent has expensive permanents
+	if strings.Contains(lower, "return") && strings.Contains(lower, "hand") {
+		score += 4
+	}
+
+	return score
+}
+
 // decideInstantSpell checks the player's hand for castable instants,
+// evaluates them with a context-aware scorer, and casts the best option.
 // pays their mana cost immediately (as CR 601.2h requires), and returns
 // a CastSpell decision. Returns nil if no instant is worth casting.
 func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, context abil.DecisionContext) *abil.PriorityDecision {
+	stackTop := h.spellCasting.GetStack().Peek()
+
+	var gp *game.Player
+	for _, p := range h.g.GetPlayersRaw() {
+		if p.GetName() == player.GetName() && !p.HasLost() {
+			gp = p
+			break
+		}
+	}
+	if gp == nil {
+		return nil
+	}
+
+	opponentHasCreatures := false
+	for _, p := range h.g.GetPlayersRaw() {
+		if p.GetName() != player.GetName() && !p.HasLost() && len(p.GetCreatures()) > 0 {
+			opponentHasCreatures = true
+			break
+		}
+	}
+
+	type scoredCard struct {
+		card  game.SimpleCard
+		score int
+	}
+
+	var candidates []scoredCard
 	for _, raw := range player.GetHand() {
 		card, ok := raw.(game.SimpleCard)
 		if !ok || !card.IsInstant() || card.OracleText == "" {
 			continue
 		}
-		var gp *game.Player
-		for _, p := range h.g.GetPlayersRaw() {
-			if p.GetName() == player.GetName() && !p.HasLost() {
-				gp = p
-				break
-			}
-		}
-		if gp == nil || !gp.CanPayForCard(card) {
+		if !gp.CanPayForCard(card) {
 			continue
 		}
-		if !gp.PayForCard(card) {
-			continue
-		}
-
-		abilities, err := h.engine.ParseAndRegisterAbilities(card.OracleText, card)
-		if err != nil || len(abilities) == 0 {
-			continue
-		}
-
-		var effects []abil.Effect
-		for _, ab := range abilities {
-			effects = append(effects, ab.Effects...)
-		}
-
-		spell := &abil.Spell{
-			Name:       card.Name,
-			ManaCost:   card.ManaCost,
-			CMC:        int(card.GetMinManaCost().Total()),
-			TypeLine:   card.TypeLine,
-			OracleText: card.OracleText,
-			Effects:    effects,
-			Source:     card,
-		}
-
-		logger.LogPlayer("%s casts %s at instant speed", player.GetName(), card.Name)
-		return &abil.PriorityDecision{
-			Action: abil.PriorityActionCastSpell,
-			Spell:  spell,
-			Player: player,
-		}
+		score := instantScore(card, gp, stackTop, opponentHasCreatures)
+		candidates = append(candidates, scoredCard{card: card, score: score})
 	}
-	return nil
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// Pick the highest-scoring instant
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].score > candidates[j].score
+	})
+
+	best := candidates[0]
+
+	if !gp.PayForCard(best.card) {
+		return nil
+	}
+
+	abilities, err := h.engine.ParseAndRegisterAbilities(best.card.OracleText, best.card)
+	if err != nil || len(abilities) == 0 {
+		return nil
+	}
+
+	var effects []abil.Effect
+	for _, ab := range abilities {
+		effects = append(effects, ab.Effects...)
+	}
+
+	spell := &abil.Spell{
+		Name:       best.card.Name,
+		ManaCost:   best.card.ManaCost,
+		CMC:        int(best.card.GetMinManaCost().Total()),
+		TypeLine:   best.card.TypeLine,
+		OracleText: best.card.OracleText,
+		Effects:    effects,
+		Source:     best.card,
+	}
+
+	logger.LogPlayer("%s casts %s at instant speed (score=%d)", player.GetName(), best.card.Name, best.score)
+	return &abil.PriorityDecision{
+		Action: abil.PriorityActionCastSpell,
+		Spell:  spell,
+		Player: player,
+	}
+}
+
+// CastCommanderThroughStack routes a commander cast from the command zone
+// through the stack so opponents can respond/counter. Returns the permanent
+// on successful resolution, or nil if countered/failed.
+func (h *StackAwareHandler) CastCommanderThroughStack(ap *game.Player, c game.SimpleCard, casterName string) *game.Permanent {
+	gs := h.gameState
+	playerAdapter := gs.GetPlayer(casterName)
+	if playerAdapter == nil {
+		return nil
+	}
+
+	abilities, err := h.engine.ParseAndRegisterAbilities(c.OracleText, c)
+	if err != nil {
+		return nil
+	}
+
+	var effects []abil.Effect
+	isPermanent := c.IsCreature() || c.IsArtifact() || c.IsEnchantment() || c.IsPlaneswalker()
+	for _, ab := range abilities {
+		if isPermanent && (ab.Type == abil.Triggered || ab.Type == abil.Activated || ab.Type == abil.Mana) {
+			continue
+		}
+		effects = append(effects, ab.Effects...)
+	}
+
+	spell := &abil.Spell{
+		Name:       c.Name,
+		ManaCost:   c.ManaCost,
+		CMC:        int(c.GetMinManaCost().Total()),
+		TypeLine:   c.TypeLine,
+		OracleText: c.OracleText,
+		Effects:    effects,
+		Source:     c,
+	}
+
+	h.spellCasting.SetActivePlayer(playerAdapter)
+	h.spellCasting.SetPhase("Main Phase")
+
+	pm := h.spellCasting.GetPriorityManager()
+
+	if err := pm.CastSpell(playerAdapter, spell, nil); err != nil {
+		logger.LogPlayer("Failed to cast commander %s through stack: %v", c.Name, err)
+		return nil
+	}
+
+	logger.LogPlayer("%s casts commander %s through stack", ap.GetName(), c.Name)
+
+	candidate := h.spellCasting.GetStack().LastCastItem()
+
+	if err := h.spellCasting.ProcessPriority(); err != nil {
+		logger.LogCard("Priority round error for commander %s: %v", c.Name, err)
+	}
+
+	if candidate != nil && candidate.Countered {
+		ap.Graveyard = append(ap.Graveyard, c)
+		logger.LogPlayer("Commander %s was countered", c.Name)
+		return nil
+	}
+
+	perm := ap.CastCommander(c.Name)
+	if perm == nil {
+		return nil
+	}
+	perm.SetEnteredTurn(h.g.GetTurnNumber())
+
+	h.processETBTriggers(ap, perm, c)
+	return perm
 }
 
 // ProcessPendingGameTriggers fires any triggers queued by the game engine.
