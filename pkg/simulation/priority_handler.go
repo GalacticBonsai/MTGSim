@@ -475,7 +475,7 @@ func (h *StackAwareHandler) tryCounterSpell(player abil.AbilityPlayer, opponentS
 //   - The top spell on the stack (opponent's threat we could respond to)
 //   - Board state (opponent creatures, our life total)
 //   - Hand size (low hand size → value draw spells)
-func instantScore(card game.SimpleCard, gp *game.Player, stackTop *abil.StackItem, opponentHasCreatures bool) int {
+func instantScore(card game.SimpleCard, gp *game.Player, stackTop *abil.StackItem, opponentHasCreatures bool, isCombat bool) int {
 	lower := strings.ToLower(card.TypeLine + " " + card.OracleText)
 	score := 1
 
@@ -497,6 +497,11 @@ func instantScore(card game.SimpleCard, gp *game.Player, stackTop *abil.StackIte
 	// Protection/hexproof/indestructible: valuable when our creature is threatened
 	if strings.Contains(lower, "hexproof") || strings.Contains(lower, "indestructible") || strings.Contains(lower, "protection") {
 		score += 3
+	}
+
+	// Combat trick (pump): score high during combat to win fights
+	if isCombat && (strings.Contains(lower, "gets +") || strings.Contains(lower, "+n/+n")) {
+		score += 8
 	}
 
 	// Card draw: more valuable with fewer cards in hand
@@ -549,6 +554,8 @@ func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, contex
 		}
 	}
 
+	isCombat := h.g.GetCurrentPhase() == game.PhaseCombat
+
 	type scoredCard struct {
 		card  game.SimpleCard
 		score int
@@ -563,7 +570,7 @@ func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, contex
 		if !gp.CanPayForCard(card) {
 			continue
 		}
-		score := instantScore(card, gp, stackTop, opponentHasCreatures)
+		score := instantScore(card, gp, stackTop, opponentHasCreatures, isCombat)
 		candidates = append(candidates, scoredCard{card: card, score: score})
 	}
 
