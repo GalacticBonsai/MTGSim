@@ -73,6 +73,8 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseEnd:
 			offerOpponentPriority(g, ap, priority)
+		case game.PhaseCleanup:
+			// Mana pools emptied by AdvancePhase; EOT effects cleared by Game.AdvancePhase.
 		}
 		g.ApplyStateBasedActions()
 
@@ -680,9 +682,51 @@ func manaProductionOptions(c game.SimpleCard) []game.Mana {
 	return out
 }
 
+// chooseBlockers uses simple AI to assign blocker creatures to attacking
+// creatures. Prioritizes survival blocks (blocker toughness > attacker power)
+// over trade blocks (attacker toughness <= blocker power).
+func chooseBlockers(g *game.Game, ap *game.Player, defender *game.Player) {
+	attackers := g.GetAttackers()
+	if len(attackers) == 0 {
+		return
+	}
+	for _, blocker := range defender.GetCreatures() {
+		if blocker.IsTapped() || blocker.CantBlock() {
+			continue
+		}
+		// Prefer blocks where blocker survives
+		blocked := false
+		for attacker := range attackers {
+			if attacker.IsTapped() {
+				continue
+			}
+			if blocker.GetToughness() > attacker.GetPower() {
+				if err := g.DeclareBlocker(blocker, attacker); err == nil {
+					blocked = true
+					break
+				}
+			}
+		}
+		if !blocked {
+			// Trade block as fallback
+			for attacker := range attackers {
+				if attacker.IsTapped() {
+					continue
+				}
+				if attacker.GetToughness() <= blocker.GetPower() {
+					if err := g.DeclareBlocker(blocker, attacker); err == nil {
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
 // runCombatPhase declares all eligible attackers against the most
-// threatening living opponent (Phase 4) and resolves combat damage.
-// Falls back to seat-order rotation when threat scores are tied.
+// threatening living opponent (Phase 4), runs blocking AI, and resolves
+// combat damage. Priority windows allow instant-speed interaction
+// per CR 508.2 and CR 510.3.
 func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *edhMetrics, priority PriorityHandler) {
 	defender := chooseAttackTarget(g, ap)
 	if defender == nil {
@@ -702,8 +746,26 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *ed
 		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: ap.GetName(), Target: defender.GetName(), Detail: intString(declared) + " attackers"})
 	}
 
-	// Priority window after declare attackers — CR 508.2 (active player gets
-	// priority, then opponents; instant-speed spells and abilities allowed).
+	// Priority window after declare attackers — CR 508.2
+	offerOpponentPriority(g, ap, priority)
+
+	// Defending player declares blockers (CR 509)
+	if declared > 0 {
+		chooseBlockers(g, ap, defender)
+		if log != nil {
+			blockCount := 0
+			for _, perm := range defender.GetCreatures() {
+				if g.IsBlocking(perm) {
+					blockCount++
+				}
+			}
+			if blockCount > 0 {
+				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: defender.GetName(), Target: ap.GetName(), Detail: intString(blockCount) + " blockers"})
+			}
+		}
+	}
+
+	// Priority window after declare blockers — CR 509.5 (combat tricks)
 	offerOpponentPriority(g, ap, priority)
 
 	g.ResolveCombatDamage()
