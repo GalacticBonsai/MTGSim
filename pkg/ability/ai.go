@@ -471,15 +471,25 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		}
 	}
 
-	// Build board state
+	// Build board state with real creature powers
 	boardState := BoardState{
 		MyCreatures: len(player.GetCreatures()),
 		MyLands:     len(player.GetLands()),
 	}
 
-	// Calculate creature power (simplified)
-	for range player.GetCreatures() {
-		boardState.MyCreaturePower += 2 // Assume average power of 2
+	myCreatures := player.GetCreatures()
+	for _, c := range myCreatures {
+		if pw, ok := c.(interface{ GetPower() int }); ok {
+			boardState.MyCreaturePower += pw.GetPower()
+		} else {
+			boardState.MyCreaturePower += 2
+		}
+		// Count artifacts and enchantments on the battlefield
+		if named, ok := c.(interface{ GetName() string }); ok {
+			if isHighUtilityPermanent(named.GetName()) {
+				boardState.MyUtilityPerms++
+			}
+		}
 	}
 
 	// Populate opponents
@@ -487,15 +497,22 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	for _, p := range ai.engine.gameState.GetAllPlayers() {
 		if p.GetName() != player.GetName() {
 			opponents = append(opponents, p)
-			boardState.OpponentCreatures += len(p.GetCreatures())
+			oppCreatures := p.GetCreatures()
+			boardState.OpponentCreatures += len(oppCreatures)
 			boardState.OpponentLands += len(p.GetLands())
-			for range p.GetCreatures() {
-				boardState.OpponentPower += 2
+			for _, c := range oppCreatures {
+				if pw, ok := c.(interface{ GetPower() int }); ok {
+					boardState.OpponentPower += pw.GetPower()
+				} else {
+					boardState.OpponentPower += 2
+				}
 			}
+			// Count opponent lock pieces (stax, prison effects)
+			boardState.OpponentLockPerms += estimateLockPermanents(p)
 		}
 	}
 
-	// Calculate threat level (simplified)
+	// Calculate threat level: creature advantage + power advantage + lock pieces + commander damage
 	threatLevel := 0
 	if boardState.OpponentCreatures > boardState.MyCreatures {
 		threatLevel += 2
@@ -503,6 +520,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	if boardState.OpponentPower > boardState.MyCreaturePower {
 		threatLevel += 2
 	}
+	threatLevel += boardState.OpponentLockPerms * 3 // Each lock piece is +3 threat
 
 	return DecisionContext{
 		Player:            player,
