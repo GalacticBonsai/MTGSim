@@ -279,6 +279,11 @@ type Effect struct {
 	HasToken    bool
 	Token       TokenSpec
 
+	// Modes holds sub-effects for modal spells (ChooseMode). Each entry is one
+	// mode option; at resolution time Value indicates how many must be chosen
+	// (1, 2, 3, or 0 for "any number").
+	Modes []Effect
+
 	// Approximate marks parser/runtime support that is recognized but not exact.
 	Approximate         bool
 	ApproximationReason string
