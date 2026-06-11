@@ -269,16 +269,84 @@ func (h *StackAwareHandler) CastPermanentThroughStack(ap *game.Player, c game.Si
 		return false
 	}
 
-	// Spell resolved — create permanent on battlefield and fire ETB
+	// Spell resolved — create permanent on battlefield
 	perm, err := castPermanentCard(h.g, ap, c)
 	if err != nil || perm == nil {
 		ap.Graveyard = append(ap.Graveyard, c)
 		return false
 	}
 	perm.SetEnteredTurn(h.g.GetTurnNumber())
-	resolvePermanentETB(h.g, perm, ap, h.log)
+
+	// Route ETB triggers through the stack instead of firing directly
+	h.processETBTriggers(ap, perm, c)
 
 	return true
+}
+
+// processETBTriggers puts ETB triggered abilities for a resolved permanent
+// onto the ability stack instead of executing them directly (CR 603.3).
+// It runs a priority round so opponents can respond to each trigger.
+func (h *StackAwareHandler) processETBTriggers(ap *game.Player, perm *game.Permanent, c game.SimpleCard) {
+	gs := bridge.NewAbilityGameState(h.g)
+	engine := abil.NewExecutionEngine(gs)
+	playerAdapter := gs.GetPlayer(ap.GetName())
+	if playerAdapter == nil {
+		return
+	}
+	src := perm.GetSource()
+	if src.OracleText == "" {
+		return
+	}
+	abilities, err := engine.ParseAndRegisterAbilities(src.OracleText, src)
+	if err != nil || len(abilities) == 0 {
+		return
+	}
+	stack := h.spellCasting.GetStack()
+	hasTriggers := false
+	for _, ab := range abilities {
+		if ab.Type != abil.Triggered || ab.TriggerCondition != abil.EntersTheBattlefield {
+			continue
+		}
+		var targets []any
+		for _, eff := range ab.Effects {
+			for _, tgt := range eff.Targets {
+				if tgt.Required {
+					potentials := engine.GetPotentialTargets(tgt.Type, nil)
+					if len(potentials) > 0 {
+						targets = append(targets, potentials[0])
+					}
+				}
+			}
+		}
+		// Put the triggered ability on the stack
+		stack.AddAbility(ab, playerAdapter, targets)
+		hasTriggers = true
+		if h.log != nil {
+			targetStr := ""
+			for _, t := range targets {
+				if s, ok := t.(game.SimpleCard); ok {
+					targetStr = s.Name
+					break
+				}
+			}
+			h.log.Append(EDHEvent{
+				Turn:   h.g.GetTurnNumber(),
+				Phase:  phaseLabel(h.g.GetCurrentPhase()),
+				Kind:   EventTriggerResolved,
+				Actor:  ap.GetName(),
+				Detail: src.Name + " ETB: " + ab.Name,
+				Target: targetStr,
+			})
+		}
+	}
+	if hasTriggers {
+		// Run a priority round so opponents can respond to triggers
+		h.spellCasting.SetActivePlayer(playerAdapter)
+		h.spellCasting.SetPhase("Main Phase")
+		if err := h.spellCasting.ProcessPriority(); err != nil {
+			logger.LogCard("Priority round error during ETB triggers for %s: %v", c.Name, err)
+		}
+	}
 }
 
 // phaseLabel converts a game.Phase to the string label used by the
@@ -450,6 +518,48 @@ func (h *StackAwareHandler) decideInstantSpell(player abil.AbilityPlayer, contex
 		}
 	}
 	return nil
+}
+
+// ProcessPendingGameTriggers fires any triggers queued by the game engine.
+// Triggers were already collected in APNAP order by handleTriggers. When a
+// StackAwareHandler is active, each trigger is logged as going through the
+// stack and the Action callback is invoked at the controlled point in the
+// turn loop (after SBA). A priority round is offered so opponents can
+// respond before the next phase action.
+func (h *StackAwareHandler) ProcessPendingGameTriggers() {
+	if !h.g.HasPendingTriggers() {
+		return
+	}
+	pending := h.g.DrainPendingTriggers()
+
+	for _, pt := range pending {
+		if pt.Trigger == nil || pt.Trigger.Action == nil {
+			continue
+		}
+		actor := ""
+		if pt.Trigger.Controller != nil {
+			actor = pt.Trigger.Controller.GetName()
+		}
+		if h.log != nil {
+			h.log.Append(EDHEvent{
+				Turn:   h.g.GetTurnNumber(),
+				Phase:  phaseLabel(h.g.GetCurrentPhase()),
+				Kind:   EventTriggerResolved,
+				Actor:  actor,
+				Detail: "trigger",
+			})
+		}
+		pt.Trigger.Action(h.g, pt.Event)
+	}
+
+	// Run a priority round so opponents can respond
+	if h.activePlayer != nil {
+		h.spellCasting.SetActivePlayer(h.activePlayer)
+		if err := h.spellCasting.ProcessPriority(); err != nil {
+			logger.LogCard("Priority round error after trigger resolution: %v", err)
+		}
+	}
+	h.g.ApplyStateBasedActions()
 }
 
 func (h *StackAwareHandler) getOpponents(player abil.AbilityPlayer) []abil.AbilityPlayer {

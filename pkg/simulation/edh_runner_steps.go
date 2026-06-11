@@ -75,6 +75,16 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			offerOpponentPriority(g, ap, priority)
 		}
 		g.ApplyStateBasedActions()
+
+		// Process triggers queued by game events.
+		// When a stack handler is active, triggers are resolved with a priority
+		// window so opponents can respond (CR 603.3). Otherwise they fire directly.
+		if stackHandler != nil {
+			stackHandler.ProcessPendingGameTriggers()
+		} else {
+			g.ProcessPendingTriggers()
+		}
+
 		if milledThisTurn {
 			markMillIfApplicable(ap)
 		}

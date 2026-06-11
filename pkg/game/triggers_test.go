@@ -25,6 +25,7 @@ func TestTrigger_ETBDraw(t *testing.T) {
 	if _, err := g.SummonCreature(p1, creature.Name); err != nil {
 		t.Fatalf("summon creature: %v", err)
 	}
+	g.ProcessPendingTriggers()
 
 	// Hand should be unchanged overall (spent 1, drew 1)
 	if len(p1.Hand) != beforeHand {

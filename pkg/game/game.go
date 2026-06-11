@@ -33,8 +33,9 @@ type Game struct {
 	prevention   *prevention
 
 	// triggers and watchers
-	triggers []*Trigger
-	watchers []Watcher
+	triggers        []*Trigger
+	pendingTriggers []PendingTrigger
+	watchers        []Watcher
 
 	// extra turns queued by card effects (e.g. Time Warp)
 	extraTurns int

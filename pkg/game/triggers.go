@@ -20,6 +20,17 @@ type Trigger struct {
 func (g *Game) AddTrigger(t *Trigger) { g.triggers = append(g.triggers, t) }
 func (g *Game) ClearTriggers()        { g.triggers = nil }
 
+// PendingTrigger records a triggered action and the event that caused it
+// for later resolution via the ability stack (CR 603.3).
+type PendingTrigger struct {
+	Trigger *Trigger
+	Event   Event
+}
+
+// handleTriggers collects all triggers matching the given event into a pending
+// queue sorted in APNAP order (CR 603.3b). It does NOT fire them immediately —
+// callers must drain the queue via DrainPendingTriggers and resolve through
+// the ability stack with a priority round.
 func (g *Game) handleTriggers(e Event) {
 	type pending struct {
 		idx     int // registration order — used as a stable tiebreak
@@ -43,10 +54,33 @@ func (g *Game) handleTriggers(e Event) {
 		return matches[i].idx < matches[j].idx
 	})
 	for _, m := range matches {
-		if m.trigger.Action != nil {
-			m.trigger.Action(g, e)
+		g.pendingTriggers = append(g.pendingTriggers, PendingTrigger{Trigger: m.trigger, Event: e})
+	}
+}
+
+// DrainPendingTriggers returns all queued triggers and clears the queue.
+// Callers should process these through the ability stack with a priority
+// round per CR 603.3.
+func (g *Game) DrainPendingTriggers() []PendingTrigger {
+	out := g.pendingTriggers
+	g.pendingTriggers = nil
+	return out
+}
+
+// HasPendingTriggers returns true if there are unprocessed triggers in the queue.
+func (g *Game) HasPendingTriggers() bool {
+	return len(g.pendingTriggers) > 0
+}
+
+// ProcessPendingTriggers fires all queued triggers immediately (legacy path).
+// New code should use DrainPendingTriggers and route through the ability stack.
+func (g *Game) ProcessPendingTriggers() {
+	for _, pt := range g.pendingTriggers {
+		if pt.Trigger != nil && pt.Trigger.Action != nil {
+			pt.Trigger.Action(g, pt.Event)
 		}
 	}
+	g.pendingTriggers = nil
 }
 
 // apnapPosition returns 0 for the active player, then 1..n-1 walking
