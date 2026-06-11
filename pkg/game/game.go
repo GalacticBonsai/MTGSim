@@ -119,6 +119,7 @@ func (g *Game) findNextLivingPlayer(startIdx int) int {
 }
 
 // AdvancePhase steps to the next phase; on cleanup step completion, rotate to next player's turn.
+// Mana pools are emptied at the end of the current phase before advancing (CR 500.4).
 func (g *Game) AdvancePhase() {
 	g.clearManaPools()
 	switch g.currentPhase {
