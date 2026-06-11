@@ -33,12 +33,21 @@ func (c SimpleCard) GetManaCost() Mana {
 }
 
 // IsCounterspell returns true if this card is a counterspell (instant that counters).
+// Matches standard patterns: "counter target spell", "counter target creature spell",
+// "counter target noncreature spell", and similar variants.
 func (c SimpleCard) IsCounterspell() bool {
 	if !c.IsInstant() {
 		return false
 	}
-	oracleText := strings.ToLower(c.OracleText)
-	return strings.Contains(oracleText, "counter target spell")
+	lower := strings.ToLower(c.OracleText)
+	if strings.Contains(lower, "counter target") && strings.Contains(lower, "spell") {
+		return true
+	}
+	// Also match "counter <qualifier> spell" patterns like "counter target activated or triggered ability"
+	if strings.HasPrefix(lower, "counter") && strings.Contains(lower, "spell") {
+		return true
+	}
+	return false
 }
 
 // HasAlternateCosts returns true if the card has alternate casting costs (e.g., "{U}{B} or {3}{B}").
