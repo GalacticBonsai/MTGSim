@@ -33,6 +33,7 @@ func TestE2E_TriggerWatcher_ETBAndReset(t *testing.T) {
 	if _, err := g.SummonCreature(p1, "Bear"); err != nil {
 		t.Fatalf("summon failed: %v", err)
 	}
+	g.ProcessPendingTriggers()
 
 	if w.Count != 1 {
 		t.Fatalf("expected watcher count 1, got %d", w.Count)

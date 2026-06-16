@@ -50,6 +50,56 @@ func (g *Game) DeclareAttacker(attacker *Permanent, defendingPlayer *Player) err
 	return nil
 }
 
+// GetAttackers returns all declared attackers mapped to their defending player.
+func (g *Game) GetAttackers() map[*Permanent]*Player {
+	if g.combat == nil {
+		return nil
+	}
+	out := make(map[*Permanent]*Player, len(g.combat.attackers))
+	for a, d := range g.combat.attackers {
+		out[a] = d
+	}
+	return out
+}
+
+// GetBlocks returns all block assignments (attacker -> blockers).
+func (g *Game) GetBlocks() map[*Permanent][]*Permanent {
+	if g.combat == nil {
+		return nil
+	}
+	out := make(map[*Permanent][]*Permanent, len(g.combat.blocks))
+	for a, b := range g.combat.blocks {
+		blockers := make([]*Permanent, len(b))
+		copy(blockers, b)
+		out[a] = blockers
+	}
+	return out
+}
+
+// IsAttacking reports whether the given permanent is currently declared as an attacker.
+func (g *Game) IsAttacking(p *Permanent) bool {
+	if g.combat == nil || p == nil {
+		return false
+	}
+	_, ok := g.combat.attackers[p]
+	return ok
+}
+
+// IsBlocking reports whether the given permanent is currently declared as a blocker.
+func (g *Game) IsBlocking(p *Permanent) bool {
+	if g.combat == nil || p == nil {
+		return false
+	}
+	for _, blockers := range g.combat.blocks {
+		for _, b := range blockers {
+			if b == p {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // DeclareBlocker declares a block: blocker blocks attacker (multiple blockers allowed).
 func (g *Game) DeclareBlocker(blocker *Permanent, attacker *Permanent) error {
 	if g.combat == nil {

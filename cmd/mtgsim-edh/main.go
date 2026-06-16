@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mtgsim/mtgsim/internal/logger"
@@ -268,6 +270,7 @@ func main() {
 	sideboardSwaps := flag.Int("sideboard-swaps", 3, "Cards swapped per generated sideboard variant")
 	cardStatsFlag := flag.String("card-stats", "card_library.json", "Path to a JSON file for persistent global card stats (loads existing, merges new, saves on exit)")
 	dbPath := flag.String("db", "", "PostgreSQL DSN for persistent results (empty = disabled)")
+	workerMode := flag.Bool("worker", false, "Run in worker mode: poll simulation_jobs table instead of serving the dashboard")
 	flag.Parse()
 
 	if *podSize < 2 || *podSize > 6 {
@@ -383,6 +386,11 @@ func main() {
 			}
 		}
 	}()
+
+	if *workerMode {
+		runWorker(seats, cardDB, db, cardLib, rng, *podSize, *maxTurns, *mulligans, *replayDir)
+		return
+	}
 
 	// Initialize Scryfall client for image enrichment.
 	scryfallClient := scryfall.NewClient()
@@ -688,6 +696,81 @@ func persistEDHPod(db *database.DB, rec simulation.EDHGameRecord) {
 	}
 }
 
+// runWorker enters a loop polling simulation_jobs and running them.
+func runWorker(seats []simulation.EDHSeat, cardDB *card.CardDB, db *database.DB, cardLib *stats.CardLibrary, rng *rand.Rand, podSize, maxTurns, mulligans int, replayDir string) {
+	if db == nil {
+		logger.LogMeta("Worker requires a database (-db flag)")
+		os.Exit(1)
+	}
+
+	runner := &EDHGameRunner{
+		seats:      seats,
+		cardDB:     cardDB,
+		db:         db,
+		edhResults: simulation.NewEDHResults(),
+		legacyRes:  simulation.NewResults(),
+		cardLib:    cardLib,
+		mu:         &sync.RWMutex{},
+		rng:        rng,
+		podSize:    podSize,
+		maxTurns:   maxTurns,
+		mulligans:  mulligans,
+		replayDir:  replayDir,
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
+	pollInterval := 5 * time.Second
+	logger.LogMeta("Worker started, polling for jobs every %v", pollInterval)
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-sig:
+			logger.LogMeta("Worker shutting down...")
+			_ = cardLib.Save()
+			return
+		case <-ticker.C:
+			job, err := db.ClaimNextJob()
+			if err != nil {
+				logger.LogMeta("Worker claim error: %v", err)
+				continue
+			}
+			if job == nil {
+				continue
+			}
+
+			logger.LogMeta("Worker claimed job %d (config: %s)", job.ID, job.Config)
+
+			var cfg struct {
+				Count int `json:"count"`
+			}
+			if err := json.Unmarshal([]byte(job.Config), &cfg); err != nil || cfg.Count <= 0 {
+				cfg.Count = 50
+			}
+
+			runner.RunGames(cfg.Count)
+			for runner.IsRunning() {
+				time.Sleep(time.Second)
+			}
+
+			summary := fmt.Sprintf("Completed %d pods", cfg.Count)
+			if err := db.CompleteJob(job.ID, summary); err != nil {
+				logger.LogMeta("Worker error completing job %d: %v", job.ID, err)
+			} else {
+				logger.LogMeta("Worker completed job %d: %s", job.ID, summary)
+			}
+
+			if err := cardLib.Save(); err != nil {
+				logger.LogMeta("Worker error saving card library: %v", err)
+			}
+		}
+	}
+}
+
 func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, cardLib *stats.CardLibrary, mu *sync.RWMutex, port int, implReport *card.ImplementationReport, seats []simulation.EDHSeat, cardDB *card.CardDB, podSize, maxTurns, mulligans int, replayDir string, rng *rand.Rand, db *database.DB, scryfallClient *scryfall.Client) *EDHGameRunner {
 	server := dashboard.NewServer(func() []simulation.Result {
 		mu.RLock()
@@ -846,6 +929,21 @@ func startDashboard(legacy *simulation.Results, edh *simulation.EDHResults, card
 	})
 	server.SetCardDB(cardDB)
 	server.SetScryfallClient(scryfallClient)
+
+	// Wire job creator and status provider when using a database.
+	if db != nil {
+		server.SetJobCreator(func(count int) (int64, error) {
+			cfg, _ := json.Marshal(map[string]int{"count": count})
+			return db.CreateJob(string(cfg))
+		})
+		server.SetJobStatusProvider(func() (int, int) {
+			pending, running, err := db.GetJobCounts()
+			if err != nil {
+				return 0, 0
+			}
+			return pending, running
+		})
+	}
 
 	// Wire upload/delete recorders to persist deck names to database
 	if db != nil {

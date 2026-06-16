@@ -6,6 +6,9 @@ import (
 	"sort"
 	"time"
 
+	// for mode-scoring
+	"strings"
+
 	"github.com/mtgsim/mtgsim/internal/logger"
 	"github.com/mtgsim/mtgsim/pkg/combo"
 )
@@ -468,15 +471,25 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 		}
 	}
 
-	// Build board state
+	// Build board state with real creature powers
 	boardState := BoardState{
 		MyCreatures: len(player.GetCreatures()),
 		MyLands:     len(player.GetLands()),
 	}
 
-	// Calculate creature power (simplified)
-	for range player.GetCreatures() {
-		boardState.MyCreaturePower += 2 // Assume average power of 2
+	myCreatures := player.GetCreatures()
+	for _, c := range myCreatures {
+		if pw, ok := c.(interface{ GetPower() int }); ok {
+			boardState.MyCreaturePower += pw.GetPower()
+		} else {
+			boardState.MyCreaturePower += 2
+		}
+		// Count artifacts and enchantments on the battlefield
+		if named, ok := c.(interface{ GetName() string }); ok {
+			if isHighUtilityPermanent(named.GetName()) {
+				boardState.MyUtilityPerms++
+			}
+		}
 	}
 
 	// Populate opponents
@@ -484,15 +497,22 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	for _, p := range ai.engine.gameState.GetAllPlayers() {
 		if p.GetName() != player.GetName() {
 			opponents = append(opponents, p)
-			boardState.OpponentCreatures += len(p.GetCreatures())
+			oppCreatures := p.GetCreatures()
+			boardState.OpponentCreatures += len(oppCreatures)
 			boardState.OpponentLands += len(p.GetLands())
-			for range p.GetCreatures() {
-				boardState.OpponentPower += 2
+			for _, c := range oppCreatures {
+				if pw, ok := c.(interface{ GetPower() int }); ok {
+					boardState.OpponentPower += pw.GetPower()
+				} else {
+					boardState.OpponentPower += 2
+				}
 			}
+			// Count opponent lock pieces (stax, prison effects)
+			boardState.OpponentLockPerms += estimateLockPermanents(p)
 		}
 	}
 
-	// Calculate threat level (simplified)
+	// Calculate threat level: creature advantage + power advantage + lock pieces + commander damage
 	threatLevel := 0
 	if boardState.OpponentCreatures > boardState.MyCreatures {
 		threatLevel += 2
@@ -500,6 +520,7 @@ func (ai *AIDecisionMaker) buildDecisionContext(player AbilityPlayer, phase stri
 	if boardState.OpponentPower > boardState.MyCreaturePower {
 		threatLevel += 2
 	}
+	threatLevel += boardState.OpponentLockPerms * 3 // Each lock piece is +3 threat
 
 	return DecisionContext{
 		Player:            player,
@@ -575,6 +596,15 @@ func (ai *AIDecisionMaker) chooseTargets(ability *Ability, context DecisionConte
 	var targets []interface{}
 
 	for _, effect := range ability.Effects {
+		// For ChooseMode effects, inject mode indices into targets so the engine
+		// can select which sub-modes to execute (Issue #65).
+		if effect.Type == ChooseMode && len(effect.Modes) > 0 {
+			chosen := ai.chooseModes(effect, context)
+			for _, idx := range chosen {
+				targets = append(targets, idx)
+			}
+			continue
+		}
 		for _, targetReq := range effect.Targets {
 			if targetReq.Required {
 				var chosenTarget interface{}
@@ -595,6 +625,96 @@ func (ai *AIDecisionMaker) chooseTargets(ability *Ability, context DecisionConte
 	}
 
 	return targets
+}
+
+// chooseModes selects which mode indices to execute for a ChooseMode effect.
+// Modes are scored using the standard effect-priority system, weighted by
+// contextual usefulness, and the top Value modes are returned.
+func (ai *AIDecisionMaker) chooseModes(effect Effect, context DecisionContext) []int {
+	count := effect.Value
+	if count <= 0 || count > len(effect.Modes) {
+		count = len(effect.Modes)
+	}
+
+	type scoredIdx struct {
+		idx   int
+		score float64
+	}
+
+	var scored []scoredIdx
+	for i, mode := range effect.Modes {
+		s := 1.0
+		// Score based on effect type priority
+		if p, ok := ai.priorities[mode.Type]; ok {
+			s += float64(p)
+		}
+		// Context-aware scoring
+		s += ai.scoreModeEffectInContext(mode, context)
+		scored = append(scored, scoredIdx{idx: i, score: s})
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	chosen := make([]int, 0, count)
+	for i := 0; i < count && i < len(scored); i++ {
+		chosen = append(chosen, scored[i].idx)
+	}
+	sort.Ints(chosen) // maintain natural order
+	return chosen
+}
+
+// scoreModeEffectInContext provides context-aware scoring for modal sub-effects.
+func (ai *AIDecisionMaker) scoreModeEffectInContext(mode Effect, context DecisionContext) float64 {
+	lower := strings.ToLower(mode.Description)
+
+	switch mode.Type {
+	case DrawCards:
+		if context.HandSize < 3 {
+			return 3.0
+		}
+		return 1.0
+
+	case DealDamage:
+		if context.BoardState.OpponentCreatures > 0 || context.AvailableMana < 3 {
+			return 2.0
+		}
+		return 1.0
+
+	case DestroyPermanent:
+		if context.BoardState.OpponentCreatures > 0 {
+			return 3.0
+		}
+		return 1.5
+
+	case CounterSpell:
+		return 3.0 // countering is always good
+
+	case ReturnToHand:
+		if context.BoardState.OpponentCreatures > 0 {
+			return 2.5
+		}
+		return 1.5
+
+	case TapUntap:
+		return 1.0
+
+	case DiscardCards:
+		return 2.0
+
+	case LoseLife:
+		return 1.0
+
+	case GainLife:
+		if strings.Contains(lower, "target") || strings.Contains(lower, "you gain") {
+			return 1.0
+		}
+		return 0.5
+
+	default:
+		return 1.0
+	}
 }
 
 // chooseEnhancedTarget chooses a target using the enhanced targeting system.

@@ -31,6 +31,7 @@ func TestTrigger_APNAPOrdering(t *testing.T) {
 	if _, err := g.SummonCreature(p1, "Bear"); err != nil {
 		t.Fatalf("summon: %v", err)
 	}
+	g.ProcessPendingTriggers()
 
 	if got, want := order, []string{"p1", "p2", "p3"}; !equalStrings(got, want) {
 		t.Fatalf("APNAP order with P1 active: got %v, want %v", got, want)
@@ -50,6 +51,7 @@ func TestTrigger_APNAPOrdering(t *testing.T) {
 	if _, err := g.SummonCreature(p2, "Bear"); err != nil {
 		t.Fatalf("summon p2: %v", err)
 	}
+	g.ProcessPendingTriggers()
 	if got, want := order, []string{"p2", "p3", "p1"}; !equalStrings(got, want) {
 		t.Fatalf("APNAP order with P2 active: got %v, want %v", got, want)
 	}
@@ -73,6 +75,7 @@ func TestTrigger_NilControllerLast(t *testing.T) {
 	if _, err := g.SummonCreature(p1, "Bear"); err != nil {
 		t.Fatalf("summon: %v", err)
 	}
+	g.ProcessPendingTriggers()
 	if got, want := order, []string{"p1", "p2", "nil"}; !equalStrings(got, want) {
 		t.Fatalf("expected nil-controller trigger last: got %v, want %v", got, want)
 	}

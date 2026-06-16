@@ -1,6 +1,8 @@
 package simulation
 
 import (
+	"strings"
+
 	"github.com/mtgsim/mtgsim/pkg/game"
 )
 
@@ -17,11 +19,56 @@ func NewCounterspellStrategy(player *game.Player) *CounterspellStrategy {
 	}
 }
 
+// isHighPriorityCounterTarget returns true for card names that represent
+// combo pieces, game-winning threats, or otherwise high-priority counterspell
+// targets regardless of CMC.
+func isHighPriorityCounterTarget(name string) bool {
+	lower := strings.ToLower(name)
+	highPriority := []string{
+		"torment of hailfire", "expropriate", "craterhoof behemoth",
+		"approach of the second sun", "insurrection", "debt to the deathless",
+		"jace, wielder of mysteries", "thassa's oracle", "laboratory maniac",
+		"ad nauseam", "necropotence", "doomsday", "tendrils of agony",
+		"brain freeze", "demonic consultation", "tainted pact",
+		"hermit druid", "food chain", "protean hulk", "flash",
+		"omniscience", "enter the infinite", "dark ritual",
+		"cabal ritual", "rite of flames", "seething song",
+		"finale of devastation", "green sun's zenith",
+		"tooth and nail", "time warp", "temporal manipulation",
+		"walk the aeons", "nexus of fate", "ugin, the spirit dragon",
+		"cyclonic rift", "toxic deluge", "farewell",
+	}
+	for _, hp := range highPriority {
+		if strings.Contains(lower, hp) {
+			return true
+		}
+	}
+	return false
+}
+
+// isTutorEffect returns true if the card name suggests a tutor or search effect.
+func isTutorEffect(name string) bool {
+	lower := strings.ToLower(name)
+	tutors := []string{
+		"tutor", "demonic", "vampiric", "enlightened", "mystical",
+		"worldly", "survival", "entomb", "buried alive",
+		"gamble", "imperial seal", "grim tutor", "diabolic",
+		"increasing ambition", "beseech the queen",
+	}
+	for _, t := range tutors {
+		if strings.Contains(lower, t) {
+			return true
+		}
+	}
+	return false
+}
+
 // ShouldCounterSpell determines if the player should cast a counterspell in response
 // to an opponent's spell cast. This checks:
 // 1. Does the player have a counterspell in hand?
 // 2. Can the player afford to cast it?
-// 3. Is the opponent's spell worth countering (higher casting cost than our counterspell)?
+// 3. Is the opponent's spell worth countering (higher casting cost than our counterspell,
+//    or a known high-priority threat like a combo piece / tutor)?
 //
 // This returns true if counter action is recommended, along with the counterspell card to use.
 func (cs *CounterspellStrategy) ShouldCounterSpell(opponentSpellName string, opponentSpellCMC int) (bool, game.SimpleCard) {
@@ -57,8 +104,19 @@ func (cs *CounterspellStrategy) ShouldCounterSpell(opponentSpellName string, opp
 		return false, game.SimpleCard{}
 	}
 
-	// Counter is worth casting if opponent's spell costs more than our counter
-	// This represents smart threat assessment: counter bigger threats with cheap counters
+	// Always counter known high-priority targets (combo pieces, game-winners)
+	if isHighPriorityCounterTarget(opponentSpellName) {
+		return true, bestCounter
+	}
+
+	// Always counter tutors — they represent hidden card advantage / combo assembly
+	if isTutorEffect(opponentSpellName) {
+		return true, bestCounter
+	}
+
+	// Counter is worth casting if opponent's spell costs more than our counter.
+	// This represents smart threat assessment: counter bigger threats with cheap counters.
+	// Use > not >= to avoid counterspell wars over marginal threats.
 	shouldCounter := opponentSpellCMC > bestCounter.GetMinManaCost().Total()
 
 	return shouldCounter, bestCounter

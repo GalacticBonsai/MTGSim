@@ -521,18 +521,25 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 		logger.LogCard("Keyword ability: %s", effect.Description)
 
 	case ChooseMode:
-		if len(targets) > 0 {
-			effectIdx := 0
-			if mode, ok := targets[0].(int); ok && mode >= 0 {
-				effectIdx = mode
+		chosen := ee.selectModes(effect, controller, targets)
+		// Strip mode-index ints from targets so sub-effects (DrawCards,
+		// DealDamage, etc.) don't receive them as stray targets.
+		subTargets := make([]any, 0, len(targets))
+		for _, t := range targets {
+			if _, ok := t.(int); ok {
+				continue
 			}
-			if effs, ok := targets[0].([]Effect); ok {
-				if effectIdx < len(effs) {
-					_ = ee.applyEffect(effs[effectIdx], controller, targets[1:])
-				}
+			subTargets = append(subTargets, t)
+		}
+		for _, idx := range chosen {
+			if idx >= 0 && idx < len(effect.Modes) {
+				logger.LogCard("Executing mode %d: %s", idx+1, effect.Modes[idx].Description)
+				_ = ee.applyEffect(effect.Modes[idx], controller, subTargets)
 			}
 		}
-		logger.LogCard("Choose mode: %s", effect.Description)
+		if len(chosen) == 0 {
+			logger.LogCard("Choose mode resolved with no modes: %s", effect.Description)
+		}
 
 	case TakeExtraTurn:
 		// Queue an extra turn via the game state.
@@ -699,6 +706,37 @@ func (ee *ExecutionEngine) applyEffect(effect Effect, controller AbilityPlayer, 
 	}
 
 	return nil
+}
+
+// selectModes chooses which modes to execute for a ChooseMode effect.
+// It first checks targets for mode indices passed from the caller (e.g. AI).
+// If none found, it defaults to picking the first mode (or the first Value modes).
+func (ee *ExecutionEngine) selectModes(effect Effect, controller AbilityPlayer, targets []any) []int {
+	// Check if mode indices were provided as targets
+	var modeIndices []int
+	for _, t := range targets {
+		if idx, ok := t.(int); ok && idx >= 0 && idx < len(effect.Modes) {
+			modeIndices = append(modeIndices, idx)
+		}
+	}
+	if len(modeIndices) > 0 {
+		return modeIndices
+	}
+
+	// No mode selection provided — use defaults
+	if len(effect.Modes) == 0 {
+		return nil
+	}
+	count := effect.Value
+	if count <= 0 {
+		count = len(effect.Modes)
+	}
+	// Pick the first 'count' modes as default
+	chosen := make([]int, 0, count)
+	for i := 0; i < count && i < len(effect.Modes); i++ {
+		chosen = append(chosen, i)
+	}
+	return chosen
 }
 
 func (ee *ExecutionEngine) eliminateOpponents(controller AbilityPlayer, reason string) {

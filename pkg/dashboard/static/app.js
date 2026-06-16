@@ -1851,7 +1851,18 @@
 	function cardLink(name) {
 		const escaped = escapeHtml(name);
 		const safe = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '&quot;');
-		return '<a href="javascript:void(0)" onclick="showCardModal(\'' + safe + '\')" style="color:#4ecdc4; cursor:pointer; text-decoration:none;" title="Click for details">' + escaped + '</a>';
+		const meta = cardDBMeta[name.toLowerCase()] || {};
+		const imgUrl = meta.image_url || '';
+		const link = '<a href="javascript:void(0)" onclick="showCardModal(\'' + safe + '\')" style="color:#4ecdc4; cursor:pointer; text-decoration:none;" title="Click for details">' + escaped + '</a>';
+		if (imgUrl) {
+			return '<span class="card-thumb-wrapper" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">' +
+				link +
+				'<div class="card-preview" style="left:0;top:24px;">' +
+					'<img src="' + imgUrl + '" class="card-preview-img">' +
+				'</div>' +
+			'</span>';
+		}
+		return link;
 	}
 
 	document.addEventListener('DOMContentLoaded', function() {

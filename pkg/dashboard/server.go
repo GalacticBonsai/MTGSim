@@ -2,7 +2,9 @@
 package dashboard
 
 import (
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +25,12 @@ import (
 	"github.com/mtgsim/mtgsim/pkg/simulation"
 	"github.com/mtgsim/mtgsim/pkg/stats"
 )
+
+// JobCreator creates a simulation job and returns its ID.
+type JobCreator func(count int) (int64, error)
+
+// JobStatusProvider returns counts of pending and running jobs.
+type JobStatusProvider func() (pending, running int)
 
 //go:embed static/*
 var staticFS embed.FS
@@ -117,15 +125,60 @@ type Server struct {
 	resultsCached        time.Time
 	edhResultsCacheBytes []byte
 	edhResultsBytesCached time.Time
+
+	// Auth token for write endpoints (empty = no auth required).
+	authToken string
+
+	// Job-based execution (optional, replaces direct game runner).
+	jobCreator       JobCreator
+	jobStatusProvider JobStatusProvider
 }
 
 // NewServer creates a new dashboard server backed by the given results provider.
 func NewServer(provider ResultsProvider, port int) *Server {
-	return &Server{
+	s := &Server{
 		provider:    provider,
 		port:        port,
 		mux:         http.NewServeMux(),
 		cacheMaxAge: 30 * time.Second,
+	}
+	// Generate auth token if MTGSIM_AUTH_TOKEN is set, or auto-generate one.
+	if token := os.Getenv("MTGSIM_AUTH_TOKEN"); token != "" {
+		s.authToken = token
+	} else {
+		// Auto-generate a random 32-byte hex token.
+		buf := make([]byte, 32)
+		if _, err := rand.Read(buf); err == nil {
+			s.authToken = hex.EncodeToString(buf)
+			log.Printf("AUTH: Generated API token (set MTGSIM_AUTH_TOKEN to override): %s", s.authToken)
+		}
+	}
+	return s
+}
+
+// SetAuthToken sets a bearer token for write-endpoint authentication.
+// An empty string disables auth.
+func (s *Server) SetAuthToken(token string) { s.authToken = token }
+
+// SetJobCreator configures the server to create DB-backed simulation jobs
+// instead of running games directly when POST /api/run-games is called.
+func (s *Server) SetJobCreator(fn JobCreator) { s.jobCreator = fn }
+
+// SetJobStatusProvider provides job queue status for /api/game-status.
+func (s *Server) SetJobStatusProvider(fn JobStatusProvider) { s.jobStatusProvider = fn }
+
+// requireAuth wraps a handler with bearer-token authentication.
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.authToken == "" {
+			next(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+s.authToken {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -202,25 +255,28 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/card-library", s.handleCardLibrary)
 	s.mux.HandleFunc("/api/implementation", s.handleImplementation)
 	s.mux.HandleFunc("/api/health", s.handleHealth)
-	s.mux.HandleFunc("/api/run-games", s.handleRunGames)
+
+	// Write endpoints require authentication (when auth token is configured).
+	s.mux.HandleFunc("/api/run-games", s.requireAuth(s.handleRunGames))
 	s.mux.HandleFunc("/api/game-status", s.handleGameStatus)
 	s.mux.HandleFunc("/api/suggested-deck", s.handleSuggestedDeck)
-	s.mux.HandleFunc("/api/upload-deck", s.handleUploadDeck)
-	s.mux.HandleFunc("/api/uploaded-decks", s.handleUploadedDecks)
+	s.mux.HandleFunc("/api/upload-deck", s.requireAuth(s.handleUploadDeck))
+	s.mux.HandleFunc("/api/uploaded-decks", s.requireAuth(s.handleUploadedDecks))
+
 	s.mux.HandleFunc("/api/card-recommendations", s.handleCardRecommendations)
 	s.mux.HandleFunc("/api/sideboard-suggestions", s.handleSideboardSuggestions)
 	s.mux.HandleFunc("/api/matchup-matrix", s.handleMatchupMatrix)
 	s.mux.HandleFunc("/api/card-search", s.handleCardSearch)
 	s.mux.HandleFunc("/api/db-status", s.handleDBStatus)
 	s.mux.HandleFunc("/api/card-image", s.handleCardImage)
-	s.mux.HandleFunc("/api/save-snapshot", s.handleSaveSnapshot)
+	s.mux.HandleFunc("/api/save-snapshot", s.requireAuth(s.handleSaveSnapshot))
 	s.mux.HandleFunc("/api/snapshots", s.handleListSnapshots)
 	s.mux.HandleFunc("/api/snapshot-comparison", s.handleSnapshotComparison)
 	s.mux.HandleFunc("/api/meta-trends", s.handleMetaTrends)
 	s.mux.HandleFunc("/api/game-log-list", s.handleGameLogList)
 	s.mux.HandleFunc("/api/game-log", s.handleGameLog)
-	s.mux.HandleFunc("/api/reset-card-library", s.handleResetCardLibrary)
-	s.mux.HandleFunc("/api/reset-game-logs", s.handleResetGameLogs)
+	s.mux.HandleFunc("/api/reset-card-library", s.requireAuth(s.handleResetCardLibrary))
+	s.mux.HandleFunc("/api/reset-game-logs", s.requireAuth(s.handleResetGameLogs))
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -569,18 +625,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleRunGames triggers running more games
+// handleRunGames triggers running more games, either directly or via a job.
 func (s *Server) handleRunGames(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
-	if s.gameRunner == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": "game runner not configured",
-		})
-		return
-	}
-	
+
 	// Get count from query parameter, default to 100
 	countStr := r.URL.Query().Get("count")
 	count := 100
@@ -590,9 +638,33 @@ func (s *Server) handleRunGames(w http.ResponseWriter, r *http.Request) {
 	if count < 1 || count > 10000 {
 		count = 100
 	}
-	
+
+	// Job-based execution (worker pool).
+	if s.jobCreator != nil {
+		id, err := s.jobCreator(count)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"message": "job created",
+			"count":   count,
+			"job_id":  id,
+		})
+		return
+	}
+
+	// Direct execution (legacy).
+	if s.gameRunner == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "game runner not configured",
+		})
+		return
+	}
+
 	s.gameRunner.RunGames(count)
-	
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message": "games started",
 		"count":   count,
@@ -634,12 +706,23 @@ func (s *Server) handleResetGameLogs(w http.ResponseWriter, r *http.Request) {
 // handleGameStatus returns the current status of game running
 func (s *Server) handleGameStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
+	// Job-based status.
+	if s.jobStatusProvider != nil {
+		pending, running := s.jobStatusProvider()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"running":       running > 0 || pending > 0,
+			"pending_jobs":  pending,
+			"running_jobs":  running,
+		})
+		return
+	}
+
 	running := false
 	if s.gameRunner != nil {
 		running = s.gameRunner.IsRunning()
 	}
-	
+
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"running": running,
 	})

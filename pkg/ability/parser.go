@@ -1405,6 +1405,60 @@ func (ap *AbilityParser) parseTapGainLife(matches []string, fullText string) (*A
 	}, nil
 }
 
+// parseModes extracts individual mode effects from a "Choose X — mode1; or mode2; or mode3" string.
+func (ap *AbilityParser) parseModes(fullText string) []Effect {
+	// Find the first "—" or "--" separator
+	sep := " — "
+	idx := strings.Index(fullText, sep)
+	if idx < 0 {
+		sep = "--"
+		idx = strings.Index(fullText, sep)
+	}
+	if idx < 0 {
+		// Try just "—"
+		sep = "—"
+		idx = strings.Index(fullText, sep)
+	}
+	if idx < 0 {
+		return nil
+	}
+	modeText := fullText[idx+len(sep):]
+	// Split on " ; or " or "; or "
+	parts := splitModeText(modeText)
+
+	var modes []Effect
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		effType, val, ok := ap.inferSupportedEffect(part)
+		if !ok {
+			// Unknown effect type, but still record it as a mode so ChooseMode
+			// can at least log what was chosen.
+			effType = KeywordAbility
+			val = 0
+		}
+		modes = append(modes, Effect{
+			Type:        effType,
+			Value:       val,
+			Duration:    Instant,
+			Description: part,
+			Approximate: !ok,
+		})
+	}
+	return modes
+}
+
+// splitModeText splits a modal text like "Draw a card; or Target player loses 3 life" into
+// individual mode strings.
+func splitModeText(text string) []string {
+	// Normalize separators
+	normalized := strings.ReplaceAll(text, "; or ", "|")
+	normalized = strings.ReplaceAll(normalized, " or ", "|")
+	return strings.Split(normalized, "|")
+}
+
 // Modal spell parsers
 func (ap *AbilityParser) parseModalSpell(matches []string, fullText string) (*Ability, error) {
 	return &Ability{
@@ -1416,6 +1470,7 @@ func (ap *AbilityParser) parseModalSpell(matches []string, fullText string) (*Ab
 				Value:       1,
 				Duration:    Instant,
 				Description: "Choose one modal effect",
+				Modes:       ap.parseModes(fullText),
 			},
 		},
 		TimingRestriction: SorcerySpeed,
@@ -1432,6 +1487,7 @@ func (ap *AbilityParser) parseModalSpellTwo(matches []string, fullText string) (
 				Value:       2,
 				Duration:    Instant,
 				Description: "Choose two modal effects",
+				Modes:       ap.parseModes(fullText),
 			},
 		},
 		TimingRestriction: SorcerySpeed,
@@ -1448,6 +1504,7 @@ func (ap *AbilityParser) parseModalSpellThree(matches []string, fullText string)
 				Value:       3,
 				Duration:    Instant,
 				Description: "Choose three modal effects",
+				Modes:       ap.parseModes(fullText),
 			},
 		},
 		TimingRestriction: SorcerySpeed,
@@ -1464,6 +1521,7 @@ func (ap *AbilityParser) parseModalSpellAny(matches []string, fullText string) (
 				Value:       0, // Variable
 				Duration:    Instant,
 				Description: "Choose any number of modal effects",
+				Modes:       ap.parseModes(fullText),
 			},
 		},
 		TimingRestriction: SorcerySpeed,
@@ -2304,6 +2362,12 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "choose") && (strings.Contains(lower, "creature type") || strings.Contains(lower, "card name") || strings.Contains(lower, "a plane") || strings.Contains(lower, "a color")) {
 		return RevealInformation, 0, true
 	}
+	if strings.Contains(lower, "each opponent") {
+		if strings.Contains(lower, "lose") && strings.Contains(lower, "life") { return LoseLife, ap.parseIntValueOrDefault(text, 1), true }
+		if strings.Contains(lower, "draw") { return DrawCards, ap.parseIntValueOrDefault(text, 1), true }
+		if strings.Contains(lower, "discard") { return DiscardCards, ap.parseIntValueOrDefault(text, 1), true }
+		if strings.Contains(lower, "sacrifice") { return SacrificePermanent, 1, true }
+	}
 	if strings.Contains(lower, "attacks") {
 		if strings.Contains(lower, "draw") { return DrawCards, ap.parseIntValueOrDefault(text, 1), true }
 		if strings.Contains(lower, "gets") || strings.Contains(lower, "get ") { return PumpCreature, 0, true }
@@ -2325,7 +2389,7 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 		return PumpCreature, 0, true
 	}
 	if strings.Contains(lower, "gains") || strings.Contains(lower, "give") || strings.Contains(lower, "have") || strings.Contains(lower, "has") {
-		kw := []string{"flying", "trample", "lifelink", "deathtouch", "haste", "vigilance", "first strike", "menace", "reach", "hexproof", "indestructible", "flash", "defender", "double strike", "protection", "shroud", "intimidate", "fear", "shadow", "infect", "wither", "poisonous", "prowess", "cascade", "convoke", "delve", "dredge", "persist", "undying", "unearth", "morph", "manifest", "embalm", "eternalize", "aftermath", "adventure", "mutate", "foretell", "strive", "rebound", "suspend", "madness", "buyback", "replicate", "splice", "transmute", "regenerate", "ward", "bloodthirst", "annihilator", "skulk", "affinity", "bushido", "absorb", "amplify", "aura swap", "awaken", "battalion", "bloodrush", "bolster", "celebrity", "champion", "changeling", "cipher", "conspire", "crew", "dash", "detain", "devour", "dethrone", "domain", "emerge", "enrage", "evolve", "extort", "fabricate", "fading", "fateful hour", "flanking", "flashback", "fortify", "frenzy", "fuse", "graft", "haunt", "heroic", "hideaway", "horsemanship", "improvise", "ingest", "kinship", "landfall", "lieutenant", "living weapon", "madness", "metalcraft", "morbid", "ninjutsu", "offspring", "outlast", "overload", "parley", "partner", "rampage", "retrace", "revolt", "ripple", "scavenge", "soulbond", "storm", "sunburst", "surge", "threshold", "torment", "totem armor", "transfigure", "tribute", "type cycling", "unleash", "vanishing"}
+		kw := []string{"flying", "trample", "lifelink", "deathtouch", "haste", "vigilance", "first strike", "menace", "reach", "hexproof", "indestructible", "flash", "defender", "double strike", "protection", "shroud", "intimidate", "fear", "shadow", "infect", "wither", "poisonous", "prowess", "cascade", "convoke", "delve", "dredge", "persist", "undying", "unearth", "morph", "manifest", "embalm", "eternalize", "aftermath", "adventure", "mutate", "foretell", "strive", "rebound", "suspend", "madness", "buyback", "replicate", "splice", "transmute", "regenerate", "ward", "bloodthirst", "annihilator", "skulk", "affinity", "bushido", "absorb", "amplify", "aura swap", "awaken", "battalion", "bloodrush", "bolster", "celebrity", "champion", "changeling", "cipher", "conspire", "crew", "dash", "detain", "devour", "dethrone", "domain", "emerge", "enrage", "evolve", "extort", "fabricate", "fading", "fateful hour", "flanking", "flashback", "fortify", "frenzy", "fuse", "graft", "haunt", "heroic", "hideaway", "horsemanship", "improvise", "ingest", "kinship", "landfall", "lieutenant", "living weapon", "madness", "metalcraft", "morbid", "ninjutsu", "offspring", "outlast", "overload", "parley", "partner", "rampage", "retrace", "revolt", "ripple", "scavenge", "soulbond", "storm", "sunburst", "surge", "threshold", "torment", "totem armor", "transfigure", "tribute", "type cycling", "unleash", "vanishing", "toxic", "battle cry", "exalted", "myriad", "cycling", "landcycling", "enlist", "daybound", "nightbound", "training", "decayed", "disturb", "cleave", "connive", "encore", "fuse", "harmonize", "read ahead", "spree", "boast", "freerunning", "miracle", "prototype", "usurp", "transit", "plot", "impending", "prowl", "omen", "equip", "reconfigure", "modular", "improve"}
 		for _, k := range kw {
 			if strings.Contains(lower, k) {
 				return KeywordAbility, 1, true
@@ -2368,6 +2432,539 @@ func (ap *AbilityParser) inferSupportedEffect(text string) (EffectType, int, boo
 	if strings.Contains(lower, "put") && strings.Contains(lower, "library") {
 		return SearchLibrary, 1, true
 	}
+	if strings.Contains(lower, "fight") {
+		return DealDamage, 1, true
+	}
+	if strings.Contains(lower, "target") && strings.Contains(lower, "blocks") {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "target") && (strings.Contains(lower, "attacks") || strings.Contains(lower, "attack")) {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "you may") && strings.Contains(lower, "exile") {
+		return Exile, 1, true
+	}
+	if strings.Contains(lower, "you may") && strings.Contains(lower, "discard") {
+		return DiscardCards, ap.parseIntValueOrDefault(text, 1), true
+	}
+	if strings.Contains(lower, "you may") && strings.Contains(lower, "draw") {
+		return DrawCards, ap.parseIntValueOrDefault(text, 1), true
+	}
+	if strings.Contains(lower, "you may") && strings.Contains(lower, "return") {
+		return ReturnToHand, 1, true
+	}
+	if strings.Contains(lower, "you may") && strings.Contains(lower, "search") {
+		return SearchLibrary, 1, true
+	}
+	if (strings.Contains(lower, "each") || strings.Contains(lower, "all")) && strings.Contains(lower, "damage") {
+		return DealDamage, ap.parseIntValueOrDefault(text, 1), true
+	}
+	if strings.Contains(lower, "with") && strings.Contains(lower, "flying") {
+		return KeywordAbility, 1, true
+	}
+	if strings.Contains(lower, "can't") && strings.Contains(lower, "countered") {
+		return KeywordAbility, 1, true
+	}
+	if strings.Contains(lower, "enters") && strings.Contains(lower, "tapped") {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "doesn't") && strings.Contains(lower, "untap") {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "skip") && strings.Contains(lower, "untap") {
+		return TapUntap, 1, true
+	}
+	if strings.Contains(lower, "as") && strings.Contains(lower, "enters") && strings.Contains(lower, "choose") {
+		return ChooseMode, 1, true
+	}
+
+	// === Additional patterns for wider card coverage (Issue #71) ===
+
+	// Shuffle library — fetch lands, tutors, etc.
+	if strings.Contains(lower, "shuffle") && strings.Contains(lower, "library") {
+		return SearchLibrary, 1, true
+	}
+
+	// Beginning of step triggers — upkeep, draw, end step
+	if (strings.Contains(lower, "at the beginning of") || strings.Contains(lower, "at the start of")) &&
+		(strings.Contains(lower, "upkeep") || strings.Contains(lower, "end step") || strings.Contains(lower, "draw step") || strings.Contains(lower, "combat") || strings.Contains(lower, "main phase")) {
+		return KeywordAbility, 1, true
+	}
+
+	// Whenever — triggered ability not caught by earlier patterns
+	if strings.Contains(lower, "whenever") || strings.Contains(lower, "when ") {
+		return KeywordAbility, 1, true
+	}
+
+	// Each player / each opponent mass effects
+	if (strings.Contains(lower, "each player") || strings.Contains(lower, "each opponent")) &&
+		(strings.Contains(lower, "mill") || strings.Contains(lower, "searches") || strings.Contains(lower, "sacrifices") || strings.Contains(lower, "exiles")) {
+		return ReanimateCreature, 1, true // generic mass effect marker
+	}
+
+	// Cost modification — spells cost less/more
+	if strings.Contains(lower, "cost") && (strings.Contains(lower, "less") || strings.Contains(lower, "more")) {
+		return AddMana, 0, true
+	}
+
+	// Power / toughness checks
+	if (strings.Contains(lower, "power") || strings.Contains(lower, "toughness")) &&
+		(strings.Contains(lower, "equal to") || strings.Contains(lower, "less than") || strings.Contains(lower, "greater than") || strings.Contains(lower, "or less") || strings.Contains(lower, "or greater")) {
+		return RevealInformation, 0, true
+	}
+
+	// Mana value / CMC checks
+	if (strings.Contains(lower, "mana value") || strings.Contains(lower, "converted mana cost")) &&
+		(strings.Contains(lower, "or less") || strings.Contains(lower, "or greater") || strings.Contains(lower, "equal to")) {
+		return SearchLibrary, 1, true
+	}
+
+	// Kicker — if ~ was kicked
+	if strings.Contains(lower, "kicked") || strings.Contains(lower, "kicker") {
+		return AdditionalLand, 1, true
+	}
+
+	// Enchant / attach — Auras
+	if (strings.Contains(lower, "enchant ") || strings.Contains(lower, "attach")) &&
+		strings.Contains(lower, "creature") && !strings.Contains(lower, "enchantment") {
+		return PumpCreature, 0, true
+	}
+
+	// Enters the battlefield with counters
+	if strings.Contains(lower, "enters the battlefield with") && strings.Contains(lower, "counter") {
+		return AddCounters, 1, true
+	}
+
+	// Replacement effects — if you would / instead
+	if strings.Contains(lower, "if you would") && strings.Contains(lower, "instead") {
+		return PreventDamage, 0, true
+	}
+
+	// Can't restrictions beyond attack/block
+	if strings.Contains(lower, "can't") && !strings.Contains(lower, "attack") && !strings.Contains(lower, "block") {
+		if strings.Contains(lower, "be countered") || strings.Contains(lower, "countered") {
+			return KeywordAbility, 1, true
+		}
+		if strings.Contains(lower, "die") || strings.Contains(lower, "dies") {
+			return KeywordAbility, 1, true
+		}
+		if strings.Contains(lower, "be exiled") || strings.Contains(lower, "exiled") {
+			return KeywordAbility, 1, true
+		}
+		if strings.Contains(lower, "be targeted") || strings.Contains(lower, "targeted") {
+			return KeywordAbility, 1, true
+		}
+		if strings.Contains(lower, "be sacrificed") || strings.Contains(lower, "sacrificed") {
+			return KeywordAbility, 1, true
+		}
+	}
+
+	// Phase out / phase in
+	if strings.Contains(lower, "phase out") || strings.Contains(lower, "phase in") || strings.Contains(lower, "phasing") {
+		return TapUntap, 1, true
+	}
+
+	// Become / becomes — type-changing effects
+	if strings.Contains(lower, "becomes a") || strings.Contains(lower, "becomes an") ||
+		(strings.Contains(lower, "becomes") && strings.Contains(lower, "creature")) {
+		return PumpCreature, 0, true
+	}
+
+	// Spectacle / morbid / threshold / ferocious conditionals
+	if strings.Contains(lower, "spectacle") || strings.Contains(lower, "morbid") || strings.Contains(lower, "ferocious") || strings.Contains(lower, "formidable") {
+		return KeywordAbility, 0, true
+	}
+
+	// Hellbent / delirium / descended
+	if strings.Contains(lower, "hellbent") || strings.Contains(lower, "delirium") || strings.Contains(lower, "descended") || strings.Contains(lower, "descend") {
+		return KeywordAbility, 0, true
+	}
+
+	// Raid / landfall / city's blessing
+	if strings.Contains(lower, "raid ") || strings.Contains(lower, "landfall") || strings.Contains(lower, "city's blessing") {
+		return KeywordAbility, 0, true
+	}
+
+	// "You may" general patterns not yet caught
+	if (strings.Contains(lower, "you may") && !strings.Contains(lower, "exile") && !strings.Contains(lower, "discard") && !strings.Contains(lower, "draw") && !strings.Contains(lower, "return") && !strings.Contains(lower, "search") && !strings.Contains(lower, "pay") && !strings.Contains(lower, "sacrifice")) &&
+		(strings.Contains(lower, "create") || strings.Contains(lower, "put") || strings.Contains(lower, "mill") || strings.Contains(lower, "scry") || strings.Contains(lower, "copy")) {
+		return CreateToken, 1, true
+	}
+
+	// Flashback / unearth / disturb / escape — recursive casting
+	if strings.Contains(lower, "flashback") || strings.Contains(lower, "unearth") || strings.Contains(lower, "disturb") || strings.Contains(lower, "escape") || strings.Contains(lower, "encore") {
+		return ReanimateCreature, 1, true
+	}
+
+	// Each player / each opponent general
+	if strings.Contains(lower, "each player") || strings.Contains(lower, "each opponent") {
+		if strings.Contains(lower, "mill") || strings.Contains(lower, "put") {
+			return MillCards, ap.parseIntValueOrDefault(text, 1), true
+		}
+		if strings.Contains(lower, "searches") || strings.Contains(lower, "search") {
+			return SearchLibrary, 1, true
+		}
+	}
+
+	// Until end of turn — temporary effects not caught by other patterns
+	if strings.Contains(lower, "until end of turn") && (strings.Contains(lower, "gets") || strings.Contains(lower, "gains") || strings.Contains(lower, "has") || strings.Contains(lower, "becomes")) {
+		return PumpCreature, 0, true
+	}
+
+	// Deals damage and you gain life (Lifelink-like, or Sorin's Markov type)
+	if strings.Contains(lower, "deals") && strings.Contains(lower, "damage") && strings.Contains(lower, "you gain") {
+		return DealDamage, ap.parseIntValueOrDefault(text, 1), true
+	}
+
+	// Equip / reconfigure
+	if strings.Contains(lower, "equip ") || strings.Contains(lower, "reconfigure") {
+		return KeywordAbility, 1, true
+	}
+
+	// Cycling — discard + draw
+	if strings.Contains(lower, "cycling") || strings.Contains(lower, "landcycling") || strings.Contains(lower, "typecycling") {
+		return DrawCards, 1, true
+	}
+
+	// Companion
+	if strings.Contains(lower, "companion") {
+		return KeywordAbility, 1, true
+	}
+
+	// Target creature you control / target creature an opponent controls
+	if strings.Contains(lower, "target creature") && strings.Contains(lower, "you control") {
+		if strings.Contains(lower, "fight") || strings.Contains(lower, "damage") {
+			return DealDamage, 1, true
+		}
+		return PumpCreature, 0, true
+	}
+	if strings.Contains(lower, "target creature") && (strings.Contains(lower, "an opponent controls") || strings.Contains(lower, "don't control")) {
+		return DestroyPermanent, 1, true
+	}
+
+	// "Up to one target" — modern templating (MH3+, BLB+)
+	if strings.Contains(lower, "up to one target") {
+		if strings.Contains(lower, "creature") {
+			return TapUntap, 1, true
+		}
+		if strings.Contains(lower, "player") || strings.Contains(lower, "opponent") {
+			return DiscardCards, 1, true
+		}
+		return DestroyPermanent, 1, true
+	}
+
+	// Monstrosity / Renown
+	if strings.Contains(lower, "monstrosity") || strings.Contains(lower, "monstrous") || strings.Contains(lower, "renown") || strings.Contains(lower, "renowned") {
+		return AddCounters, 1, true
+	}
+
+	// Support / exert
+	if strings.Contains(lower, "support") || strings.Contains(lower, "exert") {
+		return AddCounters, 1, true
+	}
+
+	// Aura swap / bestow / fortify
+	if strings.Contains(lower, "bestow") || strings.Contains(lower, "fortify") {
+		return KeywordAbility, 1, true
+	}
+
+	// Various "as long as" clause — continuous effects
+	if strings.Contains(lower, "as long as") {
+		return KeywordAbility, 1, true
+	}
+
+	// "If you control" — conditional checks
+	if strings.Contains(lower, "if you control") && (strings.Contains(lower, "commander") || strings.Contains(lower, "legendary")) {
+		return KeywordAbility, 1, true
+	}
+
+	// Partner / background
+	if strings.Contains(lower, "partner") || strings.Contains(lower, "background") {
+		return KeywordAbility, 1, true
+	}
+
+	// "~ can't be blocked except by" — specific blocking restrictions
+	if strings.Contains(lower, "can't be blocked except") || strings.Contains(lower, "can't be blocked by") {
+		return KeywordAbility, 1, true
+	}
+
+	// "~ can't be the target of" — protection-like
+	if strings.Contains(lower, "can't be the target") {
+		return KeywordAbility, 1, true
+	}
+
+	// Devotion — counting colored mana symbols
+	if strings.Contains(lower, "devotion") {
+		return AddMana, 0, true
+	}
+
+	// Domain — counting basic land types
+	if strings.Contains(lower, "domain") {
+		return KeywordAbility, 1, true
+	}
+
+	// Convoke — creatures help cast
+	if strings.Contains(lower, "convoke") {
+		return AddMana, 0, true
+	}
+
+	// Delve — exile cards from graveyard to help cast
+	if strings.Contains(lower, "delve") {
+		return AddMana, 0, true
+	}
+
+	// Affinity for — cost reduction by type
+	if strings.Contains(lower, "affinity") {
+		return AddMana, 0, true
+	}
+
+	// Improvise — artifacts help cast
+	if strings.Contains(lower, "improvise") {
+		return AddMana, 0, true
+	}
+
+	// Cascade — exile until you hit a lower-CMC spell
+	if strings.Contains(lower, "cascade") || strings.Contains(lower, "cascades") {
+		return SearchLibrary, 1, true
+	}
+
+	// Evoke — sacrifice on ETB
+	if strings.Contains(lower, "evoke") {
+		return SacrificePermanent, 1, true
+	}
+
+	// Aftermath — cast from graveyard
+	if strings.Contains(lower, "aftermath") {
+		return ReanimateCreature, 1, true
+	}
+
+	// Plot — exile to cast later
+	if strings.Contains(lower, "plot") || strings.Contains(lower, "plotted") {
+		return Exile, 1, true
+	}
+
+	// Impending — suspend-like timing
+	if strings.Contains(lower, "impending") {
+		return AdditionalLand, 1, true
+	}
+
+	// Offspring — create token copy on ETB
+	if strings.Contains(lower, "offspring") {
+		return CreateToken, 1, true
+	}
+
+	// Prowl — reduced cost if combat damage by creature type
+	if strings.Contains(lower, "prowl") {
+		return AddMana, 0, true
+	}
+
+	// Doctor's companion / friends forever / partner with
+	if strings.Contains(lower, "doctor's companion") || strings.Contains(lower, "friends forever") || strings.Contains(lower, "partner with") {
+		return KeywordAbility, 1, true
+	}
+
+	// Read ahead (saga variant)
+	if strings.Contains(lower, "read ahead") {
+		return AddCounters, 1, true
+	}
+
+	// Spree (bonus modes)
+	if strings.Contains(lower, "spree") {
+		return ChooseMode, 1, true
+	}
+
+	// Decayed (zombie can't block)
+	if strings.Contains(lower, "decayed") {
+		return KeywordAbility, 1, true
+	}
+
+	// Daybound / nightbound (werewolves)
+	if strings.Contains(lower, "daybound") || strings.Contains(lower, "nightbound") {
+		return KeywordAbility, 1, true
+	}
+
+	// Training (mentor variant)
+	if strings.Contains(lower, "training") {
+		return AddCounters, 1, true
+	}
+
+	// Encore — exile from graveyard, create token copies
+	if strings.Contains(lower, "encore") {
+		return CreateToken, 1, true
+	}
+
+	// Boast — activate if attacked
+	if strings.Contains(lower, "boast") {
+		return KeywordAbility, 0, true
+	}
+
+	// Freerunning — reduced cost if you have commander damage
+	if strings.Contains(lower, "freerunning") {
+		return AddMana, 0, true
+	}
+
+	// Miracle — reduced cost when drawn
+	if strings.Contains(lower, "miracle") {
+		return AddMana, 0, true
+	}
+
+	// Prototype — cast for alternative cost
+	if strings.Contains(lower, "prototype") {
+		return AddMana, 0, true
+	}
+
+	// Usurp / transit (OTJ mechanic)
+	if strings.Contains(lower, "usurp") || strings.Contains(lower, "transit") || strings.Contains(lower, "open an omen") || strings.Contains(lower, "omen") {
+		return Exile, 1, true
+	}
+
+	// The Ring tempts you (LTR)
+	if strings.Contains(lower, "ring tempts you") || strings.Contains(lower, "tempted by the ring") {
+		return RevealInformation, 0, true
+	}
+
+	// Initiative / monarch
+	if strings.Contains(lower, "initiative") || strings.Contains(lower, "monarch") {
+		return RevealInformation, 0, true
+	}
+
+	// Voting
+	if strings.Contains(lower, "vote") || strings.Contains(lower, "will of the council") || strings.Contains(lower, "council's dilemma") {
+		return RevealInformation, 0, true
+	}
+
+	// "For each" — scaling effects
+	if strings.Contains(lower, "for each") && (strings.Contains(lower, "counter") || strings.Contains(lower, "damage") || strings.Contains(lower, "token") || strings.Contains(lower, "life")) {
+		return AddCounters, 1, true
+	}
+
+	// "That many" — scaling
+	if strings.Contains(lower, "that many") && !strings.Contains(lower, "target") {
+		return AddCounters, 1, true
+	}
+
+	// "One or more" — conditional scaling
+	if strings.Contains(lower, "one or more") {
+		return AddCounters, 1, true
+	}
+
+	// "Any number of target" — flexible targeting
+	if strings.Contains(lower, "any number of target") {
+		return ChooseMode, 1, true
+	}
+
+	// "~ becomes a copy" — clone effects
+	if strings.Contains(lower, "becomes a copy") || strings.Contains(lower, "as a copy") || strings.Contains(lower, "enters as a copy") {
+		return CopySpell, 1, true
+	}
+
+	// "Goad" — must attack, can't attack defending player
+	if strings.Contains(lower, "goad") {
+		return CantAttackBlock, 1, true
+	}
+
+	// "Connive" — draw then discard, +1/+1 counter
+	if strings.Contains(lower, "connive") {
+		return DrawCards, 1, true
+	}
+
+	// "Encourage" / "reenvision" (MKM mechanic)
+	if strings.Contains(lower, "encourage") || strings.Contains(lower, "reenvision") {
+		return DrawCards, 1, true
+	}
+
+	// "Saddle" / "mount" (OTJ — crew for creatures)
+	if strings.Contains(lower, "saddle") || strings.Contains(lower, "mount") {
+		return KeywordAbility, 1, true
+	}
+
+	// "Crew" (vehicles — already in keyword list, but also need a standalone pattern)
+	if strings.Contains(lower, "crew ") && !strings.Contains(lower, "creature") {
+		return KeywordAbility, 1, true
+	}
+
+	// "Ward" — already in keyword list but also check standalone
+	if strings.Contains(lower, "ward") && strings.Contains(lower, "pay") {
+		return KeywordAbility, 1, true
+	}
+
+	// Transform
+	if strings.Contains(lower, "transform") || strings.Contains(lower, "transforms") {
+		return TapUntap, 1, true
+	}
+
+	// "~ deals X damage to any target" (post-MKM templating)
+	if strings.Contains(lower, "damage to any target") {
+		return DealDamage, ap.parseIntValueOrDefault(text, 1), true
+	}
+
+	// "You may have ~ enter as a copy" — clone effect
+	if strings.Contains(lower, "enter as a copy") || strings.Contains(lower, "enters as a copy") || strings.Contains(lower, "as a copy of") {
+		return CopySpell, 1, true
+	}
+
+	// "Exile ~, then return it" — flicker
+	if strings.Contains(lower, "exile") && strings.Contains(lower, "return") && (strings.Contains(lower, "to the battlefield") || strings.Contains(lower, "onto the battlefield")) {
+		return Exile, 1, true
+	}
+
+	// "Target nonland permanent" — general removal
+	if strings.Contains(lower, "nonland permanent") && (strings.Contains(lower, "destroy") || strings.Contains(lower, "exile") || strings.Contains(lower, "bounce") || strings.Contains(lower, "return")) {
+		return DestroyPermanent, 1, true
+	}
+
+	// "Target artifact or enchantment" — specific removal
+	if strings.Contains(lower, "artifact or enchantment") && (strings.Contains(lower, "destroy") || strings.Contains(lower, "exile")) {
+		return DestroyPermanent, 1, true
+	}
+
+	// "This spell can't be countered" — uncounterable
+	if strings.Contains(lower, "this spell can't be countered") {
+		return KeywordAbility, 1, true
+	}
+
+	// "~ doesn't untap during your untap step" — specific untap prevention
+	if strings.Contains(lower, "doesn't untap during") || strings.Contains(lower, "don't untap during") {
+		return TapUntap, 1, true
+	}
+
+	// "Skip your draw step" — drawback/upside
+	if strings.Contains(lower, "skip") && (strings.Contains(lower, "draw step") || strings.Contains(lower, "draw phase")) {
+		return DrawCards, 0, true
+	}
+
+	// "You may cast ~ without paying its mana cost" — alternative casting
+	if strings.Contains(lower, "without paying its mana cost") || strings.Contains(lower, "without paying that card's mana cost") || strings.Contains(lower, "without paying his mana cost") {
+		return AddMana, 0, true
+	}
+
+	// Changelong / all creature types
+	if strings.Contains(lower, "changeling") || strings.Contains(lower, "all creature types") {
+		return KeywordAbility, 1, true
+	}
+
+	// Protection from (can't be targeted, damaged, etc by X)
+	if (strings.Contains(lower, "protection from") || strings.Contains(lower, "protection against")) &&
+		(strings.Contains(lower, "black") || strings.Contains(lower, "white") || strings.Contains(lower, "blue") || strings.Contains(lower, "red") || strings.Contains(lower, "green") ||
+			strings.Contains(lower, "artifact") || strings.Contains(lower, "creature") || strings.Contains(lower, "color") || strings.Contains(lower, "everything")) {
+		return KeywordAbility, 1, true
+	}
+
+	// Indestructible (standalone, not "gains indestructible")
+	if strings.Contains(lower, "indestructible") {
+		return KeywordAbility, 1, true
+	}
+
+	// Hexproof (standalone)
+	if strings.Contains(lower, "hexproof") {
+		return KeywordAbility, 1, true
+	}
+
+	// Defender / wall
+	if strings.Contains(lower, "defender") {
+		return KeywordAbility, 1, true
+	}
+
 	return 0, 0, false
 }
 

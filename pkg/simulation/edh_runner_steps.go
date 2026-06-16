@@ -69,12 +69,24 @@ func stepOneEDHTurn(g *game.Game, casts []int, priority PriorityHandler, log *ED
 			runMainPhase(g, ap, casts, log, metrics, stackHandler)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseCombat:
-			runCombatPhase(g, ap, log, metrics)
+			runCombatPhase(g, ap, log, metrics, priority)
 			offerOpponentPriority(g, ap, priority)
 		case game.PhaseEnd:
 			offerOpponentPriority(g, ap, priority)
+		case game.PhaseCleanup:
+			// Mana pools emptied by AdvancePhase; EOT effects cleared by Game.AdvancePhase.
 		}
 		g.ApplyStateBasedActions()
+
+		// Process triggers queued by game events.
+		// When a stack handler is active, triggers are resolved with a priority
+		// window so opponents can respond (CR 603.3). Otherwise they fire directly.
+		if stackHandler != nil {
+			stackHandler.ProcessPendingGameTriggers()
+		} else {
+			g.ProcessPendingTriggers()
+		}
+
 		if milledThisTurn {
 			markMillIfApplicable(ap)
 		}
@@ -187,18 +199,35 @@ func runMainPhase(g *game.Game, ap *game.Player, casts []int, log *EDHEventLog, 
 		if ap.CanPayForCommander(cmdrCard) {
 			if ap.PayForCommander(cmdrCard) {
 				manaSpent := manaSpentForCommander(ap, cmdrCard)
-				perm := ap.CastCommander(name)
-				if perm == nil {
-					return
-				}
-				perm.SetEnteredTurn(g.GetTurnNumber())
-				casts[idx]++
-				storm := 0
-				if metrics != nil {
-					storm = metrics.recordSpell(idx, manaSpent, true, name)
-				}
-				if log != nil {
-					log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
+
+				// Route commander through the stack so opponents can respond
+				if stackHandler != nil {
+					perm := stackHandler.CastCommanderThroughStack(ap, cmdrCard, ap.GetName())
+					if perm == nil {
+						return
+					}
+					casts[idx]++
+					storm := 0
+					if metrics != nil {
+						storm = metrics.recordSpell(idx, manaSpent, true, name)
+					}
+					if log != nil {
+						log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
+					}
+				} else {
+					perm := ap.CastCommander(name)
+					if perm == nil {
+						return
+					}
+					perm.SetEnteredTurn(g.GetTurnNumber())
+					casts[idx]++
+					storm := 0
+					if metrics != nil {
+						storm = metrics.recordSpell(idx, manaSpent, true, name)
+					}
+					if log != nil {
+						log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseMain1), Kind: EventCommanderCast, Actor: ap.GetName(), Detail: eventDetail(name, manaSpent, storm)})
+					}
 				}
 			}
 		}
@@ -653,10 +682,52 @@ func manaProductionOptions(c game.SimpleCard) []game.Mana {
 	return out
 }
 
+// chooseBlockers uses simple AI to assign blocker creatures to attacking
+// creatures. Prioritizes survival blocks (blocker toughness > attacker power)
+// over trade blocks (attacker toughness <= blocker power).
+func chooseBlockers(g *game.Game, ap *game.Player, defender *game.Player) {
+	attackers := g.GetAttackers()
+	if len(attackers) == 0 {
+		return
+	}
+	for _, blocker := range defender.GetCreatures() {
+		if blocker.IsTapped() || blocker.CantBlock() {
+			continue
+		}
+		// Prefer blocks where blocker survives
+		blocked := false
+		for attacker := range attackers {
+			if attacker.IsTapped() {
+				continue
+			}
+			if blocker.GetToughness() > attacker.GetPower() {
+				if err := g.DeclareBlocker(blocker, attacker); err == nil {
+					blocked = true
+					break
+				}
+			}
+		}
+		if !blocked {
+			// Trade block as fallback
+			for attacker := range attackers {
+				if attacker.IsTapped() {
+					continue
+				}
+				if attacker.GetToughness() <= blocker.GetPower() {
+					if err := g.DeclareBlocker(blocker, attacker); err == nil {
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
 // runCombatPhase declares all eligible attackers against the most
-// threatening living opponent (Phase 4) and resolves combat damage.
-// Falls back to seat-order rotation when threat scores are tied.
-func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *edhMetrics) {
+// threatening living opponent (Phase 4), runs blocking AI, and resolves
+// combat damage. Priority windows allow instant-speed interaction
+// per CR 508.2 and CR 510.3.
+func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *edhMetrics, priority PriorityHandler) {
 	defender := chooseAttackTarget(g, ap)
 	if defender == nil {
 		return
@@ -674,6 +745,29 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *ed
 	if log != nil && declared > 0 {
 		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: ap.GetName(), Target: defender.GetName(), Detail: intString(declared) + " attackers"})
 	}
+
+	// Priority window after declare attackers — CR 508.2
+	offerOpponentPriority(g, ap, priority)
+
+	// Defending player declares blockers (CR 509)
+	if declared > 0 {
+		chooseBlockers(g, ap, defender)
+		if log != nil {
+			blockCount := 0
+			for _, perm := range defender.GetCreatures() {
+				if g.IsBlocking(perm) {
+					blockCount++
+				}
+			}
+			if blockCount > 0 {
+				log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventAttackDeclared, Actor: defender.GetName(), Target: ap.GetName(), Detail: intString(blockCount) + " blockers"})
+			}
+		}
+	}
+
+	// Priority window after declare blockers — CR 509.5 (combat tricks)
+	offerOpponentPriority(g, ap, priority)
+
 	g.ResolveCombatDamage()
 	damage := max(0, beforeLife-defender.GetLifeTotal())
 	if metrics != nil {
@@ -682,6 +776,9 @@ func runCombatPhase(g *game.Game, ap *game.Player, log *EDHEventLog, metrics *ed
 	if log != nil && declared > 0 {
 		log.Append(EDHEvent{Turn: g.GetTurnNumber(), Phase: phaseName(game.PhaseCombat), Kind: EventCombatResolved, Actor: ap.GetName(), Target: defender.GetName(), Detail: "damage=" + intString(damage)})
 	}
+
+	// Priority window after combat damage — CR 510.3 / 511.2 (end of combat step).
+	offerOpponentPriority(g, ap, priority)
 }
 
 func indexOfPlayer(g *game.Game, p *game.Player) int {

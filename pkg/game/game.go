@@ -33,8 +33,9 @@ type Game struct {
 	prevention   *prevention
 
 	// triggers and watchers
-	triggers []*Trigger
-	watchers []Watcher
+	triggers        []*Trigger
+	pendingTriggers []PendingTrigger
+	watchers        []Watcher
 
 	// extra turns queued by card effects (e.g. Time Warp)
 	extraTurns int
@@ -118,6 +119,7 @@ func (g *Game) findNextLivingPlayer(startIdx int) int {
 }
 
 // AdvancePhase steps to the next phase; on cleanup step completion, rotate to next player's turn.
+// Mana pools are emptied at the end of the current phase before advancing (CR 500.4).
 func (g *Game) AdvancePhase() {
 	g.clearManaPools()
 	switch g.currentPhase {

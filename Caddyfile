@@ -1,0 +1,14 @@
+api.h7lla.com {
+    rate_limit {
+        zone dynamic {
+            key {remote_host}
+            events 100
+            window 1m
+        }
+    }
+    reverse_proxy api:8080
+}
+
+h7lla.com, www.h7lla.com {
+    redir https://github.com/galacticbonsai/mtgsim{uri} permanent
+}
