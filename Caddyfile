@@ -1,7 +1,14 @@
-api.h7lla.com {
+http://api.h7lla.com, http://192.168.0.107 {
     reverse_proxy api:8080
 }
 
-# Local network fallback (bypasses NAT reflection issue):
-# Add this to your router's DNS or each device's /etc/hosts:
-#   192.168.0.107  api.h7lla.com
+# For production TLS, enable Cloudflare proxy (orange cloud) on api.h7lla.com:
+#   api.h7lla.com {
+#       tls {
+#           dns cloudflare YOUR_API_TOKEN
+#       }
+#       reverse_proxy api:8080
+#   }
+#
+# Or open ports on the LXC and switch to:
+#   api.h7lla.com { reverse_proxy api:8080 }
