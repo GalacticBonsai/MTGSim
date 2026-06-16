@@ -125,6 +125,19 @@ CREATE TABLE IF NOT EXISTS uploaded_decks (
     name TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS simulation_jobs (
+    id SERIAL PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'pending',
+    config JSONB NOT NULL DEFAULT '{}',
+    result_summary TEXT,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_simulation_jobs_status ON simulation_jobs(status);
 `
 	if _, err := db.sqlDB.Exec(schema); err != nil {
 		return err

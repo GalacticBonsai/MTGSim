@@ -4,7 +4,83 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
+
+// SimulationJob represents a simulation job in the queue.
+type SimulationJob struct {
+	ID            int64
+	Status        string // pending, running, completed, failed
+	Config        string // JSON with count, pod_size, max_turns, etc.
+	ResultSummary string
+	ErrorMessage  string
+	CreatedAt     time.Time
+	StartedAt     *time.Time
+	CompletedAt   *time.Time
+}
+
+// CreateJob inserts a new pending simulation job with the given JSON config.
+func (db *DB) CreateJob(config string) (int64, error) {
+	var id int64
+	err := db.sqlDB.QueryRow(
+		`INSERT INTO simulation_jobs(status, config) VALUES ('pending', $1) RETURNING id`,
+		config).Scan(&id)
+	return id, err
+}
+
+// ClaimNextJob atomically claims the oldest pending job for this worker.
+// Returns nil if no pending jobs exist.
+func (db *DB) ClaimNextJob() (*SimulationJob, error) {
+	var j SimulationJob
+	var startedAt sql.NullTime
+	err := db.sqlDB.QueryRow(`
+		UPDATE simulation_jobs SET status = 'running', started_at = $1
+		WHERE id = (
+			SELECT id FROM simulation_jobs
+			WHERE status = 'pending'
+			ORDER BY created_at ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, status, config, result_summary, error_message, created_at, started_at`,
+		now()).Scan(&j.ID, &j.Status, &j.Config, &j.ResultSummary, &j.ErrorMessage, &j.CreatedAt, &startedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if startedAt.Valid {
+		j.StartedAt = &startedAt.Time
+	}
+	return &j, nil
+}
+
+// CompleteJob marks a job as completed with a summary.
+func (db *DB) CompleteJob(id int64, summary string) error {
+	_, err := db.sqlDB.Exec(
+		`UPDATE simulation_jobs SET status = 'completed', result_summary = $1, completed_at = $2 WHERE id = $3`,
+		summary, now(), id)
+	return err
+}
+
+// FailJob marks a job as failed with an error message.
+func (db *DB) FailJob(id int64, errMsg string) error {
+	_, err := db.sqlDB.Exec(
+		`UPDATE simulation_jobs SET status = 'failed', error_message = $1, completed_at = $2 WHERE id = $3`,
+		errMsg, now(), id)
+	return err
+}
+
+// GetJobCounts returns the number of pending and running jobs.
+func (db *DB) GetJobCounts() (pending, running int, err error) {
+	err = db.sqlDB.QueryRow(
+		`SELECT
+			COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0)
+		FROM simulation_jobs`).Scan(&pending, &running)
+	return
+}
 
 // GetOrCreateDeck returns the ID for a deck name, inserting if necessary.
 func (db *DB) GetOrCreateDeck(name, path string) (int64, error) {
