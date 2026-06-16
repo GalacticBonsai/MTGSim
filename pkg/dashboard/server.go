@@ -2,6 +2,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
@@ -1314,6 +1315,10 @@ func (s *Server) handleGameLog(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	data, _ := staticFS.ReadFile("static/index.html")
+	if s.authToken != "" {
+		tag := fmt.Sprintf(`<script>window.MTGSIM_AUTH_TOKEN=%q;</script>`, s.authToken)
+		data = bytes.Replace(data, []byte("</head>"), []byte(tag+"</head>"), 1)
+	}
 	_, _ = w.Write(data)
 }
 
