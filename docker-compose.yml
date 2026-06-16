@@ -8,6 +8,12 @@
 # PostgreSQL uses `expose` (not `ports`) so it is never reachable
 # from outside the Docker network.
 #
+# Before enabling Caddy: set up an A record on Namecheap:
+#   api.h7lla.com  A  <your-proxmox-ip>
+# Then uncomment the caddy service below.
+#
+# Until then, access the API directly at http://<ip>:8080.
+#
 # Set MTGSIM_AUTH_TOKEN to a secret value before deploying:
 #   echo "MTGSIM_AUTH_TOKEN=$(openssl rand -hex 32)" > .env
 services:
@@ -37,6 +43,8 @@ services:
     restart: unless-stopped
     expose:
       - "8080"
+    ports:
+      - "8080:8080"
     environment:
       MTGSIM_AUTH_TOKEN: ${MTGSIM_AUTH_TOKEN:-}
     command:
