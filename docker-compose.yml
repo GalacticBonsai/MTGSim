@@ -47,6 +47,7 @@ services:
       - "8080:8080"
     environment:
       MTGSIM_AUTH_TOKEN: ${MTGSIM_AUTH_TOKEN:-}
+      TOPDECK_API_KEY: ${TOPDECK_API_KEY:-}
     command:
       - mtgsim-edh
       - -db=postgres://mtgsim:${POSTGRES_PASSWORD:-mtgsim}@postgres:5432/mtgsim?sslmode=disable
@@ -54,9 +55,10 @@ services:
       - -pod=4
       - -max-turns=50
       - -port=8080
+      - -games=1
       - -card-stats=/data/card_library.json
     volumes:
-      - ./decks:/app/decks:ro
+      - ./decks:/app/decks:rw
       - ./.cache:/app/.cache
       - mtgsim-data:/data
     depends_on:

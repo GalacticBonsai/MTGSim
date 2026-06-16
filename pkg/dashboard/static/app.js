@@ -1198,6 +1198,31 @@
 		setTimeout(() => { status.textContent = ''; }, 5000);
 	}
 
+	async function updateDecks() {
+		const btn = document.querySelector('button[onclick="updateDecks()"]');
+		const status = document.getElementById('updateDecksStatus');
+		btn.disabled = true;
+		btn.textContent = '⏳ Updating...';
+		status.textContent = '';
+		try {
+			const res = await fetch('/api/update-decks', { method: 'POST' });
+			const data = await res.json();
+			if (data.success) {
+				status.textContent = '✅ Decks updated. Restart runner to pick up new decks.';
+				status.style.color = '#2ecc71';
+			} else {
+				status.textContent = '❌ ' + (data.error || 'Failed');
+				status.style.color = '#e74c3c';
+			}
+		} catch (err) {
+			status.textContent = '❌ ' + err.message;
+			status.style.color = '#e74c3c';
+		}
+		btn.disabled = false;
+		btn.textContent = '🔄 Update Decks';
+		setTimeout(() => { status.textContent = ''; }, 8000);
+	}
+
 	let previousRunning = false;
 
 	async function updateGameStatus() {

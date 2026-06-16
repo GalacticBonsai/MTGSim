@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -277,6 +278,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/game-log", s.handleGameLog)
 	s.mux.HandleFunc("/api/reset-card-library", s.requireAuth(s.handleResetCardLibrary))
 	s.mux.HandleFunc("/api/reset-game-logs", s.requireAuth(s.handleResetGameLogs))
+	s.mux.HandleFunc("/api/update-decks", s.requireAuth(s.handleUpdateDecks))
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -701,6 +703,18 @@ func (s *Server) handleResetGameLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	s.dataResetter.ResetGameLogs()
 	_ = json.NewEncoder(w).Encode(map[string]any{"message": "game logs cleared"})
+}
+
+// handleUpdateDecks runs the TopDeck download script to refresh EDH deck files.
+func (s *Server) handleUpdateDecks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	cmd := exec.Command("python3", "/app/download_edh_decks.py", "--quiet", "--output", "/app/decks/edh")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "output": string(output), "error": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "output": string(output)})
 }
 
 // handleGameStatus returns the current status of game running
