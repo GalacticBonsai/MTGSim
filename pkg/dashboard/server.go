@@ -172,12 +172,14 @@ func (s *Server) SetJobStatusProvider(fn JobStatusProvider) { s.jobStatusProvide
 // requireAuth wraps a handler with bearer-token authentication.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("AUTH ENTER: authToken=%q method=%q path=%q host=%q authHeader=%q", s.authToken, r.Method, r.URL.Path, r.Host, r.Header.Get("Authorization"))
 		if s.authToken == "" {
 			next(w, r)
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer "+s.authToken {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			log.Printf("AUTH MISMATCH: expected=%q received=%q", s.authToken, r.Header.Get("Authorization"))
+			http.Error(w, `{"error":"unauthorized","from":"go_server"}`, http.StatusUnauthorized)
 			return
 		}
 		next(w, r)
@@ -1313,8 +1315,10 @@ func (s *Server) handleGameLog(w http.ResponseWriter, r *http.Request) {
 // handleIndex returns the HTML dashboard.
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	log.Printf("AUTH INDEX DEBUG: authToken=%q path=%q host=%q", s.authToken, r.URL.Path, r.Host)
 	w.Header().Set("Content-Type", "text/html")
 	data, _ := staticFS.ReadFile("static/index.html")
+	data = bytes.Replace(data, []byte("</head>"), []byte("<!-- GO_SERVER_HANDLER --></head>"), 1)
 	if s.authToken != "" {
 		tag := fmt.Sprintf(`<script>window.MTGSIM_AUTH_TOKEN=%q;</script>`, s.authToken)
 		data = bytes.Replace(data, []byte("</head>"), []byte(tag+"</head>"), 1)
