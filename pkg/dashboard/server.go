@@ -172,13 +172,14 @@ func (s *Server) SetJobStatusProvider(fn JobStatusProvider) { s.jobStatusProvide
 // requireAuth wraps a handler with bearer-token authentication.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeaderPresent := r.Header.Get("Authorization") != ""
+		authHeader := r.Header.Get("Authorization")
+		log.Printf("AUTH ENTER: authConfigured=%t method=%q path=%q host=%q authHeaderPresent=%t", s.authToken != "", r.Method, r.URL.Path, r.Host, authHeader != "")
 		log.Printf("AUTH ENTER: authEnabled=%t method=%q path=%q host=%q authHeaderPresent=%t", s.authToken != "", r.Method, r.URL.Path, r.Host, authHeaderPresent)
 		if s.authToken == "" {
 			next(w, r)
 			return
-		}
-		if r.Header.Get("Authorization") != "Bearer "+s.authToken {
+		if authHeader != "Bearer "+s.authToken {
+			log.Printf("AUTH MISMATCH: method=%q path=%q host=%q authHeaderPresent=%t", r.Method, r.URL.Path, r.Host, authHeader != "")
 			log.Printf("AUTH MISMATCH: method=%q path=%q host=%q", r.Method, r.URL.Path, r.Host)
 			http.Error(w, `{"error":"unauthorized","from":"go_server"}`, http.StatusUnauthorized)
 			return
