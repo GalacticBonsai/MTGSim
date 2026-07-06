@@ -2,6 +2,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -150,7 +152,7 @@ func NewServer(provider ResultsProvider, port int) *Server {
 		buf := make([]byte, 32)
 		if _, err := rand.Read(buf); err == nil {
 			s.authToken = hex.EncodeToString(buf)
-			log.Printf("AUTH: Generated API token (set MTGSIM_AUTH_TOKEN to override): %s", s.authToken)
+			log.Printf("AUTH: Generated API token (set MTGSIM_AUTH_TOKEN to override).")
 		}
 	}
 	return s
@@ -170,12 +172,16 @@ func (s *Server) SetJobStatusProvider(fn JobStatusProvider) { s.jobStatusProvide
 // requireAuth wraps a handler with bearer-token authentication.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		log.Printf("AUTH ENTER: authConfigured=%t method=%q path=%q host=%q authHeaderPresent=%t", s.authToken != "", r.Method, r.URL.Path, r.Host, authHeader != "")
+		log.Printf("AUTH ENTER: authEnabled=%t method=%q path=%q host=%q authHeaderPresent=%t", s.authToken != "", r.Method, r.URL.Path, r.Host, authHeaderPresent)
 		if s.authToken == "" {
 			next(w, r)
 			return
-		}
-		if r.Header.Get("Authorization") != "Bearer "+s.authToken {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		if authHeader != "Bearer "+s.authToken {
+			log.Printf("AUTH MISMATCH: method=%q path=%q host=%q authHeaderPresent=%t", r.Method, r.URL.Path, r.Host, authHeader != "")
+			log.Printf("AUTH MISMATCH: method=%q path=%q host=%q", r.Method, r.URL.Path, r.Host)
+			http.Error(w, `{"error":"unauthorized","from":"go_server"}`, http.StatusUnauthorized)
 			return
 		}
 		next(w, r)
@@ -277,6 +283,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/game-log", s.handleGameLog)
 	s.mux.HandleFunc("/api/reset-card-library", s.requireAuth(s.handleResetCardLibrary))
 	s.mux.HandleFunc("/api/reset-game-logs", s.requireAuth(s.handleResetGameLogs))
+	s.mux.HandleFunc("/api/update-decks", s.requireAuth(s.handleUpdateDecks))
 	s.mux.HandleFunc("/style.css", serveStatic("style.css", "text/css"))
 	s.mux.HandleFunc("/app.js", serveStatic("app.js", "application/javascript"))
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -701,6 +708,18 @@ func (s *Server) handleResetGameLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	s.dataResetter.ResetGameLogs()
 	_ = json.NewEncoder(w).Encode(map[string]any{"message": "game logs cleared"})
+}
+
+// handleUpdateDecks runs the TopDeck download script to refresh EDH deck files.
+func (s *Server) handleUpdateDecks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	cmd := exec.Command("python3", "/app/download_edh_decks.py", "--quiet", "--output", "/app/decks/edh")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "output": string(output), "error": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "output": string(output)})
 }
 
 // handleGameStatus returns the current status of game running
@@ -1298,8 +1317,14 @@ func (s *Server) handleGameLog(w http.ResponseWriter, r *http.Request) {
 // handleIndex returns the HTML dashboard.
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	log.Printf("AUTH INDEX DEBUG: authToken=%q path=%q host=%q", s.authToken, r.URL.Path, r.Host)
 	w.Header().Set("Content-Type", "text/html")
 	data, _ := staticFS.ReadFile("static/index.html")
+	data = bytes.Replace(data, []byte("</head>"), []byte("<!-- GO_SERVER_HANDLER --></head>"), 1)
+	if s.authToken != "" {
+		tag := fmt.Sprintf(`<script>window.MTGSIM_AUTH_TOKEN=%q;</script>`, s.authToken)
+		data = bytes.Replace(data, []byte("</head>"), []byte(tag+"</head>"), 1)
+	}
 	_, _ = w.Write(data)
 }
 

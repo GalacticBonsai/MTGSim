@@ -1,3 +1,13 @@
+	function authHeaders() {
+		const token = window.MTGSIM_AUTH_TOKEN;
+		return token ? { 'Authorization': 'Bearer ' + token } : {};
+	}
+
+	function authFetch(url, opts = {}) {
+		opts.headers = { ...opts.headers, ...authHeaders() };
+		return fetch(url, opts);
+	}
+
 	function showTab(tabId, btn) {
 		document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
 		document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -188,7 +198,7 @@
 
 	async function deleteUploadedDeck(name) {
 		try {
-			const res = await fetch('/api/uploaded-decks?name=' + encodeURIComponent(name), { method: 'DELETE' });
+			const res = await authFetch('/api/uploaded-decks?name=' + encodeURIComponent(name), { method: 'DELETE' });
 			if (res.ok) {
 				uploadedDeckNames.delete(name);
 				saveUploadedDecks();
@@ -1113,7 +1123,7 @@
 		btn.textContent = 'Starting...';
 		
 		try {
-			const res = await fetch('/api/run-games?count=' + count, {
+			const res = await authFetch('/api/run-games?count=' + count, {
 				method: 'POST'
 			});
 			
@@ -1159,7 +1169,7 @@
 		status.textContent = 'Resetting...';
 		status.style.color = '#e74c3c';
 		try {
-			const res = await fetch('/api/reset-card-library', { method: 'POST' });
+			const res = await authFetch('/api/reset-card-library', { method: 'POST' });
 			const data = await res.json();
 			if (res.ok) {
 				status.textContent = '✓ Card library reset';
@@ -1181,7 +1191,7 @@
 		status.textContent = 'Resetting...';
 		status.style.color = '#e67e22';
 		try {
-			const res = await fetch('/api/reset-game-logs', { method: 'POST' });
+			const res = await authFetch('/api/reset-game-logs', { method: 'POST' });
 			const data = await res.json();
 			if (res.ok) {
 				status.textContent = '✓ Game logs cleared';
@@ -1196,6 +1206,31 @@
 			status.style.color = '#e74c3c';
 		}
 		setTimeout(() => { status.textContent = ''; }, 5000);
+	}
+
+	async function updateDecks() {
+		const btn = document.querySelector('button[onclick="updateDecks()"]');
+		const status = document.getElementById('updateDecksStatus');
+		btn.disabled = true;
+		btn.textContent = '⏳ Updating...';
+		status.textContent = '';
+		try {
+			const res = await authFetch('/api/update-decks', { method: 'POST' });
+			const data = await res.json();
+			if (data.success) {
+				status.textContent = '✅ Decks updated. Restart runner to pick up new decks.';
+				status.style.color = '#2ecc71';
+			} else {
+				status.textContent = '❌ ' + (data.error || 'Failed');
+				status.style.color = '#e74c3c';
+			}
+		} catch (err) {
+			status.textContent = '❌ ' + err.message;
+			status.style.color = '#e74c3c';
+		}
+		btn.disabled = false;
+		btn.textContent = '🔄 Update Decks';
+		setTimeout(() => { status.textContent = ''; }, 8000);
 	}
 
 	let previousRunning = false;
@@ -1263,7 +1298,7 @@
 		status.textContent = 'Uploading...';
 
 		try {
-			const res = await fetch('/api/upload-deck', {
+			const res = await authFetch('/api/upload-deck', {
 				method: 'POST',
 				body: formData
 			});
@@ -1326,7 +1361,7 @@
 		status.textContent = 'Uploading...';
 
 		try {
-			const res = await fetch('/api/upload-deck', {
+			const res = await authFetch('/api/upload-deck', {
 				method: 'POST',
 				body: formData
 			});
@@ -1772,7 +1807,7 @@
 		const btn = document.getElementById('testDeckBtn');
 		if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
 		try {
-			const res = await fetch('/api/upload-deck', { method: 'POST', body: formData });
+			const res = await authFetch('/api/upload-deck', { method: 'POST', body: formData });
 			const data = await res.json();
 			if (res.ok) {
 				uploadedDeckNames.add(normalizeUploadedName(filename));
@@ -2040,7 +2075,7 @@
 		const name = nameInput.value || '';
 		
 		try {
-			const res = await fetch('/api/save-snapshot?name=' + encodeURIComponent(name), {
+			const res = await authFetch('/api/save-snapshot?name=' + encodeURIComponent(name), {
 				method: 'POST'
 			});
 			const data = await res.json();

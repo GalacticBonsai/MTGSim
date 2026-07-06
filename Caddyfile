@@ -2,6 +2,11 @@ api.h7lla.com {
     reverse_proxy api:8080
 }
 
+# Local dev — HTTP only, no TLS redirect
+http://localhost {
+    reverse_proxy api:8080
+}
+
 # Local network fallback (bypasses NAT reflection issue):
 # Add this to your router's DNS or each device's /etc/hosts:
 #   192.168.0.107  api.h7lla.com
