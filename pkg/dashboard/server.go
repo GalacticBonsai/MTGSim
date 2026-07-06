@@ -152,7 +152,7 @@ func NewServer(provider ResultsProvider, port int) *Server {
 		buf := make([]byte, 32)
 		if _, err := rand.Read(buf); err == nil {
 			s.authToken = hex.EncodeToString(buf)
-			log.Printf("AUTH: Generated API token (set MTGSIM_AUTH_TOKEN to override): %s", s.authToken)
+			log.Printf("AUTH: Generated API token (set MTGSIM_AUTH_TOKEN to override).")
 		}
 	}
 	return s
@@ -172,13 +172,14 @@ func (s *Server) SetJobStatusProvider(fn JobStatusProvider) { s.jobStatusProvide
 // requireAuth wraps a handler with bearer-token authentication.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("AUTH ENTER: authToken=%q method=%q path=%q host=%q authHeader=%q", s.authToken, r.Method, r.URL.Path, r.Host, r.Header.Get("Authorization"))
+		authHeaderPresent := r.Header.Get("Authorization") != ""
+		log.Printf("AUTH ENTER: authEnabled=%t method=%q path=%q host=%q authHeaderPresent=%t", s.authToken != "", r.Method, r.URL.Path, r.Host, authHeaderPresent)
 		if s.authToken == "" {
 			next(w, r)
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer "+s.authToken {
-			log.Printf("AUTH MISMATCH: expected=%q received=%q", s.authToken, r.Header.Get("Authorization"))
+			log.Printf("AUTH MISMATCH: method=%q path=%q host=%q", r.Method, r.URL.Path, r.Host)
 			http.Error(w, `{"error":"unauthorized","from":"go_server"}`, http.StatusUnauthorized)
 			return
 		}
