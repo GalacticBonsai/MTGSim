@@ -55,6 +55,7 @@ func NewPlayer(name string, startingLife int) *Player {
 }
 
 func (p *Player) GetName() string       { return p.name }
+func (p *Player) ID() string            { return p.name }
 func (p *Player) GetLifeTotal() int     { return p.life }
 func (p *Player) SetLifeTotal(life int) { p.life = life }
 func (p *Player) HasLost() bool         { return p.lost }

@@ -29,6 +29,28 @@ const (
 	KWProwess
 	KWIntimidate
 	KWShadow
+
+	// --- Non-evergreen keywords (CR 702) ---
+	KWKicker         // 702.33
+	KWStorm          // 702.36
+	KWCascade        // 702.41
+	KWSuspend        // 702.42
+	KWFlashback      // 702.45
+	KWMadness        // 702.47
+	KWDredge         // 702.50
+	KWEscape         // 702.52
+	KWEcho           // 702.5
+	KWAffinity       // 702.40
+	KWBanding        // 702.42 (removed from modern, but keeps legacy
+	KWFear           // 702.37 (deprecated, replaced by intimidate/menace)
+	KWFlanking       // 702.43
+	KWThreshold      // 702.51
+	KWDelve          // 702.52
+	KWImprovise      // 702.53
+	KWAftermath      // 702.54
+	KWEmbalm         // 702.55
+	KWEternalize     // 702.56
+	KWPrototype      // 702.57
 )
 
 func (k Keyword) String() string {
@@ -75,8 +97,49 @@ func (k Keyword) String() string {
 		return "intimidate"
 	case KWShadow:
 		return "shadow"
+	case KWKicker:
+		return "kicker"
+	case KWStorm:
+		return "storm"
+	case KWCascade:
+		return "cascade"
+	case KWSuspend:
+		return "suspend"
+	case KWFlashback:
+		return "flashback"
+	case KWMadness:
+		return "madness"
+	case KWDredge:
+		return "dredge"
+	case KWEscape:
+		return "escape"
+	case KWEcho:
+		return "echo"
+	case KWAffinity:
+		return "affinity"
+	case KWBanding:
+		return "banding"
+	case KWFear:
+		return "fear"
+	case KWFlanking:
+		return "flanking"
+	case KWThreshold:
+		return "threshold"
+	case KWDelve:
+		return "delve"
+	case KWImprovise:
+		return "improvise"
+	case KWAftermath:
+		return "aftermath"
+	case KWEmbalm:
+		return "embalm"
+	case KWEternalize:
+		return "eternalize"
+	case KWPrototype:
+		return "prototype"
+	default:
+		return "unknown"
 	}
-	return "unknown"
 }
 
 // HasKeyword reports whether the permanent currently has a keyword ability,
@@ -158,6 +221,46 @@ func keywordName(k Keyword) string {
 		return "intimidate"
 	case KWShadow:
 		return "shadow"
+	case KWKicker:
+		return "kicker"
+	case KWStorm:
+		return "storm"
+	case KWCascade:
+		return "cascade"
+	case KWSuspend:
+		return "suspend"
+	case KWFlashback:
+		return "flashback"
+	case KWMadness:
+		return "madness"
+	case KWDredge:
+		return "dredge"
+	case KWEscape:
+		return "escape"
+	case KWEcho:
+		return "echo"
+	case KWAffinity:
+		return "affinity"
+	case KWBanding:
+		return "banding"
+	case KWFear:
+		return "fear"
+	case KWFlanking:
+		return "flanking"
+	case KWThreshold:
+		return "threshold"
+	case KWDelve:
+		return "delve"
+	case KWImprovise:
+		return "improvise"
+	case KWAftermath:
+		return "aftermath"
+	case KWEmbalm:
+		return "embalm"
+	case KWEternalize:
+		return "eternalize"
+	case KWPrototype:
+		return "prototype"
 	default:
 		return "unknown"
 	}
@@ -272,6 +375,46 @@ func keywordFromToken(tok string) (Keyword, bool) {
 		return KWShadow, true
 	case "phasing":
 		return KWPhasing, true
+	case "kicker":
+		return KWKicker, true
+	case "storm":
+		return KWStorm, true
+	case "cascade":
+		return KWCascade, true
+	case "suspend":
+		return KWSuspend, true
+	case "flashback":
+		return KWFlashback, true
+	case "madness":
+		return KWMadness, true
+	case "dredge":
+		return KWDredge, true
+	case "escape":
+		return KWEscape, true
+	case "echo":
+		return KWEcho, true
+	case "affinity":
+		return KWAffinity, true
+	case "banding":
+		return KWBanding, true
+	case "fear":
+		return KWFear, true
+	case "flanking":
+		return KWFlanking, true
+	case "threshold":
+		return KWThreshold, true
+	case "delve":
+		return KWDelve, true
+	case "improvise":
+		return KWImprovise, true
+	case "aftermath":
+		return KWAftermath, true
+	case "embalm":
+		return KWEmbalm, true
+	case "eternalize":
+		return KWEternalize, true
+	case "prototype":
+		return KWPrototype, true
 	}
 	// Ward has a cost suffix: "ward {2}", "ward {U}", etc.
 	if strings.HasPrefix(tok, "ward") {
