@@ -6,6 +6,22 @@ const (
 	EventZoneChange EventType = iota
 	EventEntersBattlefield
 	EventLeavesBattlefield
+	EventSacrificed
+	EventExiled
+	EventUntapped
+	EventTapped
+	EventUntapStep
+	EventUpkeepStep
+	EventDrawStep
+	EventBeginCombatStep
+	EventDeclareAttackersStep
+	EventDeclareBlockersStep
+	EventCombatDamageStep
+	EventEndStep
+	EventCleanupStep
+	EventSpellCast
+	EventAbilityActivated
+	EventControllerChanged
 )
 
 type PermanentSnapshot struct {
@@ -26,6 +42,9 @@ type ZoneChange struct {
 type Event struct {
 	Type       EventType
 	ZoneChange *ZoneChange
+	Player     *Player
+	Permanent  *Permanent
+	Card       *SimpleCard
 }
 
 // Listener registration

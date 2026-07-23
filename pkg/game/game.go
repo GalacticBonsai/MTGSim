@@ -120,24 +120,35 @@ func (g *Game) findNextLivingPlayer(startIdx int) int {
 
 // AdvancePhase steps to the next phase; on cleanup step completion, rotate to next player's turn.
 // Mana pools are emptied at the end of the current phase before advancing (CR 500.4).
+// Phase-specific mandatory actions (untap, draw, cleanup) are performed automatically.
 func (g *Game) AdvancePhase() {
 	g.clearManaPools()
 	switch g.currentPhase {
 	case PhaseUntap:
 		g.currentPhase = PhaseUpkeep
+		// CR 502: no priority during untap step, just untap all permanents
+		g.untapStep()
+		g.emit(Event{Type: EventUntapStep})
 	case PhaseUpkeep:
 		g.currentPhase = PhaseDraw
+		g.emit(Event{Type: EventUpkeepStep})
 	case PhaseDraw:
 		g.currentPhase = PhaseMain1
+		// CR 504.1: active player draws a card at the beginning of the draw step
+		g.drawStep()
+		g.emit(Event{Type: EventDrawStep})
 	case PhaseMain1:
 		g.currentPhase = PhaseCombat
+		g.emit(Event{Type: EventBeginCombatStep})
 	case PhaseCombat:
 		g.currentPhase = PhaseMain2
 	case PhaseMain2:
 		g.currentPhase = PhaseEnd
 	case PhaseEnd:
 		g.currentPhase = PhaseCleanup
-		g.clearUntilEndOfTurnEffects()
+		// CR 514: cleanup step — remove damage, end duration effects, discard to max
+		g.cleanupStep()
+		g.emit(Event{Type: EventCleanupStep})
 	case PhaseCleanup:
 		// end of turn -> next player (or extra turn)
 		if g.extraTurns > 0 {
@@ -162,6 +173,49 @@ func (g *Game) clearManaPools() {
 		if pl != nil {
 			pl.ClearManaPool()
 		}
+	}
+}
+
+// untapStep performs CR 502 mandatory actions: untap all permanents
+// controlled by the active player. No priority is given.
+func (g *Game) untapStep() {
+	ap := g.GetActivePlayerRaw()
+	if ap == nil {
+		return
+	}
+	for _, perm := range ap.Battlefield {
+		perm.Untap()
+	}
+}
+
+// firstPlayerIdx stores the index of the player who went first (for CR 103.4a).
+func (g *Game) firstPlayerIdx() int {
+	return 0
+}
+
+// drawStep performs CR 504.1: active player draws one card.
+// CR 103.4a: the player who goes first doesn't draw on turn 1.
+func (g *Game) drawStep() {
+	ap := g.GetActivePlayerRaw()
+	if ap == nil || ap.HasLost() {
+		return
+	}
+	// CR 103.4a: first player skips draw on turn 1
+	if g.turnNumber == 1 && g.activeIdx == g.firstPlayerIdx() {
+		return
+	}
+	ap.Draw(1)
+}
+
+// cleanupStep performs CR 514 mandatory actions:
+// - Remove all damage from permanents (CR 514.2)
+// - End all "until end of turn" effects (CR 514.2)
+// - Active player discards to maximum hand size (CR 514.1)
+func (g *Game) cleanupStep() {
+	g.clearUntilEndOfTurnEffects()
+	ap := g.GetActivePlayerRaw()
+	if ap != nil {
+		ap.DiscardToMax()
 	}
 }
 

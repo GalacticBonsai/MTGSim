@@ -21,6 +21,14 @@ const (
 	KWDefender
 	KWFirstStrike
 	KWDoubleStrike
+	KWFlash
+	KWShroud
+	KWWard
+	KWProtection
+	KWPhasing
+	KWProwess
+	KWIntimidate
+	KWShadow
 )
 
 func (k Keyword) String() string {
@@ -51,6 +59,22 @@ func (k Keyword) String() string {
 		return "first strike"
 	case KWDoubleStrike:
 		return "double strike"
+	case KWFlash:
+		return "flash"
+	case KWShroud:
+		return "shroud"
+	case KWWard:
+		return "ward"
+	case KWProtection:
+		return "protection"
+	case KWPhasing:
+		return "phasing"
+	case KWProwess:
+		return "prowess"
+	case KWIntimidate:
+		return "intimidate"
+	case KWShadow:
+		return "shadow"
 	}
 	return "unknown"
 }
@@ -66,6 +90,77 @@ func (p *Permanent) HasKeyword(k Keyword) bool {
 		return true
 	}
 	return p.grantedKeywords[k]
+}
+
+// HasKeywordByName allows checking keywords by string name, used by the
+// ability package via the KeywordChecker interface to avoid import cycles.
+func (p *Permanent) HasKeywordByName(name string) bool {
+	if p == nil {
+		return false
+	}
+	lower := strings.ToLower(name)
+	// Check printed keywords
+	for k, v := range p.printedKeywords {
+		if v && strings.ToLower(keywordName(k)) == lower {
+			return true
+		}
+	}
+	// Check granted keywords
+	for k, v := range p.grantedKeywords {
+		if v && strings.ToLower(keywordName(k)) == lower {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordName(k Keyword) string {
+	switch k {
+	case KWFlying:
+		return "flying"
+	case KWReach:
+		return "reach"
+	case KWTrample:
+		return "trample"
+	case KWLifelink:
+		return "lifelink"
+	case KWDeathtouch:
+		return "deathtouch"
+	case KWHaste:
+		return "haste"
+	case KWVigilance:
+		return "vigilance"
+	case KWIndestructible:
+		return "indestructible"
+	case KWHexproof:
+		return "hexproof"
+	case KWMenace:
+		return "menace"
+	case KWDefender:
+		return "defender"
+	case KWFirstStrike:
+		return "first strike"
+	case KWDoubleStrike:
+		return "double strike"
+	case KWFlash:
+		return "flash"
+	case KWShroud:
+		return "shroud"
+	case KWWard:
+		return "ward"
+	case KWProtection:
+		return "protection"
+	case KWPhasing:
+		return "phasing"
+	case KWProwess:
+		return "prowess"
+	case KWIntimidate:
+		return "intimidate"
+	case KWShadow:
+		return "shadow"
+	default:
+		return "unknown"
+	}
 }
 
 // SetKeyword sets a printed keyword flag on the permanent. Used by ETB
@@ -173,6 +268,26 @@ func keywordFromToken(tok string) (Keyword, bool) {
 		return KWFirstStrike, true
 	case "double strike":
 		return KWDoubleStrike, true
+	case "flash":
+		return KWFlash, true
+	case "shroud":
+		return KWShroud, true
+	case "prowess":
+		return KWProwess, true
+	case "intimidate":
+		return KWIntimidate, true
+	case "shadow":
+		return KWShadow, true
+	case "phasing":
+		return KWPhasing, true
+	}
+	// Ward has a cost suffix: "ward {2}", "ward {U}", etc.
+	if strings.HasPrefix(tok, "ward") {
+		return KWWard, true
+	}
+	// Protection from X
+	if strings.HasPrefix(tok, "protection from") {
+		return KWProtection, true
 	}
 	return 0, false
 }

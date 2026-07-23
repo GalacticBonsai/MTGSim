@@ -26,6 +26,7 @@ func (c SimpleCard) IsArtifact() bool     { return contains(c.TypeLine, "Artifac
 func (c SimpleCard) IsEnchantment() bool  { return contains(c.TypeLine, "Enchantment") }
 func (c SimpleCard) IsPlaneswalker() bool { return contains(c.TypeLine, "Planeswalker") }
 func (c SimpleCard) IsLegendary() bool    { return contains(c.TypeLine, "Legendary") }
+func (c SimpleCard) IsBattle() bool       { return contains(c.TypeLine, "Battle") }
 
 // GetManaCost parses the mana cost string into a Mana map.
 func (c SimpleCard) GetManaCost() Mana {
@@ -103,4 +104,34 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// NewClueToken creates a colorless Clue artifact token (CR 111.1).
+// {2}, Sacrifice this artifact: Draw a card.
+func NewClueToken() SimpleCard {
+	return SimpleCard{
+		Name:     "Clue",
+		TypeLine: "Artifact — Clue",
+		OracleText: "{2}, Sacrifice this artifact: Draw a card.",
+	}
+}
+
+// NewTreasureToken creates a colorless Treasure artifact token (CR 111.1).
+// {T}, Sacrifice this artifact: Add one mana of any color.
+func NewTreasureToken() SimpleCard {
+	return SimpleCard{
+		Name:     "Treasure",
+		TypeLine: "Artifact — Treasure",
+		OracleText: "{T}, Sacrifice this artifact: Add one mana of any color.",
+	}
+}
+
+// NewFoodToken creates a colorless Food artifact token (CR 111.1).
+// {2}, {T}, Sacrifice this artifact: You gain 3 life.
+func NewFoodToken() SimpleCard {
+	return SimpleCard{
+		Name:     "Food",
+		TypeLine: "Artifact — Food",
+		OracleText: "{2}, {T}, Sacrifice this artifact: You gain 3 life.",
+	}
 }

@@ -2,6 +2,7 @@ package game
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -64,6 +65,16 @@ type Permanent struct {
 	isCommander bool
 
 	cantBlock  bool
+
+	// Ward cost (CR 702.21): when this permanent is targeted by an
+	// opponent's spell/ability, a triggered ability counters it unless
+	// the opponent pays this cost. Empty string means no ward.
+	wardCost string
+
+	// Protection from [quality] (CR 702.16): prevents targeting,
+	// damage, and blocking from sources of the named quality.
+	// Stores the quality string(s), e.g. "white", "red", "Demons".
+	protectionFrom []string
 }
 
 func NewPermanent(c SimpleCard, owner *Player, controller *Player) *Permanent {
@@ -174,6 +185,23 @@ func (p *Permanent) IsCommander() bool     { return p.isCommander }
 func (p *Permanent) SetCantBlock(v bool) { p.cantBlock = v }
 func (p *Permanent) CantBlock() bool     { return p.cantBlock }
 
+// Ward cost (CR 702.21)
+func (p *Permanent) SetWardCost(cost string) { p.wardCost = cost }
+func (p *Permanent) GetWardCost() string      { return p.wardCost }
+func (p *Permanent) HasWard() bool            { return p.wardCost != "" }
+
+// Protection (CR 702.16)
+func (p *Permanent) SetProtectionFrom(qualities ...string) { p.protectionFrom = qualities }
+func (p *Permanent) GetProtectionFrom() []string           { return p.protectionFrom }
+func (p *Permanent) HasProtectionFrom(quality string) bool {
+	for _, q := range p.protectionFrom {
+		if strings.EqualFold(q, quality) {
+			return true
+		}
+	}
+	return false
+}
+
 // Attachment helpers
 func (p *Permanent) AttachTo(target *Permanent) { p.attachedTo = target }
 func (p *Permanent) Detach()                    { p.attachedTo = nil }
@@ -199,3 +227,29 @@ func (p *Permanent) IsLegendary() bool    { return p.source.IsLegendary() }
 func (p *Permanent) IsPlaneswalker() bool { return p.source.IsPlaneswalker() }
 func (p *Permanent) IsArtifact() bool     { return p.source.IsArtifact() }
 func (p *Permanent) IsEnchantment() bool  { return p.source.IsEnchantment() }
+
+// removeCancelledCounters cancels +1/+1 and -1/-1 counters (CR 704.5d/704.5e/704.5i).
+// Returns true if any counters were removed.
+func (p *Permanent) removeCancelledCounters() bool {
+	if p.counters == nil {
+		return false
+	}
+	pos := p.counters["+1/+1"]
+	neg := p.counters["-1/-1"]
+	if pos <= 0 || neg <= 0 {
+		return false
+	}
+	min := pos
+	if neg < min {
+		min = neg
+	}
+	p.counters["+1/+1"] -= min
+	p.counters["-1/-1"] -= min
+	if p.counters["+1/+1"] == 0 {
+		delete(p.counters, "+1/+1")
+	}
+	if p.counters["-1/-1"] == 0 {
+		delete(p.counters, "-1/-1")
+	}
+	return true
+}

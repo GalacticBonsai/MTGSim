@@ -31,6 +31,9 @@ type Player struct {
 	commanderDamageReceived map[string]int
 
 	additionalLands int
+
+	// Poison counters (CR 704.5c): at 10+ the player loses.
+	poisonCounters int
 }
 
 func NewPlayer(name string, startingLife int) *Player {
@@ -178,6 +181,18 @@ func (p *Player) DestroyPermanent(perm *Permanent) bool {
 			p.Battlefield = append(p.Battlefield[:i], p.Battlefield[i+1:]...)
 			// to graveyard using source card
 			p.Graveyard = append(p.Graveyard, perm.source)
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveFromBattlefield removes a permanent from the controller's battlefield
+// without sending it anywhere (used by Sacrifice, ChangeController, etc.).
+func (p *Player) RemoveFromBattlefield(perm *Permanent) bool {
+	for i, bp := range p.Battlefield {
+		if bp == perm {
+			p.Battlefield = append(p.Battlefield[:i], p.Battlefield[i+1:]...)
 			return true
 		}
 	}
@@ -367,3 +382,69 @@ func (p *Player) UseLandPlay() {
 }
 
 func (p *Player) ResetLandPlays() { p.additionalLands = 0 }
+
+// MaxHandSize returns the maximum hand size (default 7).
+// Can be overridden by effects like Reliquary Tower (no maximum).
+func (p *Player) MaxHandSize() int { return 7 }
+
+// DiscardToMax discards cards from hand until it reaches MaxHandSize.
+// Returns the number of cards discarded. (CR 514.1)
+func (p *Player) DiscardToMax() int {
+	max := p.MaxHandSize()
+	over := len(p.Hand) - max
+	if over <= 0 {
+		return 0
+	}
+	discarded := p.Discard(over)
+	return len(discarded)
+}
+
+// PoisonCounters returns the number of poison counters on this player.
+func (p *Player) PoisonCounters() int {
+	if p.poisonCounters < 0 {
+		return 0
+	}
+	return p.poisonCounters
+}
+
+// AddPoison counters adds poison counters. At 10+, the player loses (CR 704.5c).
+func (p *Player) AddPoison(n int) {
+	if n <= 0 {
+		return
+	}
+	p.poisonCounters += n
+}
+
+// Proliferate adds one counter of each type already present on each
+// permanent and/or player chosen (CR 702.108).
+// Returns the total number of counters added.
+func (p *Player) Proliferate(permTargets []*Permanent, playerTargets []*Player) int {
+	totalAdded := 0
+
+	// Add counters to targeted permanents
+	for _, perm := range permTargets {
+		if perm == nil {
+			continue
+		}
+		for counterType, count := range perm.counters {
+			if count > 0 {
+				perm.AddCounters(counterType, 1)
+				totalAdded++
+				_ = counterType
+			}
+		}
+	}
+
+	// Add poison counters to targeted players
+	for _, pl := range playerTargets {
+		if pl == nil {
+			continue
+		}
+		if pl.poisonCounters > 0 {
+			pl.poisonCounters++
+			totalAdded++
+		}
+	}
+
+	return totalAdded
+}
