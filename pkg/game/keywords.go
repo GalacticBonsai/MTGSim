@@ -217,22 +217,14 @@ func parseKeywordsFromOracle(oracle string) map[Keyword]bool {
 		if line == "" {
 			continue
 		}
-		// Split on commas — a keyword line is a comma-separated list of
-		// single keywords. Anything else (full sentence) is ignored.
+		// Split on commas — each token is checked independently for keyword
+		// matching. This handles lines like "Trample, hexproof, can't be
+		// countered" where only some tokens are evergreen keywords.
 		parts := strings.Split(line, ",")
-		allKeywords := true
-		matched := []Keyword{}
 		for _, raw := range parts {
 			tok := strings.TrimSpace(raw)
 			k, ok := keywordFromToken(tok)
-			if !ok {
-				allKeywords = false
-				break
-			}
-			matched = append(matched, k)
-		}
-		if allKeywords {
-			for _, k := range matched {
+			if ok {
 				out[k] = true
 			}
 		}

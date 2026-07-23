@@ -87,6 +87,28 @@ func (g *Game) ChangeController(perm *Permanent, newController *Player) bool {
 	return true
 }
 
+// DestroyPermanentToExile exiles a permanent, sending it to its owner's exile
+// zone directly (bypasses graveyard). Returns true if the exile occurred.
+func (g *Game) DestroyPermanentToExile(perm *Permanent) bool {
+	if perm == nil {
+		return false
+	}
+	owner := perm.GetOwner()
+	ctrl := perm.GetController()
+	if ctrl != nil {
+		ctrl.RemoveFromBattlefield(perm)
+	}
+	src := perm.GetSource()
+	if owner != nil {
+		owner.Exile = append(owner.Exile, src)
+	} else if ctrl != nil {
+		ctrl.Exile = append(ctrl.Exile, src)
+	}
+	g.emit(Event{Type: EventZoneChange, ZoneChange: &ZoneChange{Card: src, From: Battlefield, To: Exile}})
+	g.ApplyStateBasedActions()
+	return true
+}
+
 // ExileFromGraveyard wraps Player.ExileFromGraveyard and emits zone change event.
 func (g *Game) ExileFromGraveyard(p *Player, name string) bool {
 	// find card in graveyard
