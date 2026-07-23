@@ -86,6 +86,16 @@ func (pa *permAdapter) Untap()          { pa.P.Untap() }
 func (pa *permAdapter) IsTapped() bool  { return pa.P.IsTapped() }
 func (pa *permAdapter) GetName() string { return pa.P.GetName() }
 func (pa *permAdapter) GetID() uuid.UUID { return pa.P.GetID() }
+
+// HasKeywordByName delegates to game.Permanent for keyword checks.
+func (pa *permAdapter) HasKeywordByName(name string) bool {
+	return pa.P.HasKeywordByName(name)
+}
+
+// HasProtectionFrom delegates to game.Permanent for protection checks.
+func (pa *permAdapter) HasProtectionFrom(quality string) bool {
+	return pa.P.HasProtectionFrom(quality)
+}
 func (pa *permAdapter) GetOwner() abil.AbilityPlayer {
 	return &playerAdapter{P: pa.P.GetOwner(), Game: pa.Game}
 }

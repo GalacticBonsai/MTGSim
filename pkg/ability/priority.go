@@ -273,17 +273,18 @@ func (pm *PriorityManager) handleAllPlayersPassed() error {
 }
 
 func (pm *PriorityManager) checkSpellTiming(spell *Spell) error {
-	// Instant spells can be cast anytime with priority
+	// Instant spells and spells with Flash can be cast anytime with priority
 	if isInstantSpeed(spell) {
 		return nil
 	}
 
 	// Sorcery speed spells can only be cast during main phases with empty stack
+	// and only when the stack is empty (CR 307.1)
 	if pm.phase == "Main Phase" && pm.stack.IsEmpty() {
 		return nil
 	}
 
-	return fmt.Errorf("cannot cast %s at this time", spell.Name)
+	return fmt.Errorf("cannot cast %s at this time (sorcery speed requires main phase with empty stack)", spell.Name)
 }
 
 func (pm *PriorityManager) checkAbilityTiming(ability *Ability) error {

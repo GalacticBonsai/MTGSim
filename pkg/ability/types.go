@@ -80,6 +80,21 @@ const (
 	LookAtLibraryTop   // Look at top N cards of library (informational; no game state change)
 	RevealInformation  // Reveal hand, top card, etc. (informational; no game state change)
 	ImprintCards       // Imprint — exile a card from hand when ETB (Chrome Mox, etc.)
+
+	// cEDH effect types
+	Proliferate          // Choose any number of permanents and/or players with counters; give each another counter (CR 702.108)
+	CreateClueToken      // Create a colorless Clue artifact token with "2, Sacrifice: Draw a card"
+	CreateTreasureToken  // Create a colorless Treasure artifact token with "T, Sacrifice: Add one mana of any color"
+	CreateFoodToken      // Create a colorless Food artifact token with "2, T, Sacrifice: You gain 3 life"
+	Fateseal             // Look at top N cards of target opponent's library; put any on bottom, rest on top
+	Explore              // Look at top card of library; if land, may put it onto battlefield tapped; otherwise put into hand
+	Delve                // Each card you exile from graveyard pays for 1 generic mana
+	Storm                // When you cast this spell, copy it for each spell cast before it this turn
+	Dredge               // Mill cards, then return this card from graveyard to hand
+	Madness              // When you discard this card, you may cast it for its madness cost
+	Flashback            // You may cast this card from your graveyard for its flashback cost
+	PhyrexianMana        // Pay 2 life instead of mana for Phyrexian mana symbols
+	Wishlist             // Look at top N cards of library, put one into hand, rest on bottom in any order
 )
 
 // String returns the human-readable name of an EffectType.
@@ -153,6 +168,32 @@ func (et EffectType) String() string {
 		return "RevealInformation"
 	case ImprintCards:
 		return "ImprintCards"
+	case Proliferate:
+		return "Proliferate"
+	case CreateClueToken:
+		return "CreateClueToken"
+	case CreateTreasureToken:
+		return "CreateTreasureToken"
+	case CreateFoodToken:
+		return "CreateFoodToken"
+	case Fateseal:
+		return "Fateseal"
+	case Explore:
+		return "Explore"
+	case Delve:
+		return "Delve"
+	case Storm:
+		return "Storm"
+	case Dredge:
+		return "Dredge"
+	case Madness:
+		return "Madness"
+	case Flashback:
+		return "Flashback"
+	case PhyrexianMana:
+		return "PhyrexianMana"
+	case Wishlist:
+		return "Wishlist"
 	default:
 		return fmt.Sprintf("EffectType(%d)", et)
 	}

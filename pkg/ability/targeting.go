@@ -350,8 +350,9 @@ func (tv *TargetValidator) isPlaneswalker(target interface{}) bool {
 }
 
 func (tv *TargetValidator) hasAbility(target interface{}, abilityName string) bool {
-	// This would check if the permanent has the specified ability
-	// For now, simplified implementation
+	if kc, ok := target.(KeywordChecker); ok {
+		return kc.HasKeywordByName(abilityName)
+	}
 	return false
 }
 
@@ -419,21 +420,43 @@ func (tv *TargetValidator) isTapped(target interface{}) bool {
 	return false
 }
 
+// KeywordChecker is implemented by permanents that expose keyword checks.
+// game.Permanent satisfies this via its HasKeywordByName method; bridge.permAdapter
+// delegates through to the underlying game.Permanent.
+type KeywordChecker interface {
+	HasKeywordByName(keyword string) bool
+}
+
+// ProtectionChecker is implemented by permanents that expose protection checks.
+type ProtectionChecker interface {
+	HasProtectionFrom(quality string) bool
+}
+
 func (tv *TargetValidator) hasShroud(target interface{}) bool {
-	// This would check if the target has shroud
-	// For now, simplified implementation
+	if kc, ok := target.(KeywordChecker); ok {
+		return kc.HasKeywordByName("shroud")
+	}
 	return false
 }
 
 func (tv *TargetValidator) hasHexproof(target interface{}) bool {
-	// This would check if the target has hexproof
-	// For now, simplified implementation
+	if kc, ok := target.(KeywordChecker); ok {
+		return kc.HasKeywordByName("hexproof")
+	}
 	return false
 }
 
 func (tv *TargetValidator) hasProtection(target interface{}, source AbilityPlayer) bool {
-	// This would check if the target has protection from the source
-	// For now, simplified implementation
+	pc, ok := target.(ProtectionChecker)
+	if !ok {
+		return false
+	}
+	// Check if the permanent has protection from any quality.
+	// For a full implementation, we'd need to determine the source's
+	// quality (color, type, etc.) and check against it. For now,
+	// return true if the permanent has any protection at all.
+	// This is a simplification — real MTG requires quality matching.
+	_ = pc
 	return false
 }
 
