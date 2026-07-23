@@ -228,6 +228,33 @@ func (p *Permanent) IsPlaneswalker() bool { return p.source.IsPlaneswalker() }
 func (p *Permanent) IsArtifact() bool     { return p.source.IsArtifact() }
 func (p *Permanent) IsEnchantment() bool  { return p.source.IsEnchantment() }
 
+// PlaneswalkerType returns the planeswalker subtype (e.g. "Jace") for the
+// uniqueness rule (CR 704.5n).
+func (p *Permanent) PlaneswalkerType() string { return p.source.PlaneswalkerType() }
+
+// CanBeTargetedBy checks if this permanent can be targeted by the given
+// controller, enforcing shroud, hexproof, and protection (CR 702.15, 702.16).
+func (p *Permanent) CanBeTargetedBy(targeter *Player) bool {
+	if p == nil || targeter == nil {
+		return false
+	}
+	// Shroud: can't be targeted by anyone (CR 702.15b)
+	if p.HasKeyword(KWShroud) {
+		return false
+	}
+	// Hexproof: can't be targeted by opponents (CR 702.15c)
+	if p.HasKeyword(KWHexproof) && p.GetController() != targeter {
+		return false
+	}
+	// Protection: can't be targeted by sources of that quality (CR 702.16)
+	// For now, if the permanent has protection and the targeter is an opponent,
+	// block targeting. Full quality matching requires source metadata.
+	if len(p.protectionFrom) > 0 && p.GetController() != targeter {
+		return false
+	}
+	return true
+}
+
 // removeCancelledCounters cancels +1/+1 and -1/-1 counters (CR 704.5d/704.5e/704.5i).
 // Returns true if any counters were removed.
 func (p *Permanent) removeCancelledCounters() bool {

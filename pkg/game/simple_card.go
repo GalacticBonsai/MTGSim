@@ -28,6 +28,19 @@ func (c SimpleCard) IsPlaneswalker() bool { return contains(c.TypeLine, "Planesw
 func (c SimpleCard) IsLegendary() bool    { return contains(c.TypeLine, "Legendary") }
 func (c SimpleCard) IsBattle() bool       { return contains(c.TypeLine, "Battle") }
 
+// PlaneswalkerType returns the planeswalker subtype from the type line,
+// e.g. "Planeswalker — Jace" → "Jace". Returns "" for non-planeswalkers.
+func (c SimpleCard) PlaneswalkerType() string {
+	if !c.IsPlaneswalker() {
+		return ""
+	}
+	idx := strings.Index(c.TypeLine, "—")
+	if idx < 0 {
+		return strings.TrimSpace(c.TypeLine)
+	}
+	return strings.TrimSpace(c.TypeLine[idx+1:])
+}
+
 // GetManaCost parses the mana cost string into a Mana map.
 func (c SimpleCard) GetManaCost() Mana {
 	return parseManaCost(c.ManaCost)

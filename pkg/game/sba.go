@@ -157,15 +157,17 @@ func (g *Game) applyLegendRule() bool {
 }
 
 // applyPlaneswalkerUniquenessRule implements CR 704.5n: If a player controls two or more planeswalkers with the same planeswalker type, that player chooses one of them, and the rest are put into their owners' graveyards.
-// For simulation purposes, we arbitrarily keep the first one encountered.
+// The uniqueness check uses the planeswalker supertype (e.g. "Jace"), not the full card name.
 func (g *Game) applyPlaneswalkerUniquenessRule() bool {
 	changed := false
 	for _, pl := range g.players {
 		typeCounts := make(map[string][]*Permanent)
 		for _, perm := range pl.Battlefield {
 			if perm.IsPlaneswalker() {
-				// Simplified: use the name as the planeswalker type
-				typeCounts[perm.GetName()] = append(typeCounts[perm.GetName()], perm)
+				pwType := perm.source.PlaneswalkerType()
+				if pwType != "" {
+					typeCounts[pwType] = append(typeCounts[pwType], perm)
+				}
 			}
 		}
 		for _, perms := range typeCounts {

@@ -150,6 +150,14 @@ func (g *Game) ResolveCombatDamage() {
 		return
 	}
 
+	// CR 702.13: menace — if attacker has menace and fewer than 2 blockers,
+	// the block is illegal. Remove all blockers (attacker becomes unblocked).
+	for a, blockers := range g.combat.blocks {
+		if a.HasKeyword(KWMenace) && len(blockers) < 2 {
+			delete(g.combat.blocks, a)
+		}
+	}
+
 	// Helper closures. Each application returns the damage actually dealt
 	// so callers (e.g. trample) can compute leftover.
 	applyLifelink := func(src *Permanent, dmg int) {
@@ -269,7 +277,9 @@ func (g *Game) ResolveCombatDamage() {
 					a *Permanent
 					d *Player
 				}{a, def})
-			} else {
+			}
+			// Double strike also deals in normal step
+			if a.HasDoubleStrike() || (!a.HasFirstStrike() && !a.HasDoubleStrike()) {
 				normUnblocked = append(normUnblocked, struct {
 					a *Permanent
 					d *Player
